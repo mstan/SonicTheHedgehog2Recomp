@@ -96,6 +96,14 @@ WATCHED_RAM = [
     ("p1_xvel",              0xFFD010, 2),
     ("p1_yvel",              0xFFD012, 2),
     ("p1_routine",           0xFFD024, 1),
+    # Normal_palette buffer — the RAM staging area Sonic 2 fills before
+    # the VBlank handler DMA-copies it into CRAM. If RAM matches but
+    # CRAM doesn't, the DMA-to-CRAM path is broken; if RAM also mismatches,
+    # the palette-load itself is broken.
+    ("pal_buf_0",            0xFFFB80, 4),
+    ("pal_buf_1",            0xFFFB84, 4),
+    ("pal_buf_4",            0xFFFB90, 4),
+    ("pal_buf_8",            0xFFFBA0, 4),
 ]
 
 
@@ -104,6 +112,7 @@ class FrameState:
     frame:    int
     regs:     dict
     ram:      dict   # name -> int
+    cram:     str    # hex string of full CRAM (128 bytes = 64 colors)
 
     @classmethod
     def capture(cls, c: DebugClient) -> "FrameState":
@@ -112,18 +121,21 @@ class FrameState:
         ram = {}
         for name, addr, width in WATCHED_RAM:
             r = c.cmd("read_ram", addr=addr, len=width)
-            # The runner returns a hex string in the "data" field.
             data = r.get("data") or r.get("bytes") or ""
             try:
                 v = int(data.replace(" ", ""), 16) if data else 0
             except ValueError:
                 v = 0
             ram[name] = v
-        return cls(
-            frame = frame_resp.get("frame", -1),
-            regs  = regs_resp.get("regs", regs_resp),
-            ram   = ram,
-        )
+        # CRAM (palette) — 64 colors × 2 bytes each. White-background
+        # native vs colorful-background oracle must differ here.
+        cram_resp = c.cmd("read_cram")
+        cram_data = (cram_resp.get("hex") or cram_resp.get("data")
+                     or cram_resp.get("cram") or "")
+        f = frame_resp.get("current_frame")
+        if f is None: f = frame_resp.get("frame", -1)
+        return cls(frame=f, regs=regs_resp, ram=ram,
+                   cram=cram_data.replace(" ", "").lower())
 
 
 def diff_states(a: FrameState, b: FrameState) -> list[str]:
@@ -143,14 +155,20 @@ def diff_states(a: FrameState, b: FrameState) -> list[str]:
                   "A0","A1","A2","A3","A4","A5","A6","A7","SR","PC"):
             if k in a_regs and k in b_regs and a_regs[k] != b_regs[k]:
                 out.append(f"  reg.{k:<3} oracle=0x{a_regs[k]:08X}  native=0x{b_regs[k]:08X}")
-    elif a.frame > 5:
-        out.append("  (oracle CPU regs unavailable — known limitation: oracle's "
-                   "interpreter state isn't surfaced via get_registers; "
-                   "comparing RAM only)")
     # RAM windows
     for name in a.ram:
         if a.ram[name] != b.ram[name]:
             out.append(f"  ram.{name:<15} oracle=0x{a.ram[name]:08X}  native=0x{b.ram[name]:08X}")
+    # CRAM (palette) — show first N differing color slots
+    if a.cram and b.cram and a.cram != b.cram:
+        diffs = []
+        for i in range(0, min(len(a.cram), len(b.cram)), 4):
+            if a.cram[i:i+4] != b.cram[i:i+4]:
+                diffs.append(f"#{i//4:02d} oracle=${a.cram[i:i+4]} native=${b.cram[i:i+4]}")
+                if len(diffs) >= 8: break
+        out.append(f"  CRAM differs ({len(a.cram)//4} colors total):")
+        for d in diffs:
+            out.append(f"    {d}")
     return out
 
 
@@ -182,10 +200,26 @@ def main() -> int:
     oracle.cmd("pause")
     native.cmd("pause")
 
-    last_good_frame = 0
-    cur_frame = 0
-    while cur_frame < args.max_frames:
-        chunk = min(args.chunk, args.max_frames - cur_frame)
+    # Sync: by now each may be at a different frame because there's
+    # always some startup-time skew between the two processes. Catch
+    # the trailing one up so we step from a common baseline.
+    o0 = oracle.cmd("frame_info").get("current_frame", 0)
+    n0 = native.cmd("frame_info").get("current_frame", 0)
+    print(f"[divergence_diff] oracle starting at frame {o0}, native at frame {n0}")
+    if n0 < o0:
+        native.cmd("run_frames", n=o0 - n0)
+        n0 = native.cmd("frame_info").get("current_frame", 0)
+    elif o0 < n0:
+        oracle.cmd("run_frames", n=n0 - o0)
+        o0 = oracle.cmd("frame_info").get("current_frame", 0)
+    print(f"[divergence_diff] synced — both at frame {o0}")
+    base_frame = o0
+
+    last_good_frame = base_frame
+    cur_frame = base_frame
+    end_frame = base_frame + args.max_frames
+    while cur_frame < end_frame:
+        chunk = min(args.chunk, end_frame - cur_frame)
         oracle.cmd("run_frames", n=chunk)
         native.cmd("run_frames", n=chunk)
         cur_frame += chunk
