@@ -15,7 +15,7 @@ if not exist "%RECOMP%" (
 )
 
 pushd "%GAMEDIR%"
-"%RECOMP%" sonic2.bin --game game.cfg
+"%RECOMP%" sonic2.bin --game game.toml
 set ERR=%ERRORLEVEL%
 popd
 exit /b %ERR%
