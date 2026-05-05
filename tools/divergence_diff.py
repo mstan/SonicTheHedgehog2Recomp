@@ -129,13 +129,24 @@ class FrameState:
 def diff_states(a: FrameState, b: FrameState) -> list[str]:
     """Return a human-readable list of differences."""
     out = []
-    # CPU registers — compare D0-D7, A0-A7, SR.
+    # Heuristic: in oracle builds the recompiled-C g_cpu globals are
+    # rarely populated (the interpreter keeps state in clown68000's
+    # internal struct), so get_registers reports zeros. Skip the CPU
+    # comparison when oracle's registers all look zeroed — RAM diffs
+    # are still meaningful and route through clownmdemu's shared RAM.
     a_regs = a.regs
     b_regs = b.regs
-    for k in ("D0","D1","D2","D3","D4","D5","D6","D7",
-              "A0","A1","A2","A3","A4","A5","A6","A7","SR","PC"):
-        if k in a_regs and k in b_regs and a_regs[k] != b_regs[k]:
-            out.append(f"  reg.{k:<3} oracle=0x{a_regs[k]:08X}  native=0x{b_regs[k]:08X}")
+    oracle_regs_unavailable = all(a_regs.get(k, 0) == 0 for k in
+                                  ("D0","D1","D2","D3","A0","A1","A7","SR"))
+    if not oracle_regs_unavailable:
+        for k in ("D0","D1","D2","D3","D4","D5","D6","D7",
+                  "A0","A1","A2","A3","A4","A5","A6","A7","SR","PC"):
+            if k in a_regs and k in b_regs and a_regs[k] != b_regs[k]:
+                out.append(f"  reg.{k:<3} oracle=0x{a_regs[k]:08X}  native=0x{b_regs[k]:08X}")
+    elif a.frame > 5:
+        out.append("  (oracle CPU regs unavailable — known limitation: oracle's "
+                   "interpreter state isn't surfaced via get_registers; "
+                   "comparing RAM only)")
     # RAM windows
     for name in a.ram:
         if a.ram[name] != b.ram[name]:
