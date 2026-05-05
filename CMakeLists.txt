@@ -45,6 +45,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/hybrid_global.c"
     "${RUNNER_ROOT}/glue.c"
     "${RUNNER_ROOT}/crash_report.c"
+    "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/reverse_debug.c"
     "${RUNNER_ROOT}/audio/event_queue.c"
     "${RUNNER_ROOT}/audio/ym2612.c"
