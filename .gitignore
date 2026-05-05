@@ -1,0 +1,43 @@
+# Build artifacts
+build/
+build-*/
+out/
+cmake-build-*/
+
+# Compiled output (this repo only has source-of-truth, not generated C —
+# generated/ lives in the sibling segagenesisrecomp/sonicthehedgehog2/)
+*.obj
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.map
+
+# ROM files — never commit ROMs (the Genesis cart formats are .bin /
+# .gen / .smd; .md is also seen in some dump tools but conflicts with
+# Markdown and isn't the Sonic 2 packaging anyway, so left out).
+*.bin
+*.gen
+*.smd
+
+# IDE / OS junk
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Runtime artifacts that may end up alongside the binary
+last_rom.txt
+*.log
+rdb_*.json
+framedump/
+screenshots/
+ramdump_*.bin
+
+# Auto-generated diagnostic logs
+**/*.unresolved_jumptables.log
