@@ -32,15 +32,12 @@ set(SDL2_DIR "${SDL2_BUNDLED}/cmake" CACHE PATH "" FORCE)
 find_package(SDL2 REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${SDL2_DIR}")
 
 # ---------------------------------------------------------------------------
-# Source list — every runner file we need EXCEPT the Sonic-1-specific ones:
-#   sonic_extras.c    — Sonic-1 RAM offsets + sonic_state/object_table cmds
-#   sonic1_spec.c     — Sonic-1 g_game_spec
-#   hybrid_table.c    — Sonic-1 verified-clean native overrides
-#   hybrid.c, hybrid_jmp.c — oracle-only, not built for Sonic 2
-#   reverse_debug.c   — opt-in, not enabled here
+# Source set used by both the native and the oracle target (everything
+# except the variant-specific files: stub_clown68000.c for native and
+# the hybrid/oracle interpreter files for oracle).
 # ---------------------------------------------------------------------------
 
-set(SONIC2_SOURCES
+set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/main.c"
     "${RUNNER_ROOT}/audio.c"
     "${RUNNER_ROOT}/cmd_server.c"
@@ -54,7 +51,6 @@ set(SONIC2_SOURCES
     "${RUNNER_ROOT}/audio/sn76489.c"
     "${RUNNER_ROOT}/audio/mixer.c"
     "${RUNNER_ROOT}/audio/observability.c"
-    "${RUNNER_ROOT}/stub_clown68000.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_full.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_dispatch.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
@@ -74,43 +70,69 @@ if(WIN32)
     list(APPEND SONIC2_LIBS ws2_32 comdlg32)
 endif()
 
-add_executable(SonicTheHedgehog2Recomp ${SONIC2_SOURCES})
+# Helper: copy SDL2.dll, ROM, and annotations CSV next to a target's exe.
+function(_sonic2_finalize_target tgt)
+    target_include_directories(${tgt} PRIVATE ${SONIC2_INCLUDES})
+    target_link_libraries(${tgt} PRIVATE ${SONIC2_LIBS})
+    if(MSVC)
+        target_compile_options(${tgt} PRIVATE /W3 /WX- /utf-8 /wd4102 /wd4996)
+        target_link_options(${tgt} PRIVATE /MAP)
+    endif()
+    if(WIN32)
+        add_custom_command(TARGET ${tgt} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SDL2_BUNDLED}/lib/x64/SDL2.dll"
+                "$<TARGET_FILE_DIR:${tgt}>"
+            COMMENT "Copying SDL2.dll for ${tgt}")
+        add_custom_command(TARGET ${tgt} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${RECOMP_ROOT}/sonicthehedgehog2/sonic2.bin"
+                "$<TARGET_FILE_DIR:${tgt}>/sonic2.bin"
+            COMMENT "Copying Sonic 2 ROM for ${tgt}")
+        add_custom_command(TARGET ${tgt} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${RECOMP_ROOT}/sonicthehedgehog2/annotations_from_disasm.csv"
+                "$<TARGET_FILE_DIR:${tgt}>/annotations_from_disasm.csv"
+            COMMENT "Copying Sonic 2 annotations for ${tgt}")
+    endif()
+endfunction()
 
+# ---------------------------------------------------------------------------
+# Native target — recompiled 68K drives the game (stub_clown68000 absorbs
+# the would-be interpreter calls).
+# ---------------------------------------------------------------------------
+
+add_executable(SonicTheHedgehog2Recomp
+    ${SONIC2_SHARED_SOURCES}
+    "${RUNNER_ROOT}/stub_clown68000.c"
+)
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
     DEFAULT_DEBUG_PORT=4380
     SONIC_REVERSE_DEBUG=1
 )
+_sonic2_finalize_target(SonicTheHedgehog2Recomp)
 
-target_include_directories(SonicTheHedgehog2Recomp PRIVATE ${SONIC2_INCLUDES})
-target_link_libraries(SonicTheHedgehog2Recomp PRIVATE ${SONIC2_LIBS})
+# ---------------------------------------------------------------------------
+# Oracle target — clown68000 interpreter executes everything. Used as the
+# reference for divergence-diff against the native target. Sonic 2's
+# hybrid table is empty (sonic2_hybrid_table.c) so every recompiled
+# function falls through to interpreter execution.
+# ---------------------------------------------------------------------------
 
-if(MSVC)
-    target_compile_options(SonicTheHedgehog2Recomp PRIVATE /W3 /WX- /utf-8 /wd4102 /wd4996)
-    target_link_options(SonicTheHedgehog2Recomp PRIVATE /MAP)
-endif()
-
-if(WIN32)
-    add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SDL2_BUNDLED}/lib/x64/SDL2.dll"
-            "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>"
-        COMMENT "Copying SDL2.dll for SonicTheHedgehog2Recomp")
-
-    # Also copy the Sonic 2 ROM into the build dir if present alongside
-    # the cfg, so the binary can be launched from the build output dir
-    # the same way SonicTheHedgehogRecomp expects sonic.bin.
-    add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${RECOMP_ROOT}/sonicthehedgehog2/sonic2.bin"
-            "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/sonic2.bin"
-        COMMENT "Copying Sonic 2 ROM for runtime")
-
-    # Annotation CSV used by crash_report.c for symbol resolution.
-    add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${RECOMP_ROOT}/sonicthehedgehog2/annotations_from_disasm.csv"
-            "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/annotations_from_disasm.csv"
-        COMMENT "Copying Sonic 2 annotations for crash-report symbol resolution")
-endif()
+add_executable(SonicTheHedgehog2Recomp_oracle
+    ${SONIC2_SHARED_SOURCES}
+    "${RUNNER_ROOT}/hybrid.c"
+    "${RUNNER_ROOT}/sonic2_hybrid_table.c"
+    "${RUNNER_ROOT}/hybrid_jmp.c"
+    "${RUNNER_ROOT}/oracle_trace.c"   # T3 reverse-debug per-insn capture
+)
+target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
+    INCLUDE_GENERATED_CODE=1
+    HYBRID_RECOMPILED_CODE=1
+    SONIC_ORACLE_BUILD=1
+    DEFAULT_DEBUG_PORT=4381
+    SONIC_REVERSE_DEBUG=1
+)
+_sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle)
