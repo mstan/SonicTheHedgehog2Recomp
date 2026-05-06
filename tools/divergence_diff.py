@@ -119,9 +119,14 @@ def discover_window(c: DebugClient) -> tuple[int, int]:
 
 # --- Per-frame fetch + diff ----------------------------------------------
 
-def fetch_full_frame(c: DebugClient, wall_frame: int) -> dict:
+def fetch_full_frame(c: DebugClient, wall_frame: int) -> dict | None:
+    """Fetch a full frame record. Returns None if the frame has slid out
+    of the ring (free-running rings advance during the query loop)."""
     r = c.cmd("get_frame", frame=wall_frame, include="all")
     if not r.get("ok"):
+        err = (r.get("error") or "").lower()
+        if "ring" in err or "not in" in err:
+            return None
         raise RuntimeError(f"{c.label}: get_frame {wall_frame} failed: {r}")
     return r
 
@@ -292,11 +297,15 @@ def main() -> int:
               f"K=[{common[0]}..{common[-1]}]")
 
         first_div_k = None
+        evicted = 0
         for K in common:
             of = o_vint[K]
             nf = n_vint[K]
             o_rec = fetch_full_frame(oracle, of)
             n_rec = fetch_full_frame(native, nf)
+            if o_rec is None or n_rec is None:
+                evicted += 1
+                continue
             diffs = diff_full(o_rec, n_rec)
             if diffs:
                 first_div_k = K
@@ -312,6 +321,9 @@ def main() -> int:
                 if K % 30 == 0 or K == common[-1]:
                     print(f"  K={K:6d}  match  (o.f={of}, n.f={nf})")
 
+        if evicted:
+            print(f"[divergence_diff] {evicted}/{len(common)} sync points were evicted "
+                  f"from a ring before we could read them (free-run drift)")
         if first_div_k is None:
             print(f"\n[divergence_diff] no state-divergence across {len(common)} sync points.")
             return 0
