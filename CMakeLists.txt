@@ -54,6 +54,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/audio/observability.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_full.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_dispatch.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_layout.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
 )
 
