@@ -1,0 +1,11 @@
+# Load the user's native in-level save immediately after startup. This exercises
+# the runner's save-state fiber restart path instead of relying on an already
+# active level-loop host stack.
+WAIT 1
+LOAD_STATE native_save_1.bin
+WAIT 65
+HOLD A
+WAIT 120
+SCREENSHOT special_stage_from_boot_load.png
+WAIT 1200
+EXIT 0

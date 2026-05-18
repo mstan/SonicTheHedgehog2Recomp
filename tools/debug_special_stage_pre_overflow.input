@@ -1,0 +1,20 @@
+# Enter gameplay, load the user's checkpoint save, then enter the special
+# stage naturally and dump WRAM around the frame where sprite-table overflow
+# starts corrupting $FFFE08..$FFFE13.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 0C
+WAIT 30
+LOAD_STATE native_save_1.bin
+WAIT 65
+HOLD A
+WAIT_RAM8 FFF600 10
+WAIT 120
+SCREENSHOT ss_pre_overflow_special_stage.png
+WAIT 365
+DUMP_RAM ss_pre_overflow_before.bin
+WAIT 2
+DUMP_RAM ss_pre_overflow_near.bin
+EXIT 0

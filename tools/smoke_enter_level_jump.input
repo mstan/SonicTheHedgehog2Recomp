@@ -1,0 +1,14 @@
+# Sonic 2 title flow needs two Start edges:
+# first skips the intro animation, second starts the game.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 8C
+WAIT_RAM8 FFF600 0C
+WAIT 30
+HOLD RIGHT
+WAIT 80
+PRESS A 4
+WAIT 160
+EXIT 0

@@ -1,0 +1,15 @@
+# Enter gameplay before loading; the current native save-state format
+# assumes the recompiled game fiber is already in the level loop.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 0C
+WAIT 30
+LOAD_STATE native_save_1.bin
+HOLD A
+WAIT 120
+WRITE_RAM8 FFF7CD 01
+WRITE_RAM8 FFF600 10
+WAIT 900
+EXIT 0
