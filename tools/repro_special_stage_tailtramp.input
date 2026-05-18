@@ -1,0 +1,15 @@
+# Force the special-stage transition from the saved in-level state.
+# This variant tolerates Sonic 2's title-card bit staying set in Game_Mode.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 8C
+WAIT 30
+LOAD_STATE native_save_1.bin
+HOLD A
+WAIT 120
+WRITE_RAM8 FFF7CD 01
+WRITE_RAM8 FFF600 10
+WAIT 900
+EXIT 0

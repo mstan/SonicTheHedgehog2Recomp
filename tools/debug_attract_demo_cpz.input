@@ -1,0 +1,13 @@
+# Boot Sonic 2 and force the attract demo index to the second entry.
+# This skips the EHZ demo's Two_player_mode path and isolates whether
+# the attract failure is EHZ/2P title-card specific.
+
+WAIT_RAM8 FFF600 04
+WRITE_RAM16 FFFFF2 0001
+WAIT 800
+SCREENSHOT attract_cpz_t1.png
+DUMP_RAM attract_cpz_t1_ram.bin
+WAIT 600
+SCREENSHOT attract_cpz_t2.png
+DUMP_RAM attract_cpz_t2_ram.bin
+EXIT 0

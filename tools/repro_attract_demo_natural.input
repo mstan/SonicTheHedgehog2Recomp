@@ -1,0 +1,27 @@
+# Boot Sonic 2, do not press Start. Let title screen demo timer
+# expire (~10s + 40 frames after title screen reaches steady state)
+# and capture state at the attract demo entry / freeze point.
+#
+# Sonic 2's attract demo path goes:
+#   SEGA logo ($00) -> Title screen ($04) -> TitleCard|Demo ($88) -> Demo ($08)
+#
+# The user reports a black-screen freeze on attract entry. This
+# script gives the game ample time to reach demo and dumps state.
+
+WAIT_RAM8 FFF600 04
+# Title screen reached. Demo_Time_left initialized to 640 (10.7s).
+WAIT 800
+# By here we should be in TitleCard|Demo ($88) or Demo ($08).
+DUMP_RAM attract_freeze_t1_ram.bin
+SCREENSHOT attract_freeze_t1.png
+
+WAIT 600
+# 10 more seconds past first state capture.
+DUMP_RAM attract_freeze_t2_ram.bin
+SCREENSHOT attract_freeze_t2.png
+
+WAIT 600
+DUMP_RAM attract_freeze_t3_ram.bin
+SCREENSHOT attract_freeze_t3.png
+
+EXIT 0

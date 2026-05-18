@@ -1,0 +1,25 @@
+# Enter gameplay, load the checkpoint-ring save, wait for the orbiting stars
+# to become collidable, then jump into them.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 0C
+WAIT 30
+LOAD_STATE native_save_1.bin
+DUMP_RAM ss_delayed_after_load.bin
+WAIT 65
+DUMP_RAM ss_delayed_before_jump.bin
+SCREENSHOT ss_delayed_before_jump.png
+HOLD A
+WAIT 1
+DUMP_RAM ss_delayed_jump_001.bin
+WAIT 12
+DUMP_RAM ss_delayed_jump_013.bin
+WAIT 20
+DUMP_RAM ss_delayed_jump_033.bin
+SCREENSHOT ss_delayed_after_enter.png
+WAIT 120
+DUMP_RAM ss_delayed_jump_153.bin
+SCREENSHOT ss_delayed_special_stage.png
+EXIT 0

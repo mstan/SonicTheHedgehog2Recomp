@@ -1,0 +1,12 @@
+# Boot Sonic 2 naturally, then force the EHZ attract title-card setup
+# back to one-player mode after TitleScreen_Demo selects EHZ.
+
+WAIT_RAM8 FFF600 88
+WRITE_RAM16 FFFFD8 0000
+WAIT 800
+SCREENSHOT attract_ehz_1p_t1.png
+DUMP_RAM attract_ehz_1p_t1_ram.bin
+WAIT 600
+SCREENSHOT attract_ehz_1p_t2.png
+DUMP_RAM attract_ehz_1p_t2_ram.bin
+EXIT 0
