@@ -31,15 +31,16 @@ filesystem layout:
 ```
 your-projects/
 ├── SonicTheHedgehogRecomp/             ← clone of mstan/SonicTheHedgehogRecomp
-│   ├── runner/                         ← shared runner sources
-│   ├── segagenesisrecomp/              ← submodule, recompiler + tools
+│   ├── segagenesisrecomp/              ← submodule (shared engine)
 │   │   ├── recompiler/
-│   │   ├── runner/include/
+│   │   ├── runner/                     ← shared runner sources (glue.c, ...)
 │   │   ├── clownmdemu-core/
+│   │   ├── sonicthehedgehog/           ← Sonic 1 game data + sonic1_spec.c
 │   │   └── sonicthehedgehog2/          ← Sonic 2 game data lives HERE
 │   │       ├── sonic2.bin              ← provide your own ROM (gitignored)
-│   │       ├── game.cfg
+│   │       ├── game.toml
 │   │       ├── sonic2_spec.c           ← per-game GameSpec
+│   │       ├── sonic2_hybrid_table.c   ← oracle-build override table
 │   │       ├── annotations_from_disasm.csv
 │   │       └── generated/              ← regen output
 │   └── ...
@@ -49,10 +50,11 @@ your-projects/
     └── README.md
 ```
 
-The sibling layout means a single configure of this repo
-references `../SonicTheHedgehogRecomp/runner/` (game-agnostic runner
-sources) and `../SonicTheHedgehogRecomp/segagenesisrecomp/sonicthehedgehog2/`
-(Sonic-2-specific game data, including the regenerated C output).
+The sibling layout means a single configure of this repo reaches into
+`../SonicTheHedgehogRecomp/segagenesisrecomp/` for both the shared
+runner (`runner/`) and the Sonic-2-specific generated/spec code
+(`sonicthehedgehog2/`). Sonic 1's release repo serves only as the
+checkout location of the submodule.
 
 ## Build
 
