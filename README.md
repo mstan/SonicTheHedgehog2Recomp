@@ -8,8 +8,29 @@ core with [SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogReco
 
 Sonic 2 boots through the SEGA logo (with the iconic Sonic-running
 intro animation), reaches the title screen with Sonic + Tails + the
-"1 PLAYER / 2 PLAYER VS" menu, and enters the attract demo. **Not
-fully functional yet** — three known issues:
+"1 PLAYER / 2 PLAYER VS" menu, and enters the attract demo.
+
+**Two-player versus mode now works.** The 2P interlace timing bug was
+fixed in clownmdemu-core (commit `5f02533` — scanline iteration +
+H-Int/V-Int raise path rewrite). Each half of the split screen is a
+half-height interlace field; by default the runner squashes them back
+to 4:3 (`interlace_display=tv`), but you can opt into full-resolution
+side-by-side rendering with `interlace_display=raw` — the window
+extends vertically so both player windows display in proper 4:3.
+
+Set the mode either via the CLI:
+
+```cmd
+SonicTheHedgehog2Recomp.exe --interlace-display=raw
+```
+
+or by adding a line to `debug.ini` next to the .exe:
+
+```ini
+interlace_display=raw
+```
+
+Other known issues still under investigation:
 
 1. Title-screen background is white (palette/CRAM not uploaded
    correctly — looks like the recompiled VDP-DMA setup is racing
@@ -17,8 +38,8 @@ fully functional yet** — three known issues:
 2. Attract demo screen is black (no rendering — same shape).
 3. Music plays slowly (Z80 cycle accounting throws off SMPS tempo).
 
-All three look like cycle-pacing artifacts in the runner's bus
-accessor / yield logic, not codegen issues. Investigation deferred.
+These three look like cycle-pacing artifacts in the runner's bus
+accessor / yield logic, not codegen issues.
 
 ## Layout
 
