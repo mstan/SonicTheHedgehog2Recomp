@@ -7,9 +7,9 @@ PRESS START 2
 WAIT 90
 WRITE_RAM8 FFFF86 01
 PRESS START 2
-WAIT_RAM8 FFF600 18
+WAIT_RAM8 FFF600 1C
 WAIT 60
-# At GameModeID_2PLevelSelect ($18). Force the default EHZ + start.
+# At GameModeID_2PLevelSelect ($1C). Force the default EHZ + start.
 PRESS START 2
 WAIT 90
 # Character select / extras may follow. Press start again to advance.
@@ -23,7 +23,7 @@ SCREENSHOT probe_2p_split_t1.png
 DUMP_RAM probe_2p_split_t1_ram.bin
 WAIT 60
 SCREENSHOT probe_2p_split_t2.png
-WAIT 600
+WAIT 1800
 SCREENSHOT probe_2p_split_t3.png
 DUMP_RAM probe_2p_split_t3_ram.bin
 EXIT 0
