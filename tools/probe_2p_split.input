@@ -1,0 +1,29 @@
+# Boot -> title -> navigate to 2P VS -> EHZ -> capture screenshot during gameplay.
+# Title_screen_option=1 maps to "2P VS"; setting it directly skips the
+# menu-cursor animation. PRESS START twice (intro skip + confirm).
+
+WAIT 700
+PRESS START 2
+WAIT 90
+WRITE_RAM8 FFFF86 01
+PRESS START 2
+WAIT_RAM8 FFF600 18
+WAIT 60
+# At GameModeID_2PLevelSelect ($18). Force the default EHZ + start.
+PRESS START 2
+WAIT 90
+# Character select / extras may follow. Press start again to advance.
+PRESS START 2
+WAIT 90
+PRESS START 2
+WAIT_RAM8 FFF600 0C
+# Now in level (Game_Mode == $0C = Level w/Title Card). Wait for title card.
+WAIT 240
+SCREENSHOT probe_2p_split_t1.png
+DUMP_RAM probe_2p_split_t1_ram.bin
+WAIT 60
+SCREENSHOT probe_2p_split_t2.png
+WAIT 600
+SCREENSHOT probe_2p_split_t3.png
+DUMP_RAM probe_2p_split_t3_ram.bin
+EXIT 0

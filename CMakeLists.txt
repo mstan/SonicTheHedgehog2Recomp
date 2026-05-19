@@ -6,24 +6,23 @@ set(CMAKE_C_STANDARD 11)
 # ---------------------------------------------------------------------------
 # Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.
 #
-# The runner code lives in ../SonicTheHedgehogRecomp/runner/ and is
-# game-agnostic now that consumers read everything per-game from
-# g_game_spec (defined here in sonic2_spec.c). The generated 68K
-# translation unit comes from segagenesisrecomp/sonicthehedgehog2/.
+# All shared engine code (runner) lives in the segagenesisrecomp submodule,
+# which is checked out under Sonic 1's release repo for historical reasons.
+# Per-game files (sonic2_spec.c, sonic2_hybrid_table.c) live alongside the
+# Sonic 2 generated TUs in segagenesisrecomp/sonicthehedgehog2/.
 #
-# Oracle build is deferred — Sonic 2 has no hybrid native-override
-# table, and runner/hybrid_table.c is still hard-coded to Sonic 1's
-# function set. That moves into per-game spec files at a later step.
+# Sonic 1's release repo must be checked out as a sibling so we can reach
+# the submodule. Sonic 2 does not consume any files from Sonic 1 directly.
 # ---------------------------------------------------------------------------
 
 set(SHARED_REPO_ROOT "${CMAKE_SOURCE_DIR}/../SonicTheHedgehogRecomp")
-set(RUNNER_ROOT      "${SHARED_REPO_ROOT}/runner")
 set(RECOMP_ROOT      "${SHARED_REPO_ROOT}/segagenesisrecomp")
+set(RUNNER_ROOT      "${RECOMP_ROOT}/runner")
 
-include("${RECOMP_ROOT}/runner/clownmdemu_patches.cmake")
+include("${RUNNER_ROOT}/clownmdemu_patches.cmake")
 add_subdirectory("${RECOMP_ROOT}/clownmdemu-core" clownmdemu-core)
 
-set(SDL2_BUNDLED "${RECOMP_ROOT}/runner/external/SDL2/SDL2-2.28.5")
+set(SDL2_BUNDLED "${RUNNER_ROOT}/external/SDL2/SDL2-2.28.5")
 # Pin SDL2 to the bundled copy. Without NO_DEFAULT_PATH, msys64's
 # SDL2 (under C:/msys64/mingw64/lib/cmake/SDL2) wins on systems with
 # MSYS2 installed, which then leaks msys64 stdio.h onto cl.exe's
@@ -60,7 +59,7 @@ set(SONIC2_SHARED_SOURCES
 
 set(SONIC2_INCLUDES
     "${RUNNER_ROOT}"
-    "${RECOMP_ROOT}/runner/include"
+    "${RUNNER_ROOT}/include"
     "${RECOMP_ROOT}/sonicthehedgehog2"
     "${RECOMP_ROOT}/clownmdemu-core/source"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clowncommon"
@@ -126,7 +125,7 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp)
 add_executable(SonicTheHedgehog2Recomp_oracle
     ${SONIC2_SHARED_SOURCES}
     "${RUNNER_ROOT}/hybrid.c"
-    "${RUNNER_ROOT}/sonic2_hybrid_table.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_hybrid_table.c"
     "${RUNNER_ROOT}/hybrid_jmp.c"
     "${RUNNER_ROOT}/oracle_trace.c"   # T3 reverse-debug per-insn capture
 )

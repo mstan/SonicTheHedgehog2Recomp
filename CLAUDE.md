@@ -1,8 +1,7 @@
 # CLAUDE.md — SonicTheHedgehog2Recomp
 
-This is the Sonic 2 release repo. The canonical session brief lives in the
-shared submodule (which is checked out under Sonic 1's release repo, due
-to the asymmetric placement noted below):
+This is the Sonic 2 release repo. The canonical session brief lives in
+the shared submodule (checked out under Sonic 1's release repo):
 
 → **`../SonicTheHedgehogRecomp/segagenesisrecomp/CLAUDE.md`** — read this first.
 → **`../SonicTheHedgehogRecomp/segagenesisrecomp/PRINCIPLES.md`** — the 25 rules.
@@ -10,26 +9,24 @@ to the asymmetric placement noted below):
 
 ## What's in this repo
 
-- `CMakeLists.txt` — references `../SonicTheHedgehogRecomp/runner/` for
-  the shared engine.
+- `CMakeLists.txt` — sources runner + per-game files from the submodule
+  via `../SonicTheHedgehogRecomp/segagenesisrecomp/`.
 - `tools/` — Sonic-2-specific probes (game_state, quick_status, ring_filter,
   vbla_breakdown, vint_audit, divergence_diff, check_dispatch_misses,
-  _pause_both).
+  _pause_both, _2p_*).
 - `_build_native.bat`, `_build_oracle.bat` — build wrappers.
 - `regen.bat` — regen shortcut.
 - `PLAN-divergence-diff.md` — older planning doc.
 
-## Asymmetric placement note
+## Sibling-repo dependency
 
-This repo has NO runner of its own. It shares the runner from
-`../SonicTheHedgehogRecomp/runner/` and the submodule from
-`../SonicTheHedgehogRecomp/segagenesisrecomp/`. Sonic 1's release repo
-must be checked out as a sibling for Sonic 2 to build. Wave 4 of the
-active improvement plan will fix this by promoting the runner into the
-submodule.
+Sonic 1's release repo must be checked out as a sibling so we can reach
+the submodule at `../SonicTheHedgehogRecomp/segagenesisrecomp/`. Sonic 2
+does not consume any files from Sonic 1 directly — only the submodule.
 
-The Sonic 2 GameSpec instance lives at
-`../SonicTheHedgehogRecomp/segagenesisrecomp/sonicthehedgehog2/sonic2_spec.c`.
+Sonic 2's per-game files live at
+`../SonicTheHedgehogRecomp/segagenesisrecomp/sonicthehedgehog2/`
+(`sonic2_spec.c`, `sonic2_hybrid_table.c`).
 
 ## Bring-up status
 
