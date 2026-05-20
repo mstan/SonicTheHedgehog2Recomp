@@ -1,0 +1,257 @@
+{
+  "tool": "zone_smoke.py",
+  "version": 1,
+  "game": "sonic2",
+  "input_script": "smoke_enter_level_run_right.input",
+  "hash_frames": 60,
+  "fbhashes": [
+    {
+      "frame": 60,
+      "hash": "0x2A0B972960C5E325"
+    },
+    {
+      "frame": 120,
+      "hash": "0xB0ED507C361E97A9"
+    },
+    {
+      "frame": 180,
+      "hash": "0x8671A56A0F90F171"
+    },
+    {
+      "frame": 240,
+      "hash": "0x8671A56A0F90F171"
+    },
+    {
+      "frame": 300,
+      "hash": "0x8671A56A0F90F171"
+    },
+    {
+      "frame": 360,
+      "hash": "0x56C3B845C61A2065"
+    },
+    {
+      "frame": 420,
+      "hash": "0x2A0B972960C5E325"
+    },
+    {
+      "frame": 480,
+      "hash": "0x2A0B972960C5E325"
+    },
+    {
+      "frame": 540,
+      "hash": "0x591EC6ED1B42A971"
+    },
+    {
+      "frame": 600,
+      "hash": "0x3B3574A59809577D"
+    },
+    {
+      "frame": 660,
+      "hash": "0x55B44D926C4F1791"
+    },
+    {
+      "frame": 720,
+      "hash": "0x9A8A45E3BA9C79C9"
+    },
+    {
+      "frame": 780,
+      "hash": "0x18AC1AF3B3768BBD"
+    },
+    {
+      "frame": 840,
+      "hash": "0xC9F4E3EF2FD6A76D"
+    },
+    {
+      "frame": 900,
+      "hash": "0x1D7D32B56BF2EEB9"
+    },
+    {
+      "frame": 960,
+      "hash": "0x3EB274B67FE86245"
+    },
+    {
+      "frame": 1020,
+      "hash": "0x414B3C87C2F497B1"
+    },
+    {
+      "frame": 1080,
+      "hash": "0x3F5F4AAAB8B09021"
+    },
+    {
+      "frame": 1140,
+      "hash": "0xEEF9270370A84089"
+    },
+    {
+      "frame": 1200,
+      "hash": "0xEE5A5BEB4E03A125"
+    },
+    {
+      "frame": 1260,
+      "hash": "0x9A5F6218DF73FEF5"
+    },
+    {
+      "frame": 1320,
+      "hash": "0x8F332416018E13E5"
+    },
+    {
+      "frame": 1380,
+      "hash": "0x271240A06108B6F5"
+    },
+    {
+      "frame": 1440,
+      "hash": "0xE51EA02912BD6AFD"
+    },
+    {
+      "frame": 1500,
+      "hash": "0x8B14967439066465"
+    },
+    {
+      "frame": 1560,
+      "hash": "0x35A3E364880EAB05"
+    },
+    {
+      "frame": 1620,
+      "hash": "0x1A4598F277CD8AC1"
+    },
+    {
+      "frame": 1680,
+      "hash": "0x446C529464D0A811"
+    },
+    {
+      "frame": 1740,
+      "hash": "0x4F3BDE36D3F5460D"
+    },
+    {
+      "frame": 1800,
+      "hash": "0xF1B088898AD5541D"
+    },
+    {
+      "frame": 1860,
+      "hash": "0xFC355E0C9511F56D"
+    },
+    {
+      "frame": 1920,
+      "hash": "0x46497316537076C9"
+    },
+    {
+      "frame": 1980,
+      "hash": "0x48C0046BDEE26CE1"
+    },
+    {
+      "frame": 2040,
+      "hash": "0x54E20F1520F8F965"
+    },
+    {
+      "frame": 2100,
+      "hash": "0x7984F10E292CEDB5"
+    },
+    {
+      "frame": 2160,
+      "hash": "0x9C03F987760C457D"
+    },
+    {
+      "frame": 2220,
+      "hash": "0x15359468ADB28171"
+    },
+    {
+      "frame": 2280,
+      "hash": "0xB048F68EA2DCCA65"
+    },
+    {
+      "frame": 2340,
+      "hash": "0xD84C515E451044AD"
+    },
+    {
+      "frame": 2400,
+      "hash": "0x6B65E34BA2EE4691"
+    },
+    {
+      "frame": 2460,
+      "hash": "0xCB56C0263279246D"
+    },
+    {
+      "frame": 2520,
+      "hash": "0x6C430280C0B5D71D"
+    },
+    {
+      "frame": 2580,
+      "hash": "0x0B8E5E7C6887B1F9"
+    },
+    {
+      "frame": 2640,
+      "hash": "0xFA1BC743A204128D"
+    },
+    {
+      "frame": 2700,
+      "hash": "0xD90BA2DA3E7FE435"
+    },
+    {
+      "frame": 2760,
+      "hash": "0x03852B9764196539"
+    },
+    {
+      "frame": 2820,
+      "hash": "0x4A35EF606E168D41"
+    },
+    {
+      "frame": 2880,
+      "hash": "0x5738B5D92D27CEC1"
+    },
+    {
+      "frame": 2940,
+      "hash": "0x9775B089A2CBA7D5"
+    },
+    {
+      "frame": 3000,
+      "hash": "0x50A2E5B96DADF659"
+    },
+    {
+      "frame": 3060,
+      "hash": "0xCDB93D7A7722F7D9"
+    },
+    {
+      "frame": 3120,
+      "hash": "0x6ED8525E7CAC4535"
+    },
+    {
+      "frame": 3180,
+      "hash": "0x17D7B4FFF21661B1"
+    },
+    {
+      "frame": 3240,
+      "hash": "0x24D4CE5DF1DFC889"
+    },
+    {
+      "frame": 3300,
+      "hash": "0x4623B065A1C34001"
+    },
+    {
+      "frame": 3360,
+      "hash": "0x38A62928113242A9"
+    },
+    {
+      "frame": 3420,
+      "hash": "0x81B99FDFFE625825"
+    },
+    {
+      "frame": 3480,
+      "hash": "0xFF9F5ACC5A6B508D"
+    },
+    {
+      "frame": 3540,
+      "hash": "0x6FCEDC42DCABD3E5"
+    },
+    {
+      "frame": 3600,
+      "hash": "0x8C5ACF4AC17C8DD9"
+    },
+    {
+      "frame": 3660,
+      "hash": "0x6451417293F5D7F9"
+    },
+    {
+      "frame": 3720,
+      "hash": "0xBFEB4211866390A9"
+    }
+  ]
+}
