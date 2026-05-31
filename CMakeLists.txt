@@ -19,7 +19,8 @@ set(SHARED_REPO_ROOT "${CMAKE_SOURCE_DIR}/../SonicTheHedgehogRecomp")
 set(RECOMP_ROOT      "${SHARED_REPO_ROOT}/segagenesisrecomp")
 set(RUNNER_ROOT      "${RECOMP_ROOT}/runner")
 
-include("${RUNNER_ROOT}/clownmdemu_patches.cmake")
+# clownmdemu-core is the mstan fork; our changes are committed in it directly
+# (no build-time patch step — see THIRD-PARTY-LICENSES.md).
 add_subdirectory("${RECOMP_ROOT}/clownmdemu-core" clownmdemu-core)
 
 set(SDL2_BUNDLED "${RUNNER_ROOT}/external/SDL2/SDL2-2.28.5")
