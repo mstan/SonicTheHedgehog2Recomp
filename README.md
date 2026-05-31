@@ -79,6 +79,8 @@ checkout location of the submodule.
 
 ## Build
 
+> **No prebuilt binaries are distributed — build from source below and supply your own ROM.**
+
 Requirements: Visual Studio 2022 Build Tools, CMake, and
 `SonicTheHedgehogRecomp` cloned as a sibling directory.
 
