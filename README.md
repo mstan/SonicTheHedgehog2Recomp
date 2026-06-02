@@ -6,9 +6,8 @@ core with [SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogReco
 
 ## Status
 
-Sonic 2 boots through the SEGA logo (with the iconic Sonic-running
-intro animation), reaches the title screen with Sonic + Tails + the
-"1 PLAYER / 2 PLAYER VS" menu, and enters the attract demo.
+Sonic 2 boots through the SEGA logo, reaches the title screen, and
+enters the attract demo.
 
 **Two-player versus mode now works.** The 2P interlace timing bug was
 fixed in clownmdemu-core (commit `5f02533` — scanline iteration +
