@@ -41,3 +41,7 @@ ramdump_*.bin
 
 # Auto-generated diagnostic logs
 **/*.unresolved_jumptables.log
+
+# Recompiler engine: local junction to the top-level canonical checkout
+# (../segagenesisrecomp). Tracked in its own repo, not here.
+segagenesisrecomp
