@@ -6,18 +6,16 @@ set(CMAKE_C_STANDARD 11)
 # ---------------------------------------------------------------------------
 # Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.
 #
-# All shared engine code (runner) lives in the segagenesisrecomp submodule,
-# which is checked out under Sonic 1's release repo for historical reasons.
-# Per-game files (sonic2_spec.c, sonic2_hybrid_table.c) live alongside the
-# Sonic 2 generated TUs in segagenesisrecomp/sonicthehedgehog2/.
-#
-# Sonic 1's release repo must be checked out as a sibling so we can reach
-# the submodule. Sonic 2 does not consume any files from Sonic 1 directly.
+# All shared engine code (runner) lives in the canonical segagenesisrecomp
+# checkout at the workspace root, reached here through a local directory
+# junction (./segagenesisrecomp -> ../segagenesisrecomp). Per-game files
+# (sonic2_spec.c, sonic2_hybrid_table.c) live alongside the Sonic 2 generated
+# TUs in segagenesisrecomp/sonicthehedgehog2/. Sonic 2 does not consume any
+# files from Sonic 1 directly.
 # ---------------------------------------------------------------------------
 
-set(SHARED_REPO_ROOT "${CMAKE_SOURCE_DIR}/../SonicTheHedgehogRecomp")
-set(RECOMP_ROOT      "${SHARED_REPO_ROOT}/segagenesisrecomp")
-set(RUNNER_ROOT      "${RECOMP_ROOT}/runner")
+set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/segagenesisrecomp")
+set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 
 # clownmdemu-core is the mstan fork; our changes are committed in it directly
 # (no build-time patch step — see THIRD-PARTY-LICENSES.md).
