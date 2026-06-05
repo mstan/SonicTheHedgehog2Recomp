@@ -40,6 +40,17 @@ Other known issues still under investigation:
 These three look like cycle-pacing artifacts in the runner's bus
 accessor / yield logic, not codegen issues.
 
+## Known behavioral differences (not defects)
+
+- **Special stages run ~2× faster than original hardware.** The Sonic 2
+  half-pipe special stage was CPU-heavy enough to lag the original 68000,
+  so its main loop effectively ran at ~30 Hz. The recomp executes the same
+  code as native, never overruns the frame budget, and runs it at a full
+  60 Hz — technically *more* faithful to the code's intent, but it changes
+  the tuned feel. This is a hardware-timing-fidelity gap (a future
+  frame-lag-emulation enhancement), **not** a correctness bug. See
+  [`ISSUES.md`](ISSUES.md) (ENH-1) for the measurements and analysis.
+
 ## Layout
 
 This repository is a **thin sibling** to
