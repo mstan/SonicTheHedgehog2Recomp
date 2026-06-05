@@ -17,6 +17,16 @@ set(CMAKE_C_STANDARD 11)
 set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/segagenesisrecomp")
 set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 
+# Tier-1 reverse-debugger + oracle Tier-3 instrumentation. ON by default for
+# day-to-day Sonic 2 bring-up (the rdb_* TCP commands / WRAM-write ring depend
+# on it). Build a stripped shipping binary with -DSONIC_REVERSE_DEBUG=OFF
+# (package_release.py does this). The clown68000-interpreter ORACLE target is
+# separate from this flag and is never part of a release build either way.
+option(SONIC_REVERSE_DEBUG
+    "Enable Tier-1 reverse-debugger hooks (WRAM-write ring, rdb_* TCP cmds) and \
+the oracle's Tier-3 per-instruction capture. OFF = stripped native build."
+    ON)
+
 # clownmdemu-core is the mstan fork; our changes are committed in it directly
 # (no build-time patch step — see THIRD-PARTY-LICENSES.md).
 add_subdirectory("${RECOMP_ROOT}/clownmdemu-core" clownmdemu-core)
@@ -44,7 +54,6 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/glue.c"
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
-    "${RUNNER_ROOT}/reverse_debug.c"
     "${RUNNER_ROOT}/gamepad.c"
     "${RUNNER_ROOT}/audio/event_queue.c"
     "${RUNNER_ROOT}/audio/ym2612.c"
@@ -56,6 +65,13 @@ set(SONIC2_SHARED_SOURCES
     "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_layout.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
 )
+
+if(SONIC_REVERSE_DEBUG)
+    list(APPEND SONIC2_SHARED_SOURCES "${RUNNER_ROOT}/reverse_debug.c")
+    message(STATUS "SONIC_REVERSE_DEBUG=ON — Tier-1 reverse-debug instrumentation compiled in")
+else()
+    message(STATUS "SONIC_REVERSE_DEBUG=OFF — stripped native build (no rdb ring)")
+endif()
 
 set(SONIC2_INCLUDES
     "${RUNNER_ROOT}"
@@ -111,7 +127,7 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
     DEFAULT_DEBUG_PORT=4380
-    SONIC_REVERSE_DEBUG=1
+    $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp)
 
@@ -122,18 +138,26 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp)
 # function falls through to interpreter execution.
 # ---------------------------------------------------------------------------
 
-add_executable(SonicTheHedgehog2Recomp_oracle
-    ${SONIC2_SHARED_SOURCES}
+set(SONIC2_ORACLE_EXTRA_SOURCES
     "${RUNNER_ROOT}/hybrid.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_hybrid_table.c"
     "${RUNNER_ROOT}/hybrid_jmp.c"
-    "${RUNNER_ROOT}/oracle_trace.c"   # T3 reverse-debug per-insn capture
+)
+if(SONIC_REVERSE_DEBUG)
+    # Tier 3: per-instruction capture on the oracle side. Oracle-only because
+    # native uses stub_clown68000.c and never runs the interpreter.
+    list(APPEND SONIC2_ORACLE_EXTRA_SOURCES "${RUNNER_ROOT}/oracle_trace.c")
+endif()
+
+add_executable(SonicTheHedgehog2Recomp_oracle
+    ${SONIC2_SHARED_SOURCES}
+    ${SONIC2_ORACLE_EXTRA_SOURCES}
 )
 target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
     INCLUDE_GENERATED_CODE=1
     HYBRID_RECOMPILED_CODE=1
     SONIC_ORACLE_BUILD=1
     DEFAULT_DEBUG_PORT=4381
-    SONIC_REVERSE_DEBUG=1
+    $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle)
