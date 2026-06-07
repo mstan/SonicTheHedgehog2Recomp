@@ -14,7 +14,17 @@ set(CMAKE_C_STANDARD 11)
 # files from Sonic 1 directly.
 # ---------------------------------------------------------------------------
 
-set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/segagenesisrecomp")
+# Engine root. Public layout: the committed `segagenesisrecomp` submodule
+# (clone --recursive is self-contained). Local-dev override: if a gitignored
+# `engine-local` symlink -> ../segagenesisrecomp is present, prefer it so every
+# game repo shares ONE engine checkout. Create it with scripts/link-engine.*.
+if(EXISTS "${CMAKE_SOURCE_DIR}/engine-local")
+    set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/engine-local")
+    message(STATUS "engine: local-dev override (engine-local/ -> shared checkout)")
+else()
+    set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/segagenesisrecomp")
+    message(STATUS "engine: committed segagenesisrecomp/ submodule")
+endif()
 set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 
 # Tier-1 reverse-debugger + oracle Tier-3 instrumentation. ON by default for
@@ -32,12 +42,40 @@ the oracle's Tier-3 per-instruction capture. OFF = stripped native build."
 add_subdirectory("${RECOMP_ROOT}/clownmdemu-core" clownmdemu-core)
 
 set(SDL2_BUNDLED "${RUNNER_ROOT}/external/SDL2/SDL2-2.28.5")
-# Pin SDL2 to the bundled copy. Without NO_DEFAULT_PATH, msys64's
-# SDL2 (under C:/msys64/mingw64/lib/cmake/SDL2) wins on systems with
-# MSYS2 installed, which then leaks msys64 stdio.h onto cl.exe's
-# include search path and breaks the MSVC build.
-set(SDL2_DIR "${SDL2_BUNDLED}/cmake" CACHE PATH "" FORCE)
-find_package(SDL2 REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${SDL2_DIR}")
+# SDL2 discovery. Windows pins the bundled VC devel package: without
+# NO_DEFAULT_PATH, an MSYS2 SDL2 (C:/msys64/mingw64/lib/cmake/SDL2) can win and
+# leak msys64 stdio.h onto cl.exe's include path, breaking the MSVC build.
+# macOS/Linux use the system/Homebrew SDL2 (Apple Silicon: /opt/homebrew).
+if(WIN32)
+    set(SDL2_DIR "${SDL2_BUNDLED}/cmake" CACHE PATH "" FORCE)
+    find_package(SDL2 REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${SDL2_DIR}")
+else()
+    if(APPLE)
+        find_program(BREW_EXECUTABLE brew)
+        if(BREW_EXECUTABLE)
+            execute_process(COMMAND "${BREW_EXECUTABLE}" --prefix sdl2
+                OUTPUT_VARIABLE _brew_sdl2_prefix
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET RESULT_VARIABLE _brew_sdl2_rc)
+            if(_brew_sdl2_rc EQUAL 0 AND _brew_sdl2_prefix)
+                list(APPEND CMAKE_PREFIX_PATH "${_brew_sdl2_prefix}")
+            endif()
+        endif()
+    endif()
+    find_package(SDL2 REQUIRED)
+endif()
+
+# The runner includes SDL as <SDL2/SDL.h> (the bundled Windows devel layout).
+# Homebrew's SDL2::SDL2 points the include dir *at* .../include/SDL2, so add
+# its parent so <SDL2/SDL.h> resolves the same way on every platform.
+set(SDL2_PARENT_INCLUDE_DIRS "")
+foreach(_inc IN LISTS SDL2_INCLUDE_DIRS)
+    get_filename_component(_inc_name "${_inc}" NAME)
+    if(_inc_name STREQUAL "SDL2")
+        get_filename_component(_inc_parent "${_inc}" DIRECTORY)
+        list(APPEND SDL2_PARENT_INCLUDE_DIRS "${_inc_parent}")
+    endif()
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Source set used by both the native and the oracle target (everything
@@ -52,6 +90,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/frame_snapshots.c"
     "${RUNNER_ROOT}/hybrid_global.c"
     "${RUNNER_ROOT}/glue.c"
+    "${RUNNER_ROOT}/fiber_compat.c"
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
@@ -80,6 +119,7 @@ set(SONIC2_INCLUDES
     "${RECOMP_ROOT}/clownmdemu-core/source"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clowncommon"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clown68000/source/interpreter"
+    ${SDL2_PARENT_INCLUDE_DIRS}
 )
 
 set(SONIC2_LIBS clownmdemu-core SDL2::SDL2 SDL2::SDL2main)
@@ -96,6 +136,7 @@ function(_sonic2_finalize_target tgt)
         target_link_options(${tgt} PRIVATE /MAP)
     endif()
     if(WIN32)
+        # SDL2 is a DLL on Windows; macOS/Linux link the shared lib via rpath.
         add_custom_command(TARGET ${tgt} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${SDL2_BUNDLED}/lib/x64/SDL2.dll"
@@ -106,12 +147,13 @@ function(_sonic2_finalize_target tgt)
                 "${RECOMP_ROOT}/sonicthehedgehog2/sonic2.bin"
                 "$<TARGET_FILE_DIR:${tgt}>/sonic2.bin"
             COMMENT "Copying Sonic 2 ROM for ${tgt}")
-        add_custom_command(TARGET ${tgt} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${RECOMP_ROOT}/sonicthehedgehog2/annotations_from_disasm.csv"
-                "$<TARGET_FILE_DIR:${tgt}>/annotations_from_disasm.csv"
-            COMMENT "Copying Sonic 2 annotations for ${tgt}")
     endif()
+    # Annotation CSV used by crash_report.c for symbol resolution (all platforms).
+    add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${RECOMP_ROOT}/sonicthehedgehog2/annotations_from_disasm.csv"
+            "$<TARGET_FILE_DIR:${tgt}>/annotations_from_disasm.csv"
+        COMMENT "Copying Sonic 2 annotations for ${tgt}")
 endfunction()
 
 # ---------------------------------------------------------------------------
