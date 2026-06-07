@@ -6,6 +6,21 @@ proven), so a future session can pick up without re-deriving.
 
 ---
 
+## BUG-2 — 2-player split-screen is broken (own-backend regression)
+
+**Status:** Open · **Class:** Correctness regression. Noticed 2026-06-05 after
+the AGPL-free runtime overhaul (own backend + clownmdemu teardown). 2-player VS
+/ split-screen mode on Sonic 2 is broken on the current build.
+
+**BELIEVE:** likely a side effect of the own-backend VDP/scheduler work — split
+screen relies on a mid-frame H-int that re-points the VDP (separate scroll +
+display per half), and the own-backend H-int delivery / per-scanline VDP state
+(or the V-int timing model change) probably doesn't reproduce it correctly.
+Not yet root-caused. The clownmdemu build is the reference for correct 2P
+behavior; A/B the H-int cadence + VDP register writes per scanline against it.
+
+---
+
 ## ENH-1 — Special stages run ~2× too fast (missing frame-lag emulation)
 
 **Status:** Open · **Class:** Feature enhancement / hardware-fidelity gap —

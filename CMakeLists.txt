@@ -97,6 +97,7 @@ endif()
 set(SONIC2_INCLUDES
     "${RUNNER_ROOT}"
     "${RUNNER_ROOT}/include"
+    "${RUNNER_ROOT}/video"
     "${RUNNER_ROOT}/external/ymfm/src"
     "${RUNNER_ROOT}/external/superzazu"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clownz80/source"
@@ -106,7 +107,14 @@ set(SONIC2_INCLUDES
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clown68000/source/interpreter"
 )
 
-set(SONIC2_LIBS clownmdemu-core SDL2::SDL2 SDL2::SDL2main)
+# Clean-room own backend (VDP+bus+Z80 scheduler) — native target only; this is
+# the AGPL-free Sonic 2 runtime. Oracle keeps clownmdemu as ground truth.
+set(OWN_BACKEND_SOURCES
+    "${RUNNER_ROOT}/video/genesis_vdp.c"
+    "${RUNNER_ROOT}/video/genesis_bus.c"
+    "${RUNNER_ROOT}/video/genesis_machine.c")
+
+set(SONIC2_LIBS SDL2::SDL2 SDL2::SDL2main)   # clownmdemu-core linked by oracle only
 if(WIN32)
     list(APPEND SONIC2_LIBS ws2_32 comdlg32)
 endif()
@@ -145,11 +153,13 @@ endfunction()
 
 add_executable(SonicTheHedgehog2Recomp
     ${SONIC2_SHARED_SOURCES}
+    ${OWN_BACKEND_SOURCES}          # clean-room own backend (native = own, AGPL-free)
     "${RUNNER_ROOT}/stub_clown68000.c"
 )
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
+    OWN_BACKEND=1                   # the own backend IS the Sonic 2 runtime (no clownmdemu link)
     DEFAULT_DEBUG_PORT=4380
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
@@ -185,3 +195,6 @@ target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle)
+# Oracle (clown68000 interpreter + clownmdemu VDP/bus) — the only target that
+# links the AGPL core. Dev-only ground truth; never shipped.
+target_link_libraries(SonicTheHedgehog2Recomp_oracle PRIVATE clownmdemu-core)
