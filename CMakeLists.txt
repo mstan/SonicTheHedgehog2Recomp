@@ -37,6 +37,11 @@ option(SONIC_REVERSE_DEBUG
 the oracle's Tier-3 per-instruction capture. OFF = stripped native build."
     ON)
 
+option(SONIC_RELEASE_BUILD
+    "Use the clean release window title ('Sonic 2 Recompiled') with no dev variant \
+tag. OFF (default) keeps the dev-tagged title so native/oracle windows differ."
+    OFF)
+
 # clownmdemu-core is the mstan fork; our changes are committed in it directly
 # (no build-time patch step — see THIRD-PARTY-LICENSES.md).
 add_subdirectory("${RECOMP_ROOT}/clownmdemu-core" clownmdemu-core)
@@ -172,6 +177,12 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp)
+
+# Clean release window title (no dev variant tag) — NATIVE target only; the
+# oracle keeps its dev tag. Shipping builds configure with -DSONIC_RELEASE_BUILD=ON.
+if(SONIC_RELEASE_BUILD)
+    target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE "SONIC_RELEASE_TITLE=\"Sonic 2 Recompiled\"")
+endif()
 
 # ---------------------------------------------------------------------------
 # Oracle target — clown68000 interpreter executes everything. Used as the
