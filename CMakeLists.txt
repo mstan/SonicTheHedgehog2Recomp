@@ -26,6 +26,8 @@ option(SONIC_REVERSE_DEBUG
     "Enable Tier-1 reverse-debugger hooks (WRAM-write ring, rdb_* TCP cmds) and \
 the oracle's Tier-3 per-instruction capture. OFF = stripped native build."
     ON)
+option(GEN_DEV_TRACE
+    "Compile the dev chip/snd trace rings + dumps (NEVER in release builds)" OFF)
 
 # clownmdemu-core is the mstan fork; our changes are committed in it directly
 # (no build-time patch step — see THIRD-PARTY-LICENSES.md).
@@ -175,6 +177,7 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     OWN_BACKEND=1                   # the own backend IS the Sonic 2 runtime (no clownmdemu link)
     DEFAULT_DEBUG_PORT=4380
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
+    $<$<BOOL:${GEN_DEV_TRACE}>:GEN_DEV_TRACE>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 
@@ -206,6 +209,7 @@ target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
     SONIC_ORACLE_BUILD=1
     DEFAULT_DEBUG_PORT=4381
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
+    $<$<BOOL:${GEN_DEV_TRACE}>:GEN_DEV_TRACE>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle SONIC2_INCLUDES_ORACLE)
 # Oracle (clown68000 interpreter + clownmdemu VDP/bus) — the only target that
