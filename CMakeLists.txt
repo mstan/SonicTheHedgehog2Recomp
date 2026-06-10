@@ -68,6 +68,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/frame_snapshots.c"
     "${RUNNER_ROOT}/hybrid_global.c"
     "${RUNNER_ROOT}/glue.c"
+    "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) — glue.c depends on it
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
@@ -76,6 +77,7 @@ set(SONIC2_SHARED_SOURCES
     # stub_clown68000.c) so clownz80's AGPL interpreter is never linked.
     "${RUNNER_ROOT}/z80_superzazu.c"
     "${RUNNER_ROOT}/external/superzazu/z80.c"
+    "${RUNNER_ROOT}/chip_trace.c"
     "${RUNNER_ROOT}/audio/event_queue.c"
     ${FM_SOURCES}
     "${RUNNER_ROOT}/audio/sn76489.c"
