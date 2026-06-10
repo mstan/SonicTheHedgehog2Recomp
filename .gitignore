@@ -42,6 +42,9 @@ ramdump_*.bin
 # Auto-generated diagnostic logs
 **/*.unresolved_jumptables.log
 
-# Recompiler engine: local junction to the top-level canonical checkout
-# (../segagenesisrecomp). Tracked in its own repo, not here.
-segagenesisrecomp
+# Local-dev engine override: an optional symlink (engine-local ->
+# ../segagenesisrecomp) that lets all game repos share ONE engine checkout.
+# Gitignored — the committed public layout is the `segagenesisrecomp`
+# submodule, so `clone --recursive` is self-contained. CMake prefers
+# engine-local when present. Create it with scripts/link-engine.{sh,bat}.
+engine-local

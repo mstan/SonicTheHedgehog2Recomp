@@ -54,58 +54,66 @@ interlace_display=raw
 
 ## Layout
 
-This repository is a **thin sibling** to
-`mstan/SonicTheHedgehogRecomp`. The shared infrastructure (recompiler,
-runner code, clownmdemu emulator, common build helpers) lives there;
-this repo only contains Sonic-2-specific build wiring. Expected
-filesystem layout:
+This repo contains only Sonic-2-specific build wiring. The shared engine
+(recompiler, runner, clownmdemu fork) and Sonic 2's generated/spec code both
+live in [segagenesisrecomp](https://github.com/mstan/segagenesisrecomp), pulled
+in as a git submodule so a recursive clone is self-contained:
 
 ```
-your-projects/
-├── SonicTheHedgehogRecomp/             ← clone of mstan/SonicTheHedgehogRecomp
-│   ├── segagenesisrecomp/              ← submodule (shared engine)
-│   │   ├── recompiler/
-│   │   ├── runner/                     ← shared runner sources (glue.c, ...)
-│   │   ├── clownmdemu-core/
-│   │   ├── sonicthehedgehog/           ← Sonic 1 game data + sonic1_spec.c
-│   │   └── sonicthehedgehog2/          ← Sonic 2 game data lives HERE
-│   │       ├── sonic2.bin              ← provide your own ROM (gitignored)
-│   │       ├── game.toml
-│   │       ├── sonic2_spec.c           ← per-game GameSpec
-│   │       ├── sonic2_hybrid_table.c   ← oracle-build override table
-│   │       ├── annotations_from_disasm.csv
-│   │       └── generated/              ← regen output
-│   └── ...
-└── SonicTheHedgehog2Recomp/            ← this repo
-    ├── CMakeLists.txt                  ← top-level build, refs the sibling
-    ├── regen.bat
-    └── README.md
+SonicTheHedgehog2Recomp/                ← this repo
+├── CMakeLists.txt                      ← Sonic 2 build wiring
+├── scripts/link-engine.{sh,bat}        ← optional shared-engine setup (local dev)
+└── segagenesisrecomp/                  ← submodule (shared engine)
+    ├── runner/                         ← shared runner sources (glue.c, ...)
+    ├── clownmdemu-core/
+    └── sonicthehedgehog2/              ← Sonic 2 game data
+        ├── sonic2_spec.c               ← per-game GameSpec
+        ├── sonic2_hybrid_table.c       ← oracle-build override table
+        ├── annotations_from_disasm.csv
+        └── generated/                  ← regen output
 ```
 
-The sibling layout means a single configure of this repo reaches into
-`../SonicTheHedgehogRecomp/segagenesisrecomp/` for both the shared
-runner (`runner/`) and the Sonic-2-specific generated/spec code
-(`sonicthehedgehog2/`). Sonic 1's release repo serves only as the
-checkout location of the submodule.
+CMake resolves the engine through the committed `segagenesisrecomp` submodule.
+For local dev across Sonic 1/2/3, an optional gitignored `engine-local` symlink
+(→ a single shared `../segagenesisrecomp` checkout) takes precedence — see
+**Build** below.
 
 ## Build
 
 > **No prebuilt binaries are distributed — build from source below and supply your own ROM.**
 
-Requirements: Visual Studio 2022 Build Tools, CMake, and
-`SonicTheHedgehogRecomp` cloned as a sibling directory.
+The engine is a git submodule, so a recursive clone is self-contained:
 
-```cmd
-cmake -B build -S . -G "Visual Studio 17 2022"
-cmake --build build --config Release
+```bash
+git clone --recursive https://github.com/mstan/SonicTheHedgehog2Recomp.git
+cd SonicTheHedgehog2Recomp
+# (cloned without --recursive? run: git submodule update --init --recursive)
 ```
 
-The post-build hook copies SDL2.dll, the Sonic 2 ROM, and the
-annotations CSV next to the .exe. To run:
+Builds natively on Windows (MSVC), macOS (Apple Silicon & Intel), and Linux.
+SDL2 is bundled on Windows; `brew install sdl2` on macOS; `libsdl2-dev` on Linux.
+
+**Windows (MSVC):**
 
 ```cmd
+cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+:: post-build copies SDL2.dll + annotations CSV next to the .exe
 build\Release\SonicTheHedgehog2Recomp.exe build\Release\sonic2.bin
 ```
+
+**macOS / Linux (Ninja + Clang/GCC):**
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build SonicTheHedgehog2Recomp
+./build/SonicTheHedgehog2Recomp "path/to/Sonic the Hedgehog 2.bin"
+```
+
+> **Local dev across games:** to share ONE engine checkout instead of a per-repo
+> submodule copy, clone `segagenesisrecomp` at the workspace root and run
+> `scripts/link-engine.sh` (macOS/Linux) or `scripts\link-engine.bat` (Windows).
+> CMake then prefers the gitignored `engine-local` symlink over the submodule.
 
 ## Regenerate
 
@@ -116,7 +124,7 @@ regen.bat
 Or manually from the segagenesisrecomp tree:
 
 ```cmd
-cd ..\SonicTheHedgehogRecomp\segagenesisrecomp\sonicthehedgehog2
+cd segagenesisrecomp\sonicthehedgehog2
 ..\recompiler\build\Release\GenesisRecomp.exe sonic2.bin --game game.cfg --reverse-debug
 ```
 
