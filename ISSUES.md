@@ -6,6 +6,21 @@ proven), so a future session can pick up without re-deriving.
 
 ---
 
+## BUG-2 — 2-player split-screen is broken (own-backend regression)
+
+**Status:** Open · **Class:** Correctness regression. Noticed 2026-06-05 after
+the AGPL-free runtime overhaul (own backend + clownmdemu teardown). 2-player VS
+/ split-screen mode on Sonic 2 is broken on the current build.
+
+**BELIEVE:** likely a side effect of the own-backend VDP/scheduler work — split
+screen relies on a mid-frame H-int that re-points the VDP (separate scroll +
+display per half), and the own-backend H-int delivery / per-scanline VDP state
+(or the V-int timing model change) probably doesn't reproduce it correctly.
+Not yet root-caused. The clownmdemu build is the reference for correct 2P
+behavior; A/B the H-int cadence + VDP register writes per scanline against it.
+
+---
+
 ## ENH-1 — Special stages run ~2× too fast (missing frame-lag emulation)
 
 **Status:** Open · **Class:** Feature enhancement / hardware-fidelity gap —
@@ -88,3 +103,31 @@ in this CPU-heavy mode.
   `tools/_probe_fps.py` (real-time fps), `tools/_probe_motion_cadence.py`
   (per-frame deltas), `tools/recomp_ss_churn.py` (per-frame WRAM churn vs the
   reference baseline).
+
+---
+
+## BUG-1 — Perpetual slow-walk-right after exiting Special Stage  *(new 2026-06-05, user-reported; not yet investigated)*
+
+**Status:** Open · **Class:** correctness defect (user-confirmed this is a
+**Sonic 2** bug, not Sonic 3).
+
+After **exiting the half-pipe Special Stage and returning to 2D**, Sonic is
+stuck **slowly walking to the right perpetually** — as if a movement input (or a
+velocity / control-lock flag) is latched and never cleared on the
+special-stage → 2D transition.
+
+### What we KNOW (user-reported)
+
+- Trigger is the special-stage exit; **possibly only on a win** (got the
+  emerald) — confirm whether a loss/timeout also reproduces.
+- Symptom is continuous low-speed rightward walk with no controller input.
+
+### What we BELIEVE (hypothesis, unverified)
+
+- Carry-over of the special-stage "auto-run" state into the resumed 2D level:
+  a control-lock / forced-movement / input-mirror byte (or Sonic's `x_vel` /
+  status bits) set during the half-pipe and not reset by the return-to-level
+  init. Look at the special-stage→level re-entry routine for what it fails to
+  clear (player object control flags, the `Ctrl_1`/input mirror, or an
+  auto-control flag). Likely related conceptually to the special-stage state
+  machine already studied for ENH-1.

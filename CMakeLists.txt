@@ -40,6 +40,22 @@ set(SDL2_DIR "${SDL2_BUNDLED}/cmake" CACHE PATH "" FORCE)
 find_package(SDL2 REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${SDL2_DIR}")
 
 # ---------------------------------------------------------------------------
+# YM2612 FM = vendored ymfm (Aaron Giles, BSD-3) behind the stable ym2612_*
+# API (runner/audio/ym2612.h). Replaced clownmdemu's FM (AGPL) 2026-06-05 as
+# part of the AGPL-free runtime initiative — see segagenesisrecomp/LICENSING.md
+# (teardown item #2). enable_language(CXX) because ymfm is C++.
+# ---------------------------------------------------------------------------
+enable_language(CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(FM_SOURCES
+    "${RUNNER_ROOT}/audio/ym2612_ymfm.cpp"
+    "${RUNNER_ROOT}/external/ymfm/src/ymfm_opn.cpp"
+    "${RUNNER_ROOT}/external/ymfm/src/ymfm_ssg.cpp"
+    "${RUNNER_ROOT}/external/ymfm/src/ymfm_adpcm.cpp"
+    "${RUNNER_ROOT}/external/ymfm/src/ymfm_pcm.cpp"
+)
+
+# ---------------------------------------------------------------------------
 # Source set used by both the native and the oracle target (everything
 # except the variant-specific files: stub_clown68000.c for native and
 # the hybrid/oracle interpreter files for oracle).
@@ -52,11 +68,18 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/frame_snapshots.c"
     "${RUNNER_ROOT}/hybrid_global.c"
     "${RUNNER_ROOT}/glue.c"
+    "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) — glue.c depends on it
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
+    # AGPL-free Z80 core (superzazu, MIT). These definitions override
+    # clownz80-interpreter.lib via MSVC first-wins linking (same trick as
+    # stub_clown68000.c) so clownz80's AGPL interpreter is never linked.
+    "${RUNNER_ROOT}/z80_superzazu.c"
+    "${RUNNER_ROOT}/external/superzazu/z80.c"
+    "${RUNNER_ROOT}/chip_trace.c"
     "${RUNNER_ROOT}/audio/event_queue.c"
-    "${RUNNER_ROOT}/audio/ym2612.c"
+    ${FM_SOURCES}
     "${RUNNER_ROOT}/audio/sn76489.c"
     "${RUNNER_ROOT}/audio/mixer.c"
     "${RUNNER_ROOT}/audio/observability.c"
@@ -76,13 +99,24 @@ endif()
 set(SONIC2_INCLUDES
     "${RUNNER_ROOT}"
     "${RUNNER_ROOT}/include"
+    "${RUNNER_ROOT}/video"
+    "${RUNNER_ROOT}/external/ymfm/src"
+    "${RUNNER_ROOT}/external/superzazu"
+    "${RECOMP_ROOT}/clownmdemu-core/libraries/clownz80/source"
     "${RECOMP_ROOT}/sonicthehedgehog2"
     "${RECOMP_ROOT}/clownmdemu-core/source"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clowncommon"
     "${RECOMP_ROOT}/clownmdemu-core/libraries/clown68000/source/interpreter"
 )
 
-set(SONIC2_LIBS clownmdemu-core SDL2::SDL2 SDL2::SDL2main)
+# Clean-room own backend (VDP+bus+Z80 scheduler) — native target only; this is
+# the AGPL-free Sonic 2 runtime. Oracle keeps clownmdemu as ground truth.
+set(OWN_BACKEND_SOURCES
+    "${RUNNER_ROOT}/video/genesis_vdp.c"
+    "${RUNNER_ROOT}/video/genesis_bus.c"
+    "${RUNNER_ROOT}/video/genesis_machine.c")
+
+set(SONIC2_LIBS SDL2::SDL2 SDL2::SDL2main)   # clownmdemu-core linked by oracle only
 if(WIN32)
     list(APPEND SONIC2_LIBS ws2_32 comdlg32)
 endif()
@@ -121,11 +155,13 @@ endfunction()
 
 add_executable(SonicTheHedgehog2Recomp
     ${SONIC2_SHARED_SOURCES}
+    ${OWN_BACKEND_SOURCES}          # clean-room own backend (native = own, AGPL-free)
     "${RUNNER_ROOT}/stub_clown68000.c"
 )
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
+    OWN_BACKEND=1                   # the own backend IS the Sonic 2 runtime (no clownmdemu link)
     DEFAULT_DEBUG_PORT=4380
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
@@ -161,3 +197,6 @@ target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle)
+# Oracle (clown68000 interpreter + clownmdemu VDP/bus) — the only target that
+# links the AGPL core. Dev-only ground truth; never shipped.
+target_link_libraries(SonicTheHedgehog2Recomp_oracle PRIVATE clownmdemu-core)

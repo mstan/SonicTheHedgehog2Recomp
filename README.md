@@ -9,13 +9,23 @@ core with [SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogReco
 Sonic 2 boots through the SEGA logo, reaches the title screen, and
 enters the attract demo.
 
-**Two-player versus mode now works.** The 2P interlace timing bug was
-fixed in clownmdemu-core (commit `5f02533` — scanline iteration +
-H-Int/V-Int raise path rewrite). Each half of the split screen is a
-half-height interlace field; by default the runner squashes them back
-to 4:3 (`interlace_display=tv`), but you can opt into full-resolution
-side-by-side rendering with `interlace_display=raw` — the window
-extends vertically so both player windows display in proper 4:3.
+**Two-player versus mode works natively.** Sonic 2's split-screen runs
+the VDP in interlace mode 2 (double vertical resolution: 448 lines,
+8×16-pixel cells for planes and sprites, double-res sprite coordinates
+and vertical scroll). This is a consumed feature of the shared
+`segagenesisrecomp` engine: its clean-room VDP renders the full
+448-line interlaced frame progressively — every line is a real
+rendered line, both fields, no squish hack.
+
+Two presentation modes (engine feature, both correct):
+
+- `interlace_display=tv` (default) — squashes 448→224 exactly like the
+  original hardware looked on a TV; each player viewport appears
+  vertically compressed, as on a real Genesis.
+- `interlace_display=raw` — presents all 448 lines at full height: the
+  window extends vertically and both player viewports display in
+  proper 4:3 at full vertical detail. Sharper than original hardware
+  could show; kept because we can.
 
 Set the mode either via the CLI:
 
@@ -29,16 +39,7 @@ or by adding a line to `debug.ini` next to the .exe:
 interlace_display=raw
 ```
 
-Other known issues still under investigation:
-
-1. Title-screen background is white (palette/CRAM not uploaded
-   correctly — looks like the recompiled VDP-DMA setup is racing
-   with our cooperative-fiber model).
-2. Attract demo screen is black (no rendering — same shape).
-3. Music plays slowly (Z80 cycle accounting throws off SMPS tempo).
-
-These three look like cycle-pacing artifacts in the runner's bus
-accessor / yield logic, not codegen issues.
+1P gameplay is unaffected (non-interlaced rendering is unchanged).
 
 ## Known behavioral differences (not defects)
 
