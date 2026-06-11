@@ -1,8 +1,12 @@
 # SonicTheHedgehog2Recomp
 
 Static recompilation port of Sonic the Hedgehog 2 (Genesis, 1992)
-to native C, sharing the recompiler / runner / clownmdemu emulator
-core with [SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogRecomp).
+to native C, sharing the recompiler / runner engine with
+[SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogRecomp).
+The native build is a clean-room implementation (own VDP / bus / Z80
+scheduling, ymfm FM, permissively-licensed throughout); the AGPL
+clownmdemu core is a development-only conformance oracle and is never
+part of the shipped binary.
 
 ## Status
 
@@ -55,8 +59,8 @@ interlace_display=raw
 ## Layout
 
 This repo contains only Sonic-2-specific build wiring. The shared engine
-(recompiler, runner, clownmdemu fork) and Sonic 2's generated/spec code both
-live in [segagenesisrecomp](https://github.com/mstan/segagenesisrecomp), pulled
+(recompiler, runner) and Sonic 2's generated/spec code both live in
+[segagenesisrecomp](https://github.com/mstan/segagenesisrecomp), pulled
 in as a git submodule so a recursive clone is self-contained:
 
 ```
@@ -65,7 +69,7 @@ SonicTheHedgehog2Recomp/                ← this repo
 ├── scripts/link-engine.{sh,bat}        ← optional shared-engine setup (local dev)
 └── segagenesisrecomp/                  ← submodule (shared engine)
     ├── runner/                         ← shared runner sources (glue.c, ...)
-    ├── clownmdemu-core/
+    ├── clownmdemu-core/                ← DEV-ONLY oracle (AGPL; never in the native build)
     └── sonicthehedgehog2/              ← Sonic 2 game data
         ├── sonic2_spec.c               ← per-game GameSpec
         ├── sonic2_hybrid_table.c       ← oracle-build override table
@@ -80,7 +84,9 @@ For local dev across Sonic 1/2/3, an optional gitignored `engine-local` symlink
 
 ## Build
 
-> **No prebuilt binaries are distributed — build from source below and supply your own ROM.**
+> **Prebuilt binaries are on the
+> [Releases](https://github.com/mstan/SonicTheHedgehog2Recomp/releases) page —
+> supply your own ROM.** You can also build from source below.
 
 The engine is a git submodule, so a recursive clone is self-contained:
 
@@ -147,6 +153,9 @@ or rare table shapes the static extractor doesn't recognize.
 
 ## License
 
-The recompilation framework (recompiler / runner / tooling) inherits
-the licenses of the sibling repos. The Sonic the Hedgehog 2 ROM
+Releases ship under PolyForm Noncommercial 1.0.0 with permissive
+third-party components (ymfm BSD-3, superzazu z80 MIT, clowncommon
+ISC, SDL2 zlib) — see `segagenesisrecomp/LICENSING.md` and
+`THIRD-PARTY-LICENSES.md`. The AGPL clownmdemu core is used only by
+unshipped development/oracle builds. The Sonic the Hedgehog 2 ROM
 itself is **not provided** and must be obtained legally.
