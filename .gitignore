@@ -48,3 +48,4 @@ ramdump_*.bin
 # submodule, so `clone --recursive` is self-contained. CMake prefers
 # engine-local when present. Create it with scripts/link-engine.{sh,bat}.
 engine-local
+release/*.zip
