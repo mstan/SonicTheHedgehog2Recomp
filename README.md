@@ -121,6 +121,26 @@ ninja -C build SonicTheHedgehog2Recomp
 > `scripts/link-engine.sh` (macOS/Linux) or `scripts\link-engine.bat` (Windows).
 > CMake then prefers the gitignored `engine-local` symlink over the submodule.
 
+## Audio & video enhancements (opt-in)
+
+The runner includes an optional **verified-enhancement shadow** layer — QoL
+audio/video improvements that run alongside the authentic hardware emulation and
+substitute only after continuously proving they still match it (reverting loudly
+if they ever stop). **Off by default** (output is byte-identical to raw hardware
+emulation); enable per-run via environment variables:
+
+| Variable | Values | Effect |
+|----------|--------|--------|
+| `GENESIS_SCREEN` | `raw` (default), `crt`, `trinitron`, `composite`, `linear` | Present-time color model — maps the Genesis 9-bit gamut through a CRT/phosphor model (gamma + lifted black). `raw` is bit-identical passthrough. |
+| `GENESIS_AUDIO_SHADOW` | `0` (default) / `1` | Arms the YM2612 FM shadow — a parallel `ymfm` chip with a relaxed output low-pass that keeps the cleaner, less-aliased highs. |
+| `GENESIS_FM_LADDER` | unset (default) / `off` | With `off`, renders the FM shadow through ymfm's ladder-free `ym3438` (no YM2612 DAC crossover crunch). Needs `GENESIS_AUDIO_SHADOW=1`. |
+
+```bash
+GENESIS_AUDIO_SHADOW=1 GENESIS_FM_LADDER=off GENESIS_SCREEN=crt ./SonicTheHedgehog2Recomp sonic2.bin
+```
+
+Full design, verifier algorithm, and rationale: `segagenesisrecomp/docs/SHADOW_ENHANCEMENTS.md`.
+
 ## Regenerate
 
 ```cmd
