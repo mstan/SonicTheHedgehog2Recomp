@@ -101,11 +101,24 @@ set(FM_SOURCES
 # the hybrid/oracle interpreter files for oracle).
 # ---------------------------------------------------------------------------
 
+# Prod-vs-debug TCP strip (see SonicTheHedgehogRecomp/CMakeLists.txt). ON keeps
+# the cmd_server TCP listener + frame_snapshots ring; OFF (release) swaps the
+# no-op stub and drops frame_snapshots so the shipped binary opens no port.
+option(GEN_ENABLE_TRACE
+    "Build the TCP cmd server + observability rings (frame_snapshots). OFF for release." ON)
+if(GEN_ENABLE_TRACE)
+    set(GEN_TRACE_SOURCES
+        "${RUNNER_ROOT}/cmd_server.c"
+        "${RUNNER_ROOT}/frame_snapshots.c")
+    add_compile_definitions(GEN_ENABLE_TRACE=1)
+else()
+    set(GEN_TRACE_SOURCES "${RUNNER_ROOT}/cmd_server_stub.c")
+endif()
+
 set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/main.c"
     "${RUNNER_ROOT}/audio.c"
-    "${RUNNER_ROOT}/cmd_server.c"
-    "${RUNNER_ROOT}/frame_snapshots.c"
+    ${GEN_TRACE_SOURCES}
     "${RUNNER_ROOT}/hybrid_global.c"
     "${RUNNER_ROOT}/glue.c"
     "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) — glue.c depends on it

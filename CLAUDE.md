@@ -33,15 +33,12 @@ Sonic 2's per-game files live at `segagenesisrecomp/sonicthehedgehog2/`
 
 ## Bring-up status
 
-Sonic 2 is mid-bring-up. Visible bugs at the time of this writing:
-- Attract-demo black screen (primary).
-- Half-rate Vint in level/demo mode (~50% vs oracle's ~88%).
-- Jumping in place / no airborne height.
-- Fish-region garble + crash in level 1.
-
-These are downstream of waves 0A → 3 of the active improvement plan.
-Per PRINCIPLES.md sequencing: do not detour into these bugs until 0A +
-0B + 1 are green.
+Sonic 2 has progressed well past the early bring-up notes that used to live
+here (which listed an attract-demo black screen, half-rate Vint, no airborne
+height, and a level-1 crash). Those were point-in-time observations and are
+**stale** — do not treat them as current. Re-verify any specific symptom
+against the live build before acting on it. A `v0.1.0-linux` AppImage now
+builds and ships.
 
 ## Engine commit order (PRINCIPLES.md #20)
 
