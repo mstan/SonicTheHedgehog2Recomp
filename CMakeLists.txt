@@ -125,6 +125,8 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
+    "${RUNNER_ROOT}/input_map.c"      # per-player Genesis button bindings (kbd+pad, 3/6-btn)
+    "${RUNNER_ROOT}/app_config.c"     # settings.ini + rom.cfg load/save
     "${RUNNER_ROOT}/chip_trace.c"
     "${RUNNER_ROOT}/audio/event_queue.c"
     ${FM_SOURCES}
@@ -239,6 +241,12 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     $<$<BOOL:${GEN_DEV_TRACE}>:GEN_DEV_TRACE>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
+
+# RmlUi pre-boot launcher — native (shipped) target only (never the _oracle dev
+# target). Adds the GUI + vendored RmlUi/FreeType (permissive), GENESIS_LAUNCHER=1,
+# and stages launcher/ assets next to the exe.
+include(${RUNNER_ROOT}/launcher/launcher.cmake)
+genesisrecomp_add_launcher(SonicTheHedgehog2Recomp)
 
 # ---------------------------------------------------------------------------
 # Oracle target — clown68000 interpreter executes everything. Used as the
