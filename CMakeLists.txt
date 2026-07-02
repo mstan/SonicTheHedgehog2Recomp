@@ -188,6 +188,17 @@ set(OWN_BACKEND_SOURCES
     "${RUNNER_ROOT}/video/genesis_machine.c"
     "${RUNNER_ROOT}/external/superzazu/z80.c")
 
+# Clean-room 68000 interpreter + decoder + rom_parser. The _wt-cosim engine's
+# shared glue.c references m68k_interp_run_framed (the Tier-3 native floor)
+# unconditionally, so EVERY target built against this engine must link these
+# (AGPL-free — own interpreter + recompiler decoder). Sonic 2's original list
+# omitted them because it targeted an older engine.
+set(SONIC2_FLOOR_SOURCES
+    "${RUNNER_ROOT}/m68k_interp.c"
+    "${RECOMP_ROOT}/recompiler/src/m68k_decoder.c"
+    "${RECOMP_ROOT}/recompiler/src/rom_parser.c")
+list(APPEND SONIC2_INCLUDES_NATIVE "${RECOMP_ROOT}/recompiler/src")   # m68k_decoder.h
+
 set(SONIC2_LIBS SDL2::SDL2 SDL2::SDL2main)   # clownmdemu-core linked by oracle only
 if(WIN32)
     list(APPEND SONIC2_LIBS ws2_32 comdlg32)
@@ -231,6 +242,7 @@ endfunction()
 add_executable(SonicTheHedgehog2Recomp
     ${SONIC2_SHARED_SOURCES}
     ${OWN_BACKEND_SOURCES}          # clean-room own backend (native = own, AGPL-free)
+    ${SONIC2_FLOOR_SOURCES}         # m68k_interp + decoder (this engine's glue.c needs it)
 )
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
@@ -282,3 +294,64 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle SONIC2_INCLUDES_ORACLE)
 # Oracle (clown68000 interpreter + clownmdemu VDP/bus) — the only target that
 # links the AGPL core. Dev-only ground truth; never shipped.
 target_link_libraries(SonicTheHedgehog2Recomp_oracle PRIVATE clownmdemu-core)
+
+# ---------------------------------------------------------------------------
+# Differential co-simulation targets (dev-only, never shipped). Mirror of
+# Sonic 1's block (see _wt-cosim-s1/CMakeLists.txt + engine COSIM.md), adapted
+# for Sonic 2. The shared glue.c references m68k_interp_run_framed and (under
+# GENESIS_COSIM) FORCE_INTERP, so the cosim targets must link the clean-room
+# 68000 interpreter + decoder + rom_parser, which Sonic 2's SHARED list omits.
+# ---------------------------------------------------------------------------
+option(GENESIS_BUILD_COSIM "Build the differential co-simulation target (dev-only)." OFF)
+if(GENESIS_BUILD_COSIM)
+    set(SONIC2_COSIM_FLOOR_SOURCES
+        "${RUNNER_ROOT}/m68k_interp.c"
+        "${RECOMP_ROOT}/recompiler/src/m68k_decoder.c"
+        "${RECOMP_ROOT}/recompiler/src/rom_parser.c")
+
+    add_executable(SonicTheHedgehog2Recomp_cosim
+        ${SONIC2_SHARED_SOURCES}
+        ${OWN_BACKEND_SOURCES}
+        ${SONIC2_COSIM_FLOOR_SOURCES}
+        "${RUNNER_ROOT}/cosim.c"
+        "${RUNNER_ROOT}/cosim_state.c"
+        "${RUNNER_ROOT}/cosim_visible.c"
+        "${RUNNER_ROOT}/cosim_cycles.c"                             # cross-backend work-cycle ruler
+        "${RUNNER_ROOT}/game_cycles.c"
+        "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_cycles.c"  # clown-measured costs
+    )
+    target_compile_definitions(SonicTheHedgehog2Recomp_cosim PRIVATE
+        INCLUDE_GENERATED_CODE=1
+        ENABLE_RECOMPILED_CODE=1
+        OWN_BACKEND=1
+        GENESIS_COSIM=1
+        DEFAULT_DEBUG_PORT=4394
+    )
+    _sonic2_finalize_target(SonicTheHedgehog2Recomp_cosim SONIC2_INCLUDES_NATIVE)
+    target_include_directories(SonicTheHedgehog2Recomp_cosim PRIVATE
+        "${RECOMP_ROOT}/recompiler/src")   # m68k_decoder.h / rom_parser.h
+    message(STATUS "GENESIS_BUILD_COSIM=ON — Sonic 2 differential co-sim target enabled")
+
+    add_executable(SonicTheHedgehog2Recomp_oracle_cosim
+        ${SONIC2_SHARED_SOURCES}
+        ${SONIC2_ORACLE_EXTRA_SOURCES}
+        ${SONIC2_COSIM_FLOOR_SOURCES}
+        "${RUNNER_ROOT}/cosim.c"
+        "${RUNNER_ROOT}/cosim_visible.c"
+        "${RUNNER_ROOT}/cosim_cycles.c"
+        "${RUNNER_ROOT}/game_cycles.c"
+        "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_cycles.c"
+    )
+    target_compile_definitions(SonicTheHedgehog2Recomp_oracle_cosim PRIVATE
+        INCLUDE_GENERATED_CODE=1
+        HYBRID_RECOMPILED_CODE=1
+        SONIC_ORACLE_BUILD=1
+        GENESIS_COSIM=1
+        DEFAULT_DEBUG_PORT=4396
+    )
+    _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle_cosim SONIC2_INCLUDES_ORACLE)
+    target_include_directories(SonicTheHedgehog2Recomp_oracle_cosim PRIVATE
+        "${RECOMP_ROOT}/recompiler/src")
+    target_link_libraries(SonicTheHedgehog2Recomp_oracle_cosim PRIVATE clownmdemu-core)
+    message(STATUS "  + Sonic 2 oracle cosim target (pairing #2) enabled")
+endif()
