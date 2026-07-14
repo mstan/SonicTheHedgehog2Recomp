@@ -101,6 +101,11 @@ set(FM_SOURCES
 # the hybrid/oracle interpreter files for oracle).
 # ---------------------------------------------------------------------------
 
+include("${RECOMP_ROOT}/cmake/GenesisRecompGenerated.cmake")
+genesisrecomp_add_generated_sources(
+    SONIC2_GENERATED_SOURCES sonic2 sonicthehedgehog2 sonic2.bin
+    REVERSE_DEBUG "${SONIC_REVERSE_DEBUG}")
+
 # Prod-vs-debug TCP strip (see SonicTheHedgehogRecomp/CMakeLists.txt). ON keeps
 # the cmd_server TCP listener + frame_snapshots ring; OFF (release) swaps the
 # no-op stub and drops frame_snapshots so the shipped binary opens no port.
@@ -138,9 +143,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/audio/audio_shadow.c"   # envelope-correlation verifier
     "${RUNNER_ROOT}/audio/fm_shadow.cpp"    # parallel ymfm chip (cleaner highs / ym3438 ladder-off)
     "${RUNNER_ROOT}/video/color_lut.c"      # present-time 9-bit CRT/composite LUT
-    "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_full.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_dispatch.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_layout.c"
+    ${SONIC2_GENERATED_SOURCES}
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
 )
 
@@ -244,6 +247,7 @@ add_executable(SonicTheHedgehog2Recomp
     ${OWN_BACKEND_SOURCES}          # clean-room own backend (native = own, AGPL-free)
     ${SONIC2_FLOOR_SOURCES}         # m68k_interp + decoder (this engine's glue.c needs it)
 )
+add_dependencies(SonicTheHedgehog2Recomp ${SONIC2_GENERATED_SOURCES_TARGET})
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
@@ -282,6 +286,7 @@ add_executable(SonicTheHedgehog2Recomp_oracle
     ${SONIC2_SHARED_SOURCES}
     ${SONIC2_ORACLE_EXTRA_SOURCES}
 )
+add_dependencies(SonicTheHedgehog2Recomp_oracle ${SONIC2_GENERATED_SOURCES_TARGET})
 target_compile_definitions(SonicTheHedgehog2Recomp_oracle PRIVATE
     INCLUDE_GENERATED_CODE=1
     HYBRID_RECOMPILED_CODE=1
@@ -318,14 +323,16 @@ if(GENESIS_BUILD_COSIM)
         "${RUNNER_ROOT}/cosim_visible.c"
         "${RUNNER_ROOT}/cosim_cycles.c"                             # cross-backend work-cycle ruler
         "${RUNNER_ROOT}/game_cycles.c"
-        "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_cycles.c"  # clown-measured costs
+        "${SONIC2_GENERATED_SOURCES_CYCLES}"                 # clown-measured costs
     )
+    add_dependencies(SonicTheHedgehog2Recomp_cosim ${SONIC2_GENERATED_SOURCES_TARGET})
     target_compile_definitions(SonicTheHedgehog2Recomp_cosim PRIVATE
         INCLUDE_GENERATED_CODE=1
         ENABLE_RECOMPILED_CODE=1
         OWN_BACKEND=1
         GENESIS_COSIM=1
         DEFAULT_DEBUG_PORT=4394
+        $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
     )
     _sonic2_finalize_target(SonicTheHedgehog2Recomp_cosim SONIC2_INCLUDES_NATIVE)
     target_include_directories(SonicTheHedgehog2Recomp_cosim PRIVATE
@@ -340,14 +347,16 @@ if(GENESIS_BUILD_COSIM)
         "${RUNNER_ROOT}/cosim_visible.c"
         "${RUNNER_ROOT}/cosim_cycles.c"
         "${RUNNER_ROOT}/game_cycles.c"
-        "${RECOMP_ROOT}/sonicthehedgehog2/generated/sonic2_cycles.c"
+        "${SONIC2_GENERATED_SOURCES_CYCLES}"
     )
+    add_dependencies(SonicTheHedgehog2Recomp_oracle_cosim ${SONIC2_GENERATED_SOURCES_TARGET})
     target_compile_definitions(SonicTheHedgehog2Recomp_oracle_cosim PRIVATE
         INCLUDE_GENERATED_CODE=1
         HYBRID_RECOMPILED_CODE=1
         SONIC_ORACLE_BUILD=1
         GENESIS_COSIM=1
         DEFAULT_DEBUG_PORT=4396
+        $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
     )
     _sonic2_finalize_target(SonicTheHedgehog2Recomp_oracle_cosim SONIC2_INCLUDES_ORACLE)
     target_include_directories(SonicTheHedgehog2Recomp_oracle_cosim PRIVATE

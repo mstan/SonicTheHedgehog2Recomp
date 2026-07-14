@@ -59,7 +59,7 @@ interlace_display=raw
 ## Layout
 
 This repo contains only Sonic-2-specific build wiring. The shared engine
-(recompiler, runner) and Sonic 2's generated/spec code both live in
+(recompiler, runner) and Sonic 2's handwritten spec code live in
 [segagenesisrecomp](https://github.com/mstan/segagenesisrecomp), pulled
 in as a git submodule so a recursive clone is self-contained:
 
@@ -74,8 +74,10 @@ SonicTheHedgehog2Recomp/                ← this repo
         ├── sonic2_spec.c               ← per-game GameSpec
         ├── sonic2_hybrid_table.c       ← oracle-build override table
         ├── annotations_from_disasm.csv
-        └── generated/                  ← regen output
 ```
+
+Generated C is ignored build output under `build/generated/sonic2/`, not a
+source-tree input.
 
 CMake resolves the engine through the committed `segagenesisrecomp` submodule.
 For local dev across Sonic 1/2/3, an optional gitignored `engine-local` symlink
@@ -98,6 +100,11 @@ cd SonicTheHedgehog2Recomp
 
 Builds natively on Windows (MSVC), macOS (Apple Silicon & Intel), and Linux.
 SDL2 is bundled on Windows; `brew install sdl2` on macOS; `libsdl2-dev` on Linux.
+
+Before configuring, copy your ROM to
+`segagenesisrecomp/sonicthehedgehog2/sonic2.bin`. Generated C is not checked
+in; CMake builds the current recompiler and regenerates it from that ROM and
+the current discovery/configuration inputs before compiling the runner.
 
 **Windows (MSVC):**
 
