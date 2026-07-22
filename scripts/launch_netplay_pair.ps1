@@ -21,7 +21,10 @@ function Start-NetplayPeer {
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $exePath
     $info.WorkingDirectory = $runDir
-    $info.UseShellExecute = -not $Headless
+    # Direct process creation is required so each peer can receive its own
+    # netplay environment. With CreateNoWindow left false, interactive runs
+    # still open normal game windows.
+    $info.UseShellExecute = $false
     $args = '"{0}" --no-launcher' -f $romPath
     if ($Frames -gt 0) { $args += " --max-frames $Frames" }
     if ($InputScript) { $args += ' --input-script "{0}"' -f $InputScript }
