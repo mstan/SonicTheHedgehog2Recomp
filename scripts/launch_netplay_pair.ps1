@@ -100,5 +100,10 @@ if ($Headless) {
         $logs['netplay-host.log'] -notmatch 'h=448') {
         throw 'Versus scenario did not reach the native 448-line split-screen output'
     }
+    if ($Scenario -eq 'Versus' -and
+        ($logs['netplay-host.log'] -notmatch '\[NETVIEW\] slot=0 crop=0,0 320x224' -or
+         $logs['netplay-guest.log'] -notmatch '\[NETVIEW\] slot=1 crop=0,224 320x224')) {
+        throw 'Versus scenario did not select the expected per-peer presentation crops'
+    }
     Write-Host "Peer hashes match at $commonCount common checkpoints."
 }

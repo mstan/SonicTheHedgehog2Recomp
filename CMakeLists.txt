@@ -274,7 +274,8 @@ recomp_target_launcher_ui(SonicTheHedgehog2Recomp BOXART ${CMAKE_SOURCE_DIR}/box
 include(${RECOMP_ROOT}/cmake/GenesisRecompNetplay.cmake)
 genesisrecomp_enable_netplay(SonicTheHedgehog2Recomp
     GAME_VERSION "${SONIC2_GAME_VERSION}"
-    ICE)
+    ICE
+    PEER_VIEW)
 
 # ---------------------------------------------------------------------------
 # Oracle target — clown68000 interpreter executes everything. Used as the

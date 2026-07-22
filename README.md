@@ -17,9 +17,10 @@ synchronization test, or `-Scenario Versus` for the native split-screen gate.
 Hosted lobbies, LAN rooms, direct connections, and ICE use the same runtime
 frame-admission path.
 
-The initial implementation deliberately shows the complete native frame on
-both peers. A per-peer/fullscreen view for Sonic 2's split-screen mode is the
-fast-follow enhancement and will be implemented as presentation-only behavior.
+During Sonic 2's native split-screen mode, each peer gets a full-window local
+view: the host/slot 0 sees the top (Sonic) viewport and the guest/slot 1 sees
+the bottom (Tails) viewport. The crop is presentation-only; deterministic
+framebuffer hashes and emulated state still contain the complete split frame.
 
 Static recompilation port of Sonic the Hedgehog 2 (Genesis, 1992)
 to native C, sharing the recompiler / runner engine with
