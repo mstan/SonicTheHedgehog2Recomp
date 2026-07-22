@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 project(SonicTheHedgehog2Recomp C)
 
 set(CMAKE_C_STANDARD 11)
+set(SONIC2_GAME_VERSION "dev" CACHE STRING
+    "Version used to match compatible Sonic 2 netplay lobbies")
 
 # ---------------------------------------------------------------------------
 # Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.
@@ -264,6 +266,16 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 # Replaces the old RmlUi launcher (launcher.cmake / GENESIS_LAUNCHER).
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 recomp_target_launcher_ui(SonicTheHedgehog2Recomp BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
+
+# Two-player delay-synchronized netplay. The engine owns the transport,
+# lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.
+# ICE is enabled for Internet sessions while direct/LAN sessions remain
+# available through the same launcher flow.
+include(${RECOMP_ROOT}/cmake/GenesisRecompNetplay.cmake)
+genesisrecomp_enable_netplay(SonicTheHedgehog2Recomp
+    GAME_VERSION "${SONIC2_GAME_VERSION}"
+    ICE
+    PEER_VIEW)
 
 # ---------------------------------------------------------------------------
 # Oracle target — clown68000 interpreter executes everything. Used as the
