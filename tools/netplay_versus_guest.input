@@ -1,0 +1,3 @@
+# Exercise the guest-owned controller once the versus mode has loaded.
+WAIT 1000
+HOLD RIGHT

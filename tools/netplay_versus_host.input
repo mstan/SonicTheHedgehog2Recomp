@@ -1,0 +1,10 @@
+# Select the native two-player versus entry from Sonic 2's title menu.
+WAIT 700
+PRESS START 2
+WAIT 90
+PRESS DOWN 2
+WAIT 30
+PRESS START 2
+WAIT_RAM8 FFF600 1C
+WAIT 120
+PRESS START 2
