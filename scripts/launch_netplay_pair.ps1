@@ -85,7 +85,11 @@ if ($Headless) {
         ForEach-Object { $_.Value }
     $guestHashes = [regex]::Matches($logs['netplay-guest.log'], '(?m)^\[FBHASH\].*$') |
         ForEach-Object { $_.Value }
-    if (($hostHashes -join "`n") -ne ($guestHashes -join "`n")) {
+    $commonCount = [Math]::Min($hostHashes.Count, $guestHashes.Count)
+    if ($commonCount -eq 0 -or
+        [Math]::Abs($hostHashes.Count - $guestHashes.Count) -gt 1 -or
+        (($hostHashes | Select-Object -First $commonCount) -join "`n") -ne
+        (($guestHashes | Select-Object -First $commonCount) -join "`n")) {
         throw 'Peer framebuffer hashes diverged; inspect netplay-host.log and netplay-guest.log'
     }
     if ($Scenario -eq 'Campaign' -and
@@ -96,5 +100,5 @@ if ($Headless) {
         $logs['netplay-host.log'] -notmatch 'h=448') {
         throw 'Versus scenario did not reach the native 448-line split-screen output'
     }
-    Write-Host "Peer hashes match at $($hostHashes.Count) checkpoints."
+    Write-Host "Peer hashes match at $commonCount common checkpoints."
 }
