@@ -1,5 +1,26 @@
 # SonicTheHedgehog2Recomp
 
+## Netplay development
+
+The native target opts into the shared `segagenesisrecomp` delay-sync runtime
+and the `recomp-ui` lobby flow. Build the `SonicTheHedgehog2Recomp` target,
+then launch two local peers with:
+
+```powershell
+.\scripts\launch_netplay_pair.ps1
+```
+
+The host controls Sonic/player 1 and the guest controls Tails/player 2 using
+each process's player-1 device bindings. Use
+`-Headless -Scenario Campaign -Frames 1200` for the primary Sonic & Tails
+synchronization test, or `-Scenario Versus` for the native split-screen gate.
+Hosted lobbies, LAN rooms, direct connections, and ICE use the same runtime
+frame-admission path.
+
+The initial implementation deliberately shows the complete native frame on
+both peers. A per-peer/fullscreen view for Sonic 2's split-screen mode is the
+fast-follow enhancement and will be implemented as presentation-only behavior.
+
 Static recompilation port of Sonic the Hedgehog 2 (Genesis, 1992)
 to native C, sharing the recompiler / runner engine with
 [SonicTheHedgehogRecomp](https://github.com/mstan/SonicTheHedgehogRecomp).
