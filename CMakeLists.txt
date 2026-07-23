@@ -263,7 +263,7 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 # Shared recomp-ui (Dear ImGui) pre-boot launcher — native (shipped) target only
 # (never the _oracle dev target). Defines RECOMP_LAUNCHER (un-gates the seam in
 # the runner's main.c), links system GL, stages assets/ next to the exe.
-# Replaces the old RmlUi launcher (launcher.cmake / GENESIS_LAUNCHER).
+# The dev-only oracle target remains launcher-free.
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 recomp_target_launcher_ui(SonicTheHedgehog2Recomp BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
 
