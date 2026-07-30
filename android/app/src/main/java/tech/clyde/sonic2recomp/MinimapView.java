@@ -52,7 +52,16 @@ final class MinimapView extends View {
     private int zoneAct = -1;
     private DebugClient.GameSnapshot snap;
 
+    /* User-supplied full-level map image (sonicgalaxy.net renders are 1:1
+     * with the level pixel grid, chunk-aligned — see Zones.mapFileName).
+     * Decoded downsampled on a worker thread; the original pixel dims are
+     * kept for coordinate mapping. Null → silhouette fallback. */
+    private Bitmap mapBmp;
+    private int mapLevelW, mapLevelH;   // ORIGINAL image dims = level pixels
+    private int mapZoneAct = -1;        // zone/act the load was kicked for
+
     private final Paint bmpPaint = new Paint();          // unfiltered: crisp cells
+    private final Paint mapPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint boxPaint = new Paint();
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint lockPaint = new Paint();
@@ -90,6 +99,7 @@ final class MinimapView extends View {
         chunkBmp = bmp;
         cols = Math.max(maxC + 1, 8);
         rows = Math.max(maxR + 1, 4);
+        maybeLoadMapImage(za);
         invalidate();
     }
 
@@ -98,24 +108,70 @@ final class MinimapView extends View {
         if (s == null || s.gameMode != 0x0C) {
             chunkBmp = null;
             zoneAct = -1;
+            mapBmp = null;
+            mapZoneAct = -1;
         }
         invalidate();
+    }
+
+    /** Decode <files>/maps/<slug>.png off the main thread; keep the original
+     *  dims (== level pixels) and a panel-width-ish downsample for drawing. */
+    private void maybeLoadMapImage(final int za) {
+        if (za == mapZoneAct) return;   // loaded (or known-absent) already
+        mapZoneAct = za;
+        mapBmp = null;
+        final String name = Zones.mapFileName(za);
+        if (name == null) return;
+        final java.io.File file =
+                new java.io.File(getContext().getExternalFilesDir(null), name);
+        if (!file.isFile()) return;
+        new Thread(() -> {
+            android.graphics.BitmapFactory.Options o =
+                    new android.graphics.BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeFile(file.getPath(), o);
+            if (o.outWidth <= 0) return;
+            final int w = o.outWidth, h = o.outHeight;
+            android.graphics.BitmapFactory.Options o2 =
+                    new android.graphics.BitmapFactory.Options();
+            o2.inSampleSize = 1;
+            while (w / o2.inSampleSize > 2600) o2.inSampleSize *= 2;
+            final Bitmap bmp =
+                    android.graphics.BitmapFactory.decodeFile(file.getPath(), o2);
+            if (bmp == null) return;
+            post(() -> {
+                if (mapZoneAct != za) return;   // level changed mid-decode
+                mapBmp = bmp;
+                mapLevelW = w;
+                mapLevelH = h;
+                invalidate();
+            });
+        }, "map-decode").start();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         int w = getWidth(), h = getHeight();
-        if (chunkBmp == null || cols == 0) {
+        int lw, lh;                     // level extent in level pixels
+        if (mapBmp != null) {
+            lw = mapLevelW;
+            lh = mapLevelH;
+        } else if (chunkBmp != null && cols > 0) {
+            lw = cols * CHUNK;
+            lh = rows * CHUNK;
+        } else {
             canvas.drawText("no level", w / 2f, h / 2f, hintPaint);
             return;
         }
-        float cell = Math.min((float) w / cols, (float) h / rows);
-        float mw = cols * cell, mh = rows * cell;
+        float pxPerLvl = Math.min((float) w / lw, (float) h / lh);
+        float mw = lw * pxPerLvl, mh = lh * pxPerLvl;
         dst.set((w - mw) / 2f, (h - mh) / 2f, (w + mw) / 2f, (h + mh) / 2f);
-        src.set(0, 0, cols, rows);
-        canvas.drawBitmap(chunkBmp, src, dst, bmpPaint);
-
-        float pxPerLvl = cell / CHUNK;   // view px per level px
+        if (mapBmp != null) {
+            canvas.drawBitmap(mapBmp, null, dst, mapPaint);
+        } else {
+            src.set(0, 0, cols, rows);
+            canvas.drawBitmap(chunkBmp, src, dst, bmpPaint);
+        }
 
         int[] boss = Zones.BOSS_SPOTS.get(zoneAct);
         if (boss != null) {

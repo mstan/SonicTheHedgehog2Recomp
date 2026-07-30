@@ -79,5 +79,36 @@ final class Zones {
         BOSS_SPOTS.put(0x0500, new int[]{0x2B10, 0x0480, 1000, 0x2AB0});  // MTZ 3
     }
 
+    /**
+     * User-supplied full-level map image for a zone/act word, or null (HPZ
+     * has no retail map). Files live in <files dir>/maps/, named exactly as
+     * on sonicgalaxy.net so a plain download loop works (Metropolis is
+     * "mz"; the single-act zones are scz-1/wfz-1/dez-1). See
+     * README-android.md — the images are SEGA level art and are never
+     * committed or shipped; without them the minimap falls back to the
+     * layout-RAM silhouette.
+     */
+    static String mapFileName(int zoneActWord) {
+        int zone = (zoneActWord >> 8) & 0xFF;
+        int act = (zoneActWord & 0xFF) + 1;
+        if (zone == 0x05) { zone = 0x04; act = 3; }   // MTZ act 3
+        String slug;
+        switch (zone) {
+            case 0x00: slug = "ehz"; break;
+            case 0x0D: slug = "cpz"; break;
+            case 0x0F: slug = "arz"; break;
+            case 0x0C: slug = "cnz"; break;
+            case 0x07: slug = "htz"; break;
+            case 0x0B: slug = "mcz"; break;
+            case 0x0A: slug = "ooz"; break;
+            case 0x04: slug = "mz";  break;
+            case 0x10: slug = "scz"; break;
+            case 0x06: slug = "wfz"; break;
+            case 0x0E: slug = "dez"; break;
+            default: return null;
+        }
+        return "maps/" + slug + "-" + act + ".png";
+    }
+
     private Zones() {}
 }

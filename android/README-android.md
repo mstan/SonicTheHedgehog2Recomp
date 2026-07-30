@@ -90,6 +90,27 @@ two pages, switched by the 🗺/⚙ buttons inline with the header:
   the camera viewport, the player dot, and the boss camera-lock line on
   boss acts. Map extent comes from occupancy, not camera bounds (bounds
   read unclamped 0x3FFF in some acts).
+
+  **Full-art minimap (optional, user-supplied):** if
+  `<files dir>/maps/<slug>.png` exists for the current act, the panel
+  draws that instead of the silhouette (same overlays — sonicgalaxy.net's
+  renders are 1:1 with the level pixel grid, so no calibration needed).
+  The images are SEGA level art: never committed or shipped, fetch them
+  yourself:
+
+  ```sh
+  mkdir -p maps
+  for m in ehz-1 ehz-2 cpz-1 cpz-2 arz-1 arz-2 cnz-1 cnz-2 htz-1 htz-2 \
+           mcz-1 mcz-2 ooz-1 ooz-2 mz-1 mz-2 mz-3 scz-1 wfz-1 dez-1; do
+    curl -sf -o maps/$m.png \
+      "https://www.sonicgalaxy.net/wp-content/img/maps/gen/sonic2/$m.png"
+  done
+  adb push maps /sdcard/Android/data/tech.clyde.sonic2recomp/files/
+  ```
+
+  Note the site's naming: Metropolis is `mz` (mz-3 = MTZ act 3) and the
+  single-act zones are `scz-1`/`wfz-1`/`dez-1`. HPZ has no retail map —
+  it (and any missing file) falls back to the silhouette.
 - **Warp**: zone/act warp grid, boss warps, live 16:9⇄4:3 toggle,
   save/load slots 1-4 (files interop with the desktop F-keys and the
   LB/RB gamepad quicksave).
