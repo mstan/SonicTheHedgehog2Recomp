@@ -226,6 +226,12 @@ final class DevPanelPresentation extends Presentation {
         page.addView(scroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         page.addView(buildBottomBars());   // pinned below the scrolling grid
+        TextView credit = text(
+                "app icon by LexiLoo826 (deviantart.com) · CC BY-NC-ND 3.0",
+                11, FG_DIM, false);
+        credit.setGravity(Gravity.CENTER_HORIZONTAL);
+        credit.setPadding(0, dp(8), 0, 0);
+        page.addView(credit);
         return page;
     }
 
