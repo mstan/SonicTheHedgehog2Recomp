@@ -1,0 +1,13 @@
+# Machine-local
+local.properties
+.gradle/
+
+# Fetched externals — sources and pins in README-android.md (Layout)
+external/
+
+# ROM-derived output — host-regenerated, never committed (PRINCIPLES #19;
+# generated C embeds ROM-derived content)
+generated/
+
+# Native build intermediates (app/build is covered by the repo root's build/)
+app/.cxx/
