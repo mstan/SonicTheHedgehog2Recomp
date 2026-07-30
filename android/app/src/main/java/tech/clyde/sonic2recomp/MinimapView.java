@@ -16,6 +16,10 @@ import android.view.View;
  * acts — the arena's camera-lock line. Extent comes from occupancy, not
  * camera bounds: bounds read unclamped (0x3FFF) in some acts and would
  * squash the map.
+ *
+ * Two view modes (tap to toggle, owner wires the click): fit shows the
+ * whole act letterboxed; zoom fills the view height and pans horizontally
+ * to keep the player centered, clamped at the level edges.
  */
 final class MinimapView extends View {
 
@@ -51,6 +55,7 @@ final class MinimapView extends View {
     private int cols, rows;             // occupied extent in chunks
     private int zoneAct = -1;
     private DebugClient.GameSnapshot snap;
+    private boolean zoom;               // fill height + follow the player
 
     /* User-supplied full-level map image (sonicgalaxy.net renders are 1:1
      * with the level pixel grid, chunk-aligned — see Zones.mapFileName).
@@ -66,6 +71,7 @@ final class MinimapView extends View {
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint lockPaint = new Paint();
     private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Rect src = new Rect();
     private final RectF dst = new RectF();
 
@@ -82,6 +88,10 @@ final class MinimapView extends View {
         hintPaint.setTextAlign(Paint.Align.CENTER);
         hintPaint.setTypeface(Typeface.MONOSPACE);
         hintPaint.setTextSize(dp(14));
+        labelPaint.setColor(COL_HINT);
+        labelPaint.setTextAlign(Paint.Align.RIGHT);
+        labelPaint.setTypeface(Typeface.MONOSPACE);
+        labelPaint.setTextSize(dp(11));
     }
 
     void setLayoutData(byte[] fg, int za) {
@@ -100,6 +110,11 @@ final class MinimapView extends View {
         cols = Math.max(maxC + 1, 8);
         rows = Math.max(maxR + 1, 4);
         maybeLoadMapImage(za);
+        invalidate();
+    }
+
+    void setZoom(boolean on) {
+        zoom = on;
         invalidate();
     }
 
@@ -163,9 +178,20 @@ final class MinimapView extends View {
             canvas.drawText("no level", w / 2f, h / 2f, hintPaint);
             return;
         }
-        float pxPerLvl = Math.min((float) w / lw, (float) h / lh);
+        float pxPerLvl = zoom ? (float) h / lh
+                              : Math.min((float) w / lw, (float) h / lh);
         float mw = lw * pxPerLvl, mh = lh * pxPerLvl;
-        dst.set((w - mw) / 2f, (h - mh) / 2f, (w + mw) / 2f, (h + mh) / 2f);
+        float left;
+        if (mw <= w) {
+            left = (w - mw) / 2f;
+        } else {
+            // Zoomed: keep the player centered, clamped to the level edges.
+            float focus = (snap != null && snap.gameMode == 0x0C)
+                    ? snap.playerX : lw / 2f;
+            left = w / 2f - focus * pxPerLvl;
+            left = Math.max(w - mw, Math.min(0f, left));
+        }
+        dst.set(left, (h - mh) / 2f, left + mw, (h + mh) / 2f);
         if (mapBmp != null) {
             canvas.drawBitmap(mapBmp, null, dst, mapPaint);
         } else {
@@ -189,6 +215,8 @@ final class MinimapView extends View {
             dotPaint.setColor(COL_PLAYER);
             canvas.drawCircle(px, py, dp(4), dotPaint);
         }
+        canvas.drawText(zoom ? "tap: fit" : "tap: zoom",
+                w - dp(6), dp(14), labelPaint);
     }
 
     private float dp(int v) {

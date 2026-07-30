@@ -131,6 +131,8 @@ final class DebugClient {
     volatile boolean wsOn = true;
     /** Selected panel tab (0 = Status, 1 = Warp) — survives panel recreation. */
     volatile int selectedTab = 0;
+    /** Minimap zoom (fill height + follow the player) — survives recreation. */
+    volatile boolean mapZoom = false;
 
     void requestWsSet(boolean on) {
         wsOn = on;

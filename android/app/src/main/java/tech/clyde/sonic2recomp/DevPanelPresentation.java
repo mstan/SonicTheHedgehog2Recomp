@@ -179,6 +179,11 @@ final class DevPanelPresentation extends Presentation {
 
         minimap = new MinimapView(getContext());
         minimap.setBackgroundColor(CARD_BG);
+        minimap.setZoom(client.mapZoom);
+        minimap.setOnClickListener(v -> {
+            client.mapZoom = !client.mapZoom;
+            minimap.setZoom(client.mapZoom);
+        });
         LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
         mapLp.setMargins(0, dp(8), 0, dp(8));

@@ -89,7 +89,9 @@ two pages, switched by the 🗺/⚙ buttons inline with the header:
   `read_memory` and drawn as a chunk-occupancy silhouette, overlaid with
   the camera viewport, the player dot, and the boss camera-lock line on
   boss acts. Map extent comes from occupancy, not camera bounds (bounds
-  read unclamped 0x3FFF in some acts).
+  read unclamped 0x3FFF in some acts). Tap the map to toggle between
+  fit (whole act, letterboxed) and zoom (fills the view height and
+  auto-pans to keep the player centered, clamped at the level edges).
 
   **Full-art minimap (optional, user-supplied):** if
   `<files dir>/maps/<slug>.png` exists for the current act, the panel
