@@ -30,6 +30,10 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sideload test builds: debug-keystore signed so the APK
+            // installs anywhere. Replace with a real keystore for any
+            // store/broad distribution.
+            signingConfig signingConfigs.debug
         }
     }
     applicationVariants.all { variant ->
