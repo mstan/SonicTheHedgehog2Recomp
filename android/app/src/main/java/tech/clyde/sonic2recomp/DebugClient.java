@@ -49,6 +49,8 @@ final class DebugClient {
         boolean superActive; // FFF65F != 0
         int playerX, playerY;// FFB008/FFB00C words
         int camX, camY;      // FFEE00/FFEE04 words
+        boolean invincible;  // FFB02B (status_secondary) bit 1
+        boolean speedShoes;  // FFB02B bit 2
     }
 
     interface Listener {
@@ -152,6 +154,106 @@ final class DebugClient {
             .put("cmd", "load_state").put("path", "native_save_" + slot + ".bin")));
     }
 
+    // ---- cheats (RAM pokes; every address live-verified on the Thor) --------
+
+    /** Last in-level zone/act from the poller — the character swap restarts it. */
+    private volatile int lastZoneAct = 0x0000;
+
+    void cheatAddLife() {
+        oneShot("+1 life", () -> {
+            int lives = Math.min(readByte("FFFE12") + 1, 99);
+            writeHex("FFFE12", String.format("%02X", lives));
+            writeHex("FFFE1C", "01");                    // Update_HUD_lives
+            note("lives = " + lives);
+        });
+    }
+
+    void cheatAddRings(int n) {
+        oneShot("+rings", () -> {
+            int rings = Math.min(readWord("FFFE20") + n, 999);
+            writeHex("FFFE20", String.format("%04X", rings));
+            writeHex("FFFE1D", "01");                    // Update_HUD_rings
+            note("rings = " + rings);
+        });
+    }
+
+    void cheatEmeralds() {
+        oneShot("emeralds", () -> {
+            writeHex("FFFEB1", "07");
+            note("all 7 emeralds");
+        });
+    }
+
+    /** Seeds the real transformation: with flag+palette set to 1 the game
+     *  advances them itself (flag 1 -> FF, palette fade runs). Rings are
+     *  topped up to 50 so super doesn't instantly revert — it drains 1/s
+     *  and reverts at 0, authentically. */
+    void cheatGoSuper() {
+        oneShot("super", () -> {
+            if (readByte("FFF600") != 0x0C) { note("not in a level"); return; }
+            if (readWord("FFFF72") == 2)    { note("Super needs Sonic"); return; }
+            if (readByte("FFF65F") != 0)    { note("already super"); return; }
+            if (readWord("FFFE20") < 50) {
+                writeHex("FFFE20", "0032");
+                writeHex("FFFE1D", "01");
+            }
+            writeHex("FFFEB1", "07");
+            writeHex("FFF65E", "01");                    // Super_Sonic_palette: fade in
+            writeHex("FFF65F", "01");                    // Super_Sonic_flag
+            writeHex("FFF760", "0A0000300100");          // top speed / accel / decel
+            orByte("FFB02B", 0x02);
+            note("SUPER");
+        });
+    }
+
+    /** Permanent while on: the timer stays 0, so the star-monitor countdown
+     *  never runs and nothing clears the bit until toggled off. */
+    void cheatToggleInvincible() {
+        oneShot("invincible", () -> {
+            int ss = readByte("FFB02B");
+            boolean on = (ss & 0x02) != 0;
+            writeHex("FFB02B", String.format("%02X", on ? ss & ~0x02 : ss | 0x02));
+            if (!on) writeHex("FFB032", "0000");
+            note(on ? "invincibility off" : "INVINCIBLE");
+        });
+    }
+
+    /** The authentic 20 s burst — the game restores the speed table itself
+     *  when the timer expires. Super's faster table is left alone. */
+    void cheatSpeedShoes() {
+        oneShot("speed shoes", () -> {
+            orByte("FFB02B", 0x04);
+            writeHex("FFB034", "04B0");                  // 1200 frames = 20 s
+            if (readByte("FFF65F") == 0)
+                writeHex("FFF760", "0C000018");          // top C00, accel 18
+            note("speed shoes (20 s)");
+        });
+    }
+
+    /** 0 = Sonic & Tails, 1 = Sonic, 2 = Tails. Player art is loaded at
+     *  level init, so this sets Player_option and restarts the current act
+     *  through the normal warp flow. */
+    void requestCharacter(int option) {
+        io.post(() -> {
+            if (!ensureConnected()) return;
+            try {
+                writeHex("FFFF72", String.format("%04X", option));
+            } catch (Exception e) {
+                ioTrouble(e);
+                return;
+            }
+            requestWarp(lastZoneAct, null);
+        });
+    }
+
+    private void orByte(String addr, int bits) throws Exception {
+        writeHex(addr, String.format("%02X", readByte(addr) | bits));
+    }
+
+    private void note(String msg) {
+        main.post(() -> listener.onWarpProgress(msg));
+    }
+
     private interface ThrowingRunnable { void run() throws Exception; }
 
     private void oneShot(String what, ThrowingRunnable r) {
@@ -231,9 +333,13 @@ final class DebugClient {
                 s.score   = (((long) u16(blk, 0x16) << 16) | u16(blk, 0x18)) * 10L;
                 s.emeralds    = readByte("FFFEB1");
                 s.superActive = readByte("FFF65F") != 0;
-                byte[] pb = readBlock("FFB008", 8);       // X long, Y long
+                byte[] pb = readBlock("FFB008", 0x24);    // X, Y, status_secondary
                 s.playerX = u16(pb, 0);
                 s.playerY = u16(pb, 4);
+                int statusSec = pb[0x23] & 0xFF;          // FFB02B
+                s.invincible = (statusSec & 0x02) != 0;
+                s.speedShoes = (statusSec & 0x04) != 0;
+                if (s.gameMode == 0x0C) lastZoneAct = s.zoneAct;
                 byte[] cb = readBlock("FFEE00", 8);
                 s.camX = u16(cb, 0);
                 s.camY = u16(cb, 4);

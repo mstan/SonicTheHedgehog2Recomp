@@ -22,8 +22,10 @@ import java.util.Locale;
 
 /**
  * The dev panel shown on the Thor's bottom screen (Screen-2, 1240x1080).
- * Two pages: a live status HUD (minimap + rings/lives/emeralds) and the
- * warp/settings page (zone grid, boss warps, ws toggle, savestates).
+ * Three pages: a live status HUD (minimap + rings/lives/emeralds), the
+ * warp/settings page (zone grid, boss warps, ws toggle, savestates), and
+ * a cheats page (lives/rings/emeralds, super, invincibility, speed shoes,
+ * character swap).
  *
  * The window is FLAG_NOT_FOCUSABLE: it still receives touch on its own
  * display, but can never become the top-focused window — otherwise
@@ -53,8 +55,8 @@ final class DevPanelPresentation extends Presentation {
     private Button cancelBtn;
     private final List<Button> actionButtons = new ArrayList<>();
 
-    private final Button[] tabButtons = new Button[2];
-    private final View[] pages = new View[2];
+    private final Button[] tabButtons = new Button[3];
+    private final View[] pages = new View[3];
 
     private MinimapView minimap;
     private TextView ringsVal, livesVal, emerVal, scoreVal, timeVal, devLine;
@@ -87,8 +89,10 @@ final class DevPanelPresentation extends Presentation {
         FrameLayout content = new FrameLayout(getContext());
         pages[0] = buildStatusPage();
         pages[1] = buildWarpPage();
+        pages[2] = buildCheatsPage();
         content.addView(pages[0]);
         content.addView(pages[1]);
+        content.addView(pages[2]);
         root.addView(content, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -117,9 +121,11 @@ final class DevPanelPresentation extends Presentation {
             emerVal.setText(s.emeralds + "/7");
             scoreVal.setText(String.valueOf(s.score));
             timeVal.setText(String.format(Locale.US, "%d:%02d", s.timeMin, s.timeSec));
-            devLine.setText(String.format("pos %04X,%04X · cam %04X,%04X%s",
+            devLine.setText(String.format("pos %04X,%04X · cam %04X,%04X%s%s%s",
                     s.playerX, s.playerY, s.camX, s.camY,
-                    s.superActive ? " · SUPER" : ""));
+                    s.superActive ? " · SUPER" : "",
+                    s.invincible ? " · INV" : "",
+                    s.speedShoes ? " · SHOES" : ""));
         } else {
             ringsVal.setText("—"); livesVal.setText("—"); emerVal.setText("—");
             scoreVal.setText("—"); timeVal.setText("—");
@@ -164,7 +170,7 @@ final class DevPanelPresentation extends Presentation {
 
     private void selectTab(int idx) {
         client.selectedTab = idx;
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < pages.length; i++) {
             boolean sel = i == idx;
             pages[i].setVisibility(sel ? View.VISIBLE : View.GONE);
             tabButtons[i].setBackgroundColor(sel ? ACCENT : CARD_BG);
@@ -241,6 +247,56 @@ final class DevPanelPresentation extends Presentation {
         return page;
     }
 
+    // ---- cheats page ----------------------------------------------------------
+
+    private View buildCheatsPage() {
+        LinearLayout page = new LinearLayout(getContext());
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        page.addView(sectionLabel("give"));
+        LinearLayout give = new LinearLayout(getContext());
+        give.addView(cheatBtn("+1 life", v -> client.cheatAddLife()), barLp(1f));
+        give.addView(cheatBtn("+10 rings", v -> client.cheatAddRings(10)), barLp(1f));
+        give.addView(cheatBtn("+100 rings", v -> client.cheatAddRings(100)), barLp(1f));
+        give.addView(cheatBtn("7 emeralds", v -> client.cheatEmeralds()), barLp(1f));
+        page.addView(give);
+
+        page.addView(sectionLabel("powers"));
+        LinearLayout powers = new LinearLayout(getContext());
+        Button superBtn = cheatBtn("Super Sonic", v -> client.cheatGoSuper());
+        superBtn.setTextColor(ACCENT);
+        powers.addView(superBtn, barLp(1f));
+        powers.addView(cheatBtn("Invincible ⇄", v -> client.cheatToggleInvincible()), barLp(1f));
+        powers.addView(cheatBtn("Speed Shoes", v -> client.cheatSpeedShoes()), barLp(1f));
+        page.addView(powers);
+
+        page.addView(sectionLabel("character — restarts the act"));
+        LinearLayout chars = new LinearLayout(getContext());
+        chars.addView(cheatBtn("Sonic & Tails", v -> swapCharacter(0)), barLp(1f));
+        chars.addView(cheatBtn("Sonic", v -> swapCharacter(1)), barLp(1f));
+        chars.addView(cheatBtn("Tails", v -> swapCharacter(2)), barLp(1f));
+        page.addView(chars);
+        return page;
+    }
+
+    private TextView sectionLabel(String s) {
+        TextView t = text(s, 13, FG_DIM, false);
+        t.setPadding(dp(4), dp(14), dp(4), dp(2));
+        return t;
+    }
+
+    private Button cheatBtn(String label, View.OnClickListener l) {
+        Button b = button(label, BTN_BG, l);
+        actionButtons.add(b);
+        return b;
+    }
+
+    private void swapCharacter(int option) {
+        setWarpBusy(true);
+        showProgress("");
+        client.requestCharacter(option);
+    }
+
     private View buildStatusRow() {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -251,8 +307,8 @@ final class DevPanelPresentation extends Presentation {
         cancelBtn = button("Cancel warp", BTN_BOSS, v -> client.cancelWarp());
         cancelBtn.setVisibility(View.GONE);
         row.addView(cancelBtn);
-        String[] icons = {"🗺", "⚙"};   // Status (map) / Warp+settings (gear)
-        for (int i = 0; i < 2; i++) {
+        String[] icons = {"🗺", "⚙", "✨"};   // Status / Warp+settings / Cheats
+        for (int i = 0; i < icons.length; i++) {
             final int idx = i;
             Button b = button(icons[i], CARD_BG, v -> selectTab(idx));
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);

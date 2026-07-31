@@ -116,6 +116,16 @@ two pages, switched by the 🗺/⚙ buttons inline with the header:
 - **Warp**: zone/act warp grid, boss warps, live 16:9⇄4:3 toggle,
   save/load slots 1-4 (files interop with the desktop F-keys and the
   LB/RB gamepad quicksave).
+- **Cheats** (✨): +1 life / +rings / 7 emeralds (with the HUD-redraw
+  flags at $FFFE1C/1D), Super Sonic (seeds the real transformation —
+  flag+palette to 1, the game runs the fade and advances the flag
+  itself; tops rings up to 50 since super drains 1/s), a permanent
+  invincibility toggle (status_secondary bit 1, timer left 0 so the
+  monitor countdown never clears it — INV/SHOES badges show on the
+  status page), the authentic 20 s speed shoes burst, and character
+  swap (Sonic & Tails / Sonic / Tails — sets Player_option at $FFFF72
+  and restarts the act through the warp flow, since player art loads
+  at level init).
 
 Java only, in `app/src/main/java/tech/clyde/sonic2recomp/`:
 `MainActivity` (SDLActivity subclass, Presentation lifecycle) →
