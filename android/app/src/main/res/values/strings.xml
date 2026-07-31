@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Sonic 2 Recomp</string>
+    <string name="dev_connecting">connecting…</string>
+    <string name="dev_emerald_count">%1$d/7</string>
+    <string name="dev_released">released — tap Connect to reattach</string>
+    <string name="dev_server_busy">server busy — another client holds the connection</string>
+    <string name="dev_server_off">debug server off — put debug.ini in the app files dir</string>
+    <string name="rom_select">Select ROM…</string>
 </resources>

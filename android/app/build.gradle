@@ -30,10 +30,6 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            // Sideload test builds: debug-keystore signed so the APK
-            // installs anywhere. Replace with a real keystore for any
-            // store/broad distribution.
-            signingConfig signingConfigs.debug
         }
     }
     applicationVariants.all { variant ->
@@ -49,10 +45,10 @@ android {
                 path 'jni/CMakeLists.txt'
             }
         }
-       
     }
     lint {
-        abortOnError false
+        abortOnError true
+        baseline file("lint-baseline.xml")
     }
 
     if (buildAsLibrary) {
@@ -70,4 +66,5 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    testImplementation 'junit:junit:4.13.2'
 }

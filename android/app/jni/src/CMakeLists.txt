@@ -99,8 +99,9 @@ target_include_directories(main PRIVATE
     "${RECOMP_ROOT}/sonicthehedgehog2"
     "${RECOMP_ROOT}/recompiler/src"
     "${GEN_DIR}"
-    # <SDL2/SDL.h> include style: shim dir whose SDL2/ symlinks SDL's include/
-    "${CMAKE_CURRENT_SOURCE_DIR}/../shim-include"
+    # The engine's pinned SDL headers contain both SDL.h and SDL2/SDL.h
+    # layouts, avoiding a filesystem symlink on Windows checkouts.
+    "${RUNNER_ROOT}/external/SDL2/SDL2-2.28.5/include"
     # libucontext: public header, aarch64 bits.h, defs.h + common-defs.h
     "${UCONTEXT_ROOT}/include"
     "${UCONTEXT_ROOT}/arch/aarch64/include"

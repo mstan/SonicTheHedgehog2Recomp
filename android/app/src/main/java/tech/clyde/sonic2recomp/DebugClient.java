@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 /**
  * Owner of the ONE debug-server connection (the runner's cmd_server accepts
@@ -162,7 +163,7 @@ final class DebugClient {
     void cheatAddLife() {
         oneShot("+1 life", () -> {
             int lives = Math.min(readByte("FFFE12") + 1, 99);
-            writeHex("FFFE12", String.format("%02X", lives));
+            writeHex("FFFE12", String.format(Locale.ROOT, "%02X", lives));
             writeHex("FFFE1C", "01");                    // Update_HUD_lives
             note("lives = " + lives);
         });
@@ -171,7 +172,7 @@ final class DebugClient {
     void cheatAddRings(int n) {
         oneShot("+rings", () -> {
             int rings = Math.min(readWord("FFFE20") + n, 999);
-            writeHex("FFFE20", String.format("%04X", rings));
+            writeHex("FFFE20", String.format(Locale.ROOT, "%04X", rings));
             writeHex("FFFE1D", "01");                    // Update_HUD_rings
             note("rings = " + rings);
         });
@@ -212,7 +213,8 @@ final class DebugClient {
         oneShot("invincible", () -> {
             int ss = readByte("FFB02B");
             boolean on = (ss & 0x02) != 0;
-            writeHex("FFB02B", String.format("%02X", on ? ss & ~0x02 : ss | 0x02));
+            writeHex("FFB02B", String.format(
+                    Locale.ROOT, "%02X", on ? ss & ~0x02 : ss | 0x02));
             if (!on) writeHex("FFB032", "0000");
             note(on ? "invincibility off" : "INVINCIBLE");
         });
@@ -237,7 +239,7 @@ final class DebugClient {
         io.post(() -> {
             if (!ensureConnected()) return;
             try {
-                writeHex("FFFF72", String.format("%04X", option));
+                writeHex("FFFF72", String.format(Locale.ROOT, "%04X", option));
             } catch (Exception e) {
                 ioTrouble(e);
                 return;
@@ -247,7 +249,8 @@ final class DebugClient {
     }
 
     private void orByte(String addr, int bits) throws Exception {
-        writeHex(addr, String.format("%02X", readByte(addr) | bits));
+        writeHex(addr, String.format(
+                Locale.ROOT, "%02X", readByte(addr) | bits));
     }
 
     private void note(String msg) {

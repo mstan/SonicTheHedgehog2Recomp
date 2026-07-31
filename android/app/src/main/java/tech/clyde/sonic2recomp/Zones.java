@@ -1,6 +1,7 @@
 package tech.clyde.sonic2recomp;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -51,7 +52,7 @@ final class Zones {
         for (Zone z : ALL)
             if (z.id == zone)
                 return z.name + " act " + act;
-        return String.format("zone %02X act %d", zone, act);
+        return String.format(Locale.ROOT, "zone %02X act %d", zone, act);
     }
 
     /**

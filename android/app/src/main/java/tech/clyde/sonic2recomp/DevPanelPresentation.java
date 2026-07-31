@@ -112,16 +112,19 @@ final class DevPanelPresentation extends Presentation {
     void setSnapshot(DebugClient.GameSnapshot s) {
         boolean inLevel = s.gameMode == 0x0C;
         if (statusLine != null && connState == DebugClient.State.CONNECTED)
-            statusLine.setText(String.format("connected · GM=%02X · %s",
+            statusLine.setText(String.format(Locale.ROOT,
+                    "connected · GM=%02X · %s",
                     s.gameMode, inLevel ? Zones.pretty(s.zoneAct) : "—"));
         if (ringsVal == null) return;
         if (inLevel) {
             ringsVal.setText(String.valueOf(s.rings));
             livesVal.setText(String.valueOf(s.lives));
-            emerVal.setText(s.emeralds + "/7");
+            emerVal.setText(getContext().getString(
+                    R.string.dev_emerald_count, s.emeralds));
             scoreVal.setText(String.valueOf(s.score));
             timeVal.setText(String.format(Locale.US, "%d:%02d", s.timeMin, s.timeSec));
-            devLine.setText(String.format("pos %04X,%04X · cam %04X,%04X%s%s%s",
+            devLine.setText(String.format(Locale.ROOT,
+                    "pos %04X,%04X · cam %04X,%04X%s%s%s",
                     s.playerX, s.playerY, s.camX, s.camY,
                     s.superActive ? " · SUPER" : "",
                     s.invincible ? " · INV" : "",
@@ -158,10 +161,18 @@ final class DevPanelPresentation extends Presentation {
             releaseBtn.setText(connState == DebugClient.State.RELEASED ? "Connect" : "Release");
         if (statusLine != null && connState != DebugClient.State.CONNECTED) {
             switch (connState) {
-                case SERVER_OFF: statusLine.setText("debug server off — put debug.ini in the app files dir"); break;
-                case BUSY:       statusLine.setText("server busy — another client holds the connection"); break;
-                case CONNECTING: statusLine.setText("connecting…"); break;
-                case RELEASED:   statusLine.setText("released — tap Connect to reattach"); break;
+                case SERVER_OFF:
+                    statusLine.setText(R.string.dev_server_off);
+                    break;
+                case BUSY:
+                    statusLine.setText(R.string.dev_server_busy);
+                    break;
+                case CONNECTING:
+                    statusLine.setText(R.string.dev_connecting);
+                    break;
+                case RELEASED:
+                    statusLine.setText(R.string.dev_released);
+                    break;
             }
         }
     }

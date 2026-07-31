@@ -1,5 +1,7 @@
 package tech.clyde.sonic2recomp;
 
+import java.util.Locale;
+
 /**
  * Java port of tools/warp.py's warp loop — that file is the reference
  * implementation; keep the sequences identical.
@@ -43,20 +45,22 @@ final class WarpEngine {
 
                 if (!warped) {
                     if (gm == GM_LEVEL) {
-                        c.writeHex(ZONEACT_ADDR, String.format("%04X", target));
+                        c.writeHex(ZONEACT_ADDR, String.format(
+                                Locale.ROOT, "%04X", target));
                         c.writeHex(CHECKPOINT_ADDR, "0000");
                         c.writeHex(RESTART_ADDR, "0001");
                         warped = true;
                         c.warpProgress("restart flag set, waiting for reload…");
                     } else if ((gm == GM_TITLE || gm == GM_DEMO) && now() - lastTap > TAP_GAP_MS) {
-                        c.warpProgress(String.format("Game_Mode 0x%02X — tapping Start", gm));
+                        c.warpProgress(String.format(Locale.ROOT,
+                                "Game_Mode 0x%02X — tapping Start", gm));
                         c.setInput("80");
                         sleep(150);
                         c.setInput("off");
                         lastTap = now();
                     } else if (base != GM_SEGA && base != GM_TITLE
                             && base != GM_DEMO && base != GM_LEVEL) {
-                        c.warpDone(false, String.format(
+                        c.warpDone(false, String.format(Locale.ROOT,
                             "can't warp from GM 0x%02X (special stage/continue/2P?)", gm));
                         return;
                     }
@@ -89,8 +93,10 @@ final class WarpEngine {
     private static void bossApproach(DebugClient c, int target, int[] spot) throws Exception {
         c.warpProgress("teleporting to boss arena…");
         sleep(1_000);   // let objects/camera settle post-load
-        c.writeHex(PLAYER_X_ADDR, String.format("%04X", spot[0] & 0xFFFF));
-        c.writeHex(PLAYER_Y_ADDR, String.format("%04X", spot[1] & 0xFFFF));
+        c.writeHex(PLAYER_X_ADDR, String.format(
+                Locale.ROOT, "%04X", spot[0] & 0xFFFF));
+        c.writeHex(PLAYER_Y_ADDR, String.format(
+                Locale.ROOT, "%04X", spot[1] & 0xFFFF));
         sleep(1_000);
         if (spot[2] > 0) {
             c.setInput("08");   // hold Right: walk deeper into the arena

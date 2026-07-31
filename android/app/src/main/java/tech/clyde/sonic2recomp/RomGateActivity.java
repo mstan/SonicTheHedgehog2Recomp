@@ -3,7 +3,6 @@ package tech.clyde.sonic2recomp;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
@@ -17,41 +16,42 @@ import android.widget.TextView;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.Locale;
 import java.util.zip.CRC32;
 
 /**
- * Launcher gate: the runner needs a Genesis ROM in the app files dir (we
- * never ship one). If a ROM is already there this activity forwards to the
- * game instantly; otherwise it shows a picker (Storage Access Framework,
- * so no storage permissions) and copies the chosen file in. The engine
- * then finds it via its files-dir scan; any stale rom-*.cfg is removed so
- * a re-pick takes effect.
- *
- * The recompiled code is generated from Sonic 2 (W) Rev A — other files
- * won't run correctly, so the copy is CRC32-checked and anything else gets
- * an "are you sure" dialog.
+ * Bring-your-own-ROM gate. Existing files are accepted only when they match
+ * Sonic 2 (World, Rev A), or when the picker previously recorded explicit
+ * approval for that exact filename and CRC.
  */
 public class RomGateActivity extends Activity {
-
     private static final String TAG = "S2RomGate";
     private static final int REQ_PICK = 1;
-    private static final long SONIC2_REVA_CRC = 0x7B905383L;
-    private static final String[] ROM_EXTS = {".bin", ".md", ".gen", ".smd"};
 
-    private static final int BG     = 0xFF0A1030;
-    private static final int FG     = 0xFFF2F5FF;
+    private static final int BG = 0xFF0A1030;
     private static final int FG_DIM = 0xFF93A4CE;
     private static final int ACCENT = 0xFFFFC81E;
 
     private TextView status;
+    private Button pickButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (findRom() != null) {
-            launchGame();
-            return;
+
+        File dir = getExternalFilesDir(null);
+        try {
+            File rom = RomGateFiles.findAcceptedRom(
+                    dir, RomGateFiles.SONIC2_REVA_CRC);
+            if (rom != null) {
+                RomGateFiles.writeRomConfig(dir, rom);
+                launchGame();
+                return;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "existing ROM check failed", e);
         }
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
@@ -63,136 +63,147 @@ public class RomGateActivity extends Activity {
         title.setGravity(Gravity.CENTER);
         root.addView(title);
 
-        TextView body = text(
-                "No Genesis ROM found.\n\n"
-                + "This app does not include the game. Select your own\n"
-                + "Sonic 2 (World, Rev A) ROM (.bin) to continue.",
-                15, FG_DIM, false);
+        String intro = dir == null
+                ? "App storage is unavailable. Check device storage and try again."
+                : "No approved Sonic 2 ROM found.\n\n"
+                    + "This app does not include the game. Select your own\n"
+                    + "Sonic 2 (World, Rev A) raw ROM (.bin/.md/.gen) to continue.";
+        TextView body = text(intro, 15, FG_DIM, false);
         body.setGravity(Gravity.CENTER);
         body.setPadding(0, dp(16), 0, dp(24));
         root.addView(body);
 
-        Button pick = new Button(this);
-        pick.setText("Select ROM…");
-        pick.setAllCaps(false);
-        pick.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        pick.setTypeface(Typeface.DEFAULT_BOLD);
-        pick.setTextColor(BG);
-        pick.setBackgroundColor(ACCENT);
-        pick.setPadding(dp(32), dp(12), dp(32), dp(12));
-        pick.setOnClickListener(v -> {
-            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            i.addCategory(Intent.CATEGORY_OPENABLE);
-            i.setType("*/*");
-            startActivityForResult(i, REQ_PICK);
+        pickButton = new Button(this);
+        pickButton.setText(R.string.rom_select);
+        pickButton.setAllCaps(false);
+        pickButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        pickButton.setTypeface(Typeface.DEFAULT_BOLD);
+        pickButton.setTextColor(BG);
+        pickButton.setBackgroundColor(ACCENT);
+        pickButton.setPadding(dp(32), dp(12), dp(32), dp(12));
+        pickButton.setEnabled(dir != null);
+        pickButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQ_PICK);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.CENTER_HORIZONTAL;
-        root.addView(pick, lp);
+        root.addView(pickButton, lp);
 
         status = text("", 13, FG_DIM, false);
         status.setGravity(Gravity.CENTER);
         status.setPadding(0, dp(16), 0, 0);
         root.addView(status);
-
         setContentView(root);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null) return;
-        final Uri uri = data.getData();
-        if (uri == null) return;
-        status.setText("copying…");
-        new Thread(() -> copyRom(uri)).start();
-    }
-
-    // ---- worker thread ------------------------------------------------------
-
-    private void copyRom(Uri uri) {
-        File dest = new File(getExternalFilesDir(null), "sonic2.bin");
-        File tmp = new File(getExternalFilesDir(null), "sonic2.bin.part");
-        long crc;
-        try (InputStream in = getContentResolver().openInputStream(uri);
-             FileOutputStream out = new FileOutputStream(tmp)) {
-            CRC32 c = new CRC32();
-            byte[] buf = new byte[65536];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                out.write(buf, 0, n);
-                c.update(buf, 0, n);
-            }
-            crc = c.getValue();
-        } catch (Exception e) {
-            Log.w(TAG, "copy failed", e);
-            tmp.delete();
-            runOnUiThread(() -> status.setText("couldn't read that file — try another"));
+        if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null) {
             return;
         }
+        Uri uri = data.getData();
+        if (uri == null) return;
+        setBusy(true, "copying…");
+        new Thread(() -> copyRom(uri), "rom-copy").start();
+    }
+
+    private void copyRom(Uri uri) {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) {
+            postFailure("app storage is unavailable");
+            return;
+        }
+
+        File dest = new File(dir, RomGateFiles.INSTALLED_ROM);
+        File staged = new File(dir, RomGateFiles.INSTALLED_ROM + ".part");
+        long crc;
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             FileOutputStream out = new FileOutputStream(staged, false)) {
+            if (in == null) throw new java.io.IOException("picker returned no stream");
+            CRC32 calculator = new CRC32();
+            byte[] buffer = new byte[65536];
+            int count;
+            long total = 0;
+            while ((count = in.read(buffer)) != -1) {
+                if (count > 0) {
+                    total += count;
+                    if (total > RomGateFiles.MAX_ROM_BYTES) {
+                        throw new java.io.IOException("selected file is too large");
+                    }
+                    out.write(buffer, 0, count);
+                    calculator.update(buffer, 0, count);
+                }
+            }
+            out.getFD().sync();
+            crc = calculator.getValue();
+        } catch (Exception e) {
+            Log.w(TAG, "copy failed", e);
+            staged.delete();
+            postFailure("couldn't read that file — try another");
+            return;
+        }
+
         runOnUiThread(() -> {
-            if (crc == SONIC2_REVA_CRC) {
-                commitRom(tmp, dest);
+            if (!RomGateFiles.hasGenesisHeader(staged)) {
+                staged.delete();
+                setBusy(false, "not a raw Genesis ROM (.bin/.md/.gen)");
+            } else if (crc == RomGateFiles.SONIC2_REVA_CRC) {
+                commitRom(staged, dest, crc, false);
             } else {
                 new AlertDialog.Builder(this)
-                    .setTitle("Not Sonic 2 (Rev A)")
-                    .setMessage(String.format(
-                        "This file's CRC32 is %08X, not the expected %08X for "
-                        + "Sonic 2 (World, Rev A). The recompiled code was built "
-                        + "from Rev A, so other ROMs will not run correctly.\n\n"
-                        + "Use it anyway?", crc, SONIC2_REVA_CRC))
-                    .setPositiveButton("Use anyway", (d, w) -> commitRom(tmp, dest))
-                    .setNegativeButton("Cancel", (d, w) -> {
-                        tmp.delete();
-                        status.setText("cancelled — pick the Rev A .bin");
-                    })
-                    .show();
+                        .setTitle("Not Sonic 2 (Rev A)")
+                        .setMessage(String.format(Locale.ROOT,
+                                "This file's CRC32 is %08X, not the expected %08X for "
+                                + "Sonic 2 (World, Rev A). The recompiled code was "
+                                + "built from Rev A, so other ROMs may not run.\n\n"
+                                + "Use and remember this exact file anyway?",
+                                crc, RomGateFiles.SONIC2_REVA_CRC))
+                        .setPositiveButton("Use anyway",
+                                (dialog, which) ->
+                                        commitRom(staged, dest, crc, true))
+                        .setNegativeButton("Cancel", (dialog, which) -> {
+                            staged.delete();
+                            setBusy(false, "cancelled — pick the Rev A ROM");
+                        })
+                        .setOnCancelListener(dialog -> {
+                            staged.delete();
+                            setBusy(false, "cancelled — pick the Rev A ROM");
+                        })
+                        .show();
             }
         });
     }
 
-    private void commitRom(File tmp, File dest) {
-        if (!tmp.renameTo(dest)) {
-            tmp.delete();
-            status.setText("couldn't save the ROM — storage problem?");
-            return;
-        }
-        // Stale cfg would keep pointing at an old file; let the engine rescan.
-        File dir = getExternalFilesDir(null);
-        File[] cfgs = dir == null ? null : dir.listFiles(
-                (d, name) -> name.startsWith("rom-") && name.endsWith(".cfg"));
-        if (cfgs != null) for (File f : cfgs) f.delete();
-        launchGame();
-    }
-
-    // ---- helpers ------------------------------------------------------------
-
-    private File findRom() {
-        File dir = getExternalFilesDir(null);
-        File[] files = dir == null ? null : dir.listFiles();
-        if (files == null) return null;
-        for (File f : files) {
-            String n = f.getName().toLowerCase();
-            for (String ext : ROM_EXTS)
-                if (n.endsWith(ext) && looksLikeRom(f, ext)) return f;
-        }
-        return null;
-    }
-
-    /** Savestates share the .bin extension (native_save_N.bin) — require the
-     *  Genesis "SEGA" header at 0x100. .smd is interleaved, so extension only. */
-    private boolean looksLikeRom(File f, String ext) {
-        if (ext.equals(".smd")) return true;
-        try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(f, "r")) {
-            byte[] hdr = new byte[4];
-            r.seek(0x100);
-            r.readFully(hdr);
-            return hdr[0] == 'S' && hdr[1] == 'E' && hdr[2] == 'G' && hdr[3] == 'A';
+    private void commitRom(File staged, File dest, long crc, boolean approved) {
+        try {
+            RomGateFiles.replaceFile(staged, dest);
+            if (approved) {
+                RomGateFiles.recordApproval(dest.getParentFile(), dest, crc);
+            } else {
+                RomGateFiles.clearApproval(dest.getParentFile());
+            }
+            RomGateFiles.writeRomConfig(dest.getParentFile(), dest);
+            launchGame();
         } catch (Exception e) {
-            return false;
+            Log.w(TAG, "ROM install failed", e);
+            staged.delete();
+            setBusy(false, "couldn't save the ROM — storage problem?");
         }
+    }
+
+    private void postFailure(String message) {
+        runOnUiThread(() -> setBusy(false, message));
+    }
+
+    private void setBusy(boolean busy, String message) {
+        if (pickButton != null) pickButton.setEnabled(!busy);
+        if (status != null) status.setText(message);
     }
 
     private void launchGame() {
@@ -200,16 +211,17 @@ public class RomGateActivity extends Activity {
         finish();
     }
 
-    private TextView text(String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTextColor(color);
-        t.setTypeface(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
-        return t;
+    private TextView text(String value, int sp, int color, boolean bold) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        view.setTextColor(color);
+        view.setTypeface(Typeface.MONOSPACE,
+                bold ? Typeface.BOLD : Typeface.NORMAL);
+        return view;
     }
 
-    private int dp(int v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }

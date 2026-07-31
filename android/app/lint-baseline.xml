@@ -1,0 +1,598 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 8.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (8.1.1)" variant="all" version="8.1.1">
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.readCharacteristic: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                    if (!mGatt.readCharacteristic(chr)) {"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="86"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.writeCharacteristic: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                    if (!mGatt.writeCharacteristic(chr)) {"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="97"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.setCharacteristicNotification: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                            mGatt.setCharacteristicNotification(chr, true);"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="122"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.writeDescriptor: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                            if (!mGatt.writeDescriptor(cccd)) {"
+        errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="124"
+            column="34"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.connectGatt: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                return mDevice.connectGatt(mManager.getContext(), managed, this, TRANSPORT_LE);"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="191"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.connectGatt: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                return mDevice.connectGatt(mManager.getContext(), managed, this);"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="193"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.connectGatt: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="            return mDevice.connectGatt(mManager.getContext(), managed, this);"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="196"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothManager.getConnectionState: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        return btManager.getConnectionState(mDevice, BluetoothProfile.GATT);"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="219"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="            mGatt.disconnect();"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="225"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                    mGatt.disconnect();"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="247"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                        mGatt.disconnect();"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="259"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                mGatt.disconnect();"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="274"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="            mGatt.disconnect();"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="334"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.discoverServices: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                        mGatt.discoverServices();"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="428"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                gatt.disconnect();"
+        errorLine2="                ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="447"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.writeCharacteristic: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="                gatt.writeCharacteristic(reportChr);"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="504"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.disconnect: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="            g.disconnect();"
+        errorLine2="            ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="639"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothGatt.close: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="            g.close();"
+        errorLine2="            ~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java"
+            line="640"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothAdapter.getBondedDevices: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        for (BluetoothDevice device : btAdapter.getBondedDevices()) {"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="386"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothManager.getConnectedDevices: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        List&lt;BluetoothDevice> currentConnected = mBluetoothManager.getConnectedDevices(BluetoothProfile.GATT);"
+        errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="434"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.getName: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        if (bluetoothDevice.getName() == null) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="507"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.getName: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        return bluetoothDevice.getName().equals(&quot;SteamController&quot;) &amp;&amp; ((bluetoothDevice.getType() &amp; BluetoothDevice.DEVICE_TYPE_LE) != 0);"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="511"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by BluetoothDevice.getType: android.permission.BLUETOOTH_CONNECT"
+        errorLine1="        return bluetoothDevice.getName().equals(&quot;SteamController&quot;) &amp;&amp; ((bluetoothDevice.getType() &amp; BluetoothDevice.DEVICE_TYPE_LE) != 0);"
+        errorLine2="                                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="511"
+            column="73"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by AudioRecord.AudioRecord: android.permission.RECORD_AUDIO"
+        errorLine1="                mAudioRecord = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, sampleRate,"
+        errorLine2="                               ^">
+        <location
+            file="src/main/java/org/libsdl/app/SDLAudioManager.java"
+            line="229"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        spedit.commit();"
+        errorLine2="               ~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="138"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="        return String.format(&quot;%s/%x/%x/%d&quot;, mDevice.getDeviceName(), mDevice.getVendorId(), mDevice.getProductId(), mInterfaceIndex);"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceUSB.java"
+            line="34"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 24 (current min is 21): `android.view.MotionEvent#AXIS_RELATIVE_X`"
+        errorLine1="                    float x = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);"
+        errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="700"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 24 (current min is 21): `android.view.MotionEvent#AXIS_RELATIVE_Y`"
+        errorLine1="                    float y = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);"
+        errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="701"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 24 (current min is 21): `android.view.MotionEvent#AXIS_RELATIVE_X`"
+        errorLine1="            return event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="731"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 24 (current min is 21): `android.view.MotionEvent#AXIS_RELATIVE_Y`"
+        errorLine1="            return event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="740"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 21): `android.os.VibrationEffect#createOneShot`"
+        errorLine1="                haptic.vib.vibrate(VibrationEffect.createOneShot(length, vibeValue));"
+        errorLine2="                                                   ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="494"
+            column="52"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 21): `android.os.Vibrator#vibrate`"
+        errorLine1="                haptic.vib.vibrate(VibrationEffect.createOneShot(length, vibeValue));"
+        errorLine2="                           ~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="494"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 21): `android.view.View#requestPointerCapture`"
+        errorLine1="                SDLActivity.getContentView().requestPointerCapture();"
+        errorLine2="                                             ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="824"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 21): `android.view.View#releasePointerCapture`"
+        errorLine1="                SDLActivity.getContentView().releasePointerCapture();"
+        errorLine2="                                             ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="826"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 21): `android.view.View#requestPointerCapture`"
+        errorLine1="            SDLActivity.getContentView().requestPointerCapture();"
+        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="839"
+            column="42"/>
+    </issue>
+
+    <issue
+        id="OldTargetApi"
+        message="Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the android.os.Build.VERSION_CODES javadoc for details."
+        errorLine1="        targetSdkVersion 34"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="18"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UnspecifiedRegisterReceiverFlag"
+        message="`mUsbBroadcast` \&#xA;is missing `RECEIVER_EXPORTED` or `RECEIVER_NOT_EXPORTED` flag for unprotected \&#xA;broadcasts registered for org.libsdl.app.USB_PERMISSION"
+        errorLine1="        mContext.registerReceiver(mUsbBroadcast, filter);"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="196"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is never &lt; 21"
+        errorLine1="        if (!mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) || (Build.VERSION.SDK_INT &lt; 18 /* Android 4.3 (JELLY_BEAN_MR2) */)) {"
+        errorLine2="                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="367"
+            column="101"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="        if (Build.VERSION.SDK_INT >= 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceUSB.java"
+            line="55"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="        if (Build.VERSION.SDK_INT >= 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceUSB.java"
+            line="77"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="        if (Build.VERSION.SDK_INT >= 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceUSB.java"
+            line="89"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="                if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="771"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="        if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="846"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="            if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="1623"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="            if (Build.VERSION.SDK_INT >= 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="1804"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is never &lt; 21"
+        errorLine1="        if (Build.VERSION.SDK_INT &lt; 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLAudioManager.java"
+            line="82"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is never &lt; 21"
+        errorLine1="        if (android.os.Build.VERSION.SDK_INT &lt; 21 /* Android 5.0 (LOLLIPOP) */) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLAudioManager.java"
+            line="363"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="            if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLControllerManager.java"
+            line="45"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="            if (Build.VERSION.SDK_INT >= 17 /* Android 4.2 (JELLY_BEAN_MR1) */) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLSurface.java"
+            line="119"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `HIDDeviceManager` which has field `mContext` pointing to `Context`); this is a memory leak"
+        errorLine1="    private static HIDDeviceManager sManager;"
+        errorLine2="            ~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/HIDDeviceManager.java"
+            line="32"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields; this is a memory leak"
+        errorLine1="    protected static Context mContext;"
+        errorLine2="              ~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDL.java"
+            line="85"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields; this is a memory leak"
+        errorLine1="    protected static ViewGroup mLayout;"
+        errorLine2="              ~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="215"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `HIDDeviceManager` which has field `mContext` pointing to `Context`); this is a memory leak"
+        errorLine1="    protected static HIDDeviceManager mHIDDeviceManager;"
+        errorLine2="              ~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLActivity.java"
+            line="220"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields; this is a memory leak"
+        errorLine1="    protected static Context mContext;"
+        errorLine2="              ~~~~~~">
+        <location
+            file="src/main/java/org/libsdl/app/SDLAudioManager.java"
+            line="21"
+            column="15"/>
+    </issue>
+
+</issues>

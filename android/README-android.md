@@ -4,17 +4,22 @@ Sideload-oriented Android port of the Sonic 2 native runner (arm64 only).
 The gradle project wraps SDL 2.28.5's `android-project` template; the game
 ships as `libmain.so` loaded by `org.libsdl.app.SDLActivity`.
 
+## Dependencies
+
+Run this once from `android/`:
+
+```sh
+python tools/setup_deps.py
+```
+
+The script SHA-256-verifies SDL 2.28.5 and checks out libucontext at the
+reviewed commit `49e671dd52ff6791295d8161ad3b6da7dc5f6f9d`. Both land under
+gitignored `external/`; no symlinks or platform-specific checkout settings are
+required. libucontext's required ISC notice is packaged in the APK at
+`app/src/main/assets/THIRD-PARTY-LICENSES.txt`.
+
 ## Layout
 
-- `external/` — fetched, not committed (gitignored):
-  - `external/SDL2-2.28.5/` — SDL source (the engine's bundled Windows
-    devel package has no source):
-    `curl -L https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz | tar xz -C external/`
-  - `external/libucontext/` — ISC-licensed ucontext implementation; bionic
-    declares but does not implement makecontext/swapcontext, which
-    `runner/fiber_compat.c` needs (aliased in under `__ANDROID__`):
-    `git clone https://github.com/kaniini/libucontext external/libucontext`
-    (built at `49e671dd52ff`; any nearby commit should do).
 - `generated/sonic2/` — host-emitted generated C. The recompiler is a host
   tool and cannot run inside the NDK cross-build, so regenerate by hand after
   ROM/toml/recompiler changes:
@@ -26,8 +31,6 @@ ships as `libmain.so` loaded by `org.libsdl.app.SDLActivity`.
   ```
 
   (No `--reverse-debug` — the device build is a stripped native build.)
-- `app/jni/SDL` → symlink to the SDL source; `app/jni/shim-include/SDL2` →
-  symlink so the runner's `<SDL2/SDL.h>` include style resolves.
 - `app/jni/src/CMakeLists.txt` — the real target; mirrors the desktop source
   set minus launcher UI, netplay, cosim, reverse-debug.
 
@@ -38,6 +41,10 @@ export JAVA_HOME="$HOME/Library/Java/JavaVirtualMachines/jbr-21.0.11/Contents/Ho
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+`assembleRelease` intentionally produces an unsigned APK. Supply a real
+release signing configuration before distributing it; local sideload testing
+should use `assembleDebug`.
 
 ## Device files
 
@@ -54,18 +61,20 @@ adb push debug.ini $DST/                          # opens TCP cmd server :4380
 adb forward tcp:4380 tcp:4380                     # then probes work from the host
 ```
 
-The runner (under `__ANDROID__`) anchors all config/saves there, `chdir`s to
-it, and boots the ROM from `rom-Sonic2.cfg`, else the first
-`*.bin`/`*.md`/`*.gen`/`*.smd` it finds there.
+The runner (under `__ANDROID__`) anchors all config/saves there and `chdir`s to
+it. The launcher writes an absolute, game-specific `rom-Sonic2.cfg`, so other
+Genesis images in the same directory cannot win an arbitrary directory scan.
 
 The `adb push` is optional: the launcher activity (`RomGateActivity`) is a
 ROM gate. If no ROM is in the files dir it shows an in-app picker (Storage
 Access Framework — no storage permissions) and copies the chosen file to
-`sonic2.bin` there, deleting any stale `rom-*.cfg` so the engine rescans.
-The copy is CRC32-verified against Sonic 2 (World, Rev A) `7B905383`; a
-mismatch gets a "use anyway?" warning since the recompiled code was
-generated from Rev A. With a ROM already present the gate forwards to the
-game with no visible UI.
+`sonic2.bin` using a rollback-safe replacement, then pins that exact path.
+The copy is CRC32-verified against Sonic 2 (World, Rev A) `7B905383`.
+A mismatch gets a one-time "use anyway?" warning; approval is remembered only
+for that filename and CRC. Changed, unapproved, or unrelated ROMs return to the
+picker, while the exact Rev A dump always wins if several raw ROMs are present.
+Only raw `.bin`/`.md`/`.gen` images are supported—interleaved SMD data is not
+accepted because the runner does not deinterleave it.
 
 Widescreen is not compiled in as a fork: it is the same build with
 `widescreen = 1` in `settings.ini` (or `GENESIS_WIDESCREEN=1` on desktop).
