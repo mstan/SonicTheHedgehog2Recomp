@@ -129,7 +129,7 @@ this; otherwise note it in WIDESCREEN_ISSUES.md.
   level start; arm mid-level via runtime overlay; scroll left/right/up/down
   across strip seams; MCZ (whole-bg variant), CNZ (alt entry), EHZ/HTZ/ARZ spot
   checks; 2P mode unaffected (widescreen stays gated off).
-- `dispatch_misses.log` empty after each run.
+- `dispatch_misses.toml` has an empty `functions.extra` array after each run.
 - Engine-first commit order (PRINCIPLES #20): recompiler/engine changes land in
   `segagenesisrecomp` before the game repos consume them; Sonic 1 / Sonic 3
   rebuild + smoke (shared code path — `Draw_All` analogs differ per game, so

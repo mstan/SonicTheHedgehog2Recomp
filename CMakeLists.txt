@@ -19,8 +19,14 @@ set(SONIC2_GAME_VERSION "dev" CACHE STRING
 # Engine root. Public layout: the committed `segagenesisrecomp` submodule
 # (clone --recursive is self-contained). Local-dev override: if a gitignored
 # `engine-local` symlink -> ../segagenesisrecomp is present, prefer it so every
-# game repo shares ONE engine checkout. Create it with scripts/link-engine.*.
-if(EXISTS "${CMAKE_SOURCE_DIR}/engine-local")
+# game repo shares ONE engine checkout. CI and audit builds can instead pass an
+# explicit checkout without mutating links.
+set(GENESIS_RECOMP_ROOT "" CACHE PATH
+    "Optional shared Genesis framework checkout (defaults to engine-local/submodule)")
+if(GENESIS_RECOMP_ROOT)
+    set(RECOMP_ROOT "${GENESIS_RECOMP_ROOT}")
+    message(STATUS "engine: explicit GENESIS_RECOMP_ROOT override")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/engine-local")
     set(RECOMP_ROOT "${CMAKE_SOURCE_DIR}/engine-local")
     message(STATUS "engine: local-dev override (engine-local/ -> shared checkout)")
 else()
@@ -246,7 +252,8 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 # the runner's main.c), links system GL, stages assets/ next to the exe.
 # The dev-only oracle target remains launcher-free.
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
-recomp_target_launcher_ui(SonicTheHedgehog2Recomp BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
+recomp_target_launcher_ui(SonicTheHedgehog2Recomp CONSOLE genesis
+    BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
 
 # Two-player delay-synchronized netplay. The engine owns the transport,
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.

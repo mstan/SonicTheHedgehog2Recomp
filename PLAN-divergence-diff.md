@@ -43,7 +43,7 @@ We already have most of this stack, just not used correctly:
 3. **printf-based `[FPACE]` and `--vdp-ctrl-log`**. Both violate "no printf debugging." Should be FrameRecord fields (FPACE counters) and a TCP-queryable ring (vdp control writes).
 4. **Sonic 2 has no `fill_frame_record`** — its FrameRecord game_data tail is zeros. So `internal_frame_ctr` isn't recorded, can't be used for sync.
 5. **No Tier 1 store ring** for arbitrary RAM. We can only file-log writes to fixed addresses — not query-by-frame retroactively.
-6. **`dispatch_misses.log` ignored.** RULE 0a says check after every run. We never have.
+6. **Dispatch evidence ignored.** RULE 0a says check after every run. We never had.
 
 ## The plan — bring Sonic 2 onto the canon stack
 
@@ -69,8 +69,12 @@ File: a new `runner/store_ring.c`, hooked into `g_mem_write_trace_fn` (already f
 ### Step 5 — Retire `--vdp-ctrl-log` printf
 Once Tier 1 ring exists, the vdp control sequence is just `rdb_range $C00000 $C00007`. Delete the printf path; keep the ring.
 
-### Step 6 — `dispatch_misses.log` check in the runner exit path
-On `--max-frames` exit (and on watchdog), append the active dispatch_misses to a stable file path next to the binary. Add a one-liner Python helper `tools/check_dispatch_misses.py` that reads it and proposes `extra_func` lines for `game.cfg`. Make this part of the standard "after every run" workflow per CLAUDE.md.
+### Step 6 — dispatch evidence check in the runner exit path
+On `--max-frames` exit (and on watchdog), write the active true-miss set to
+`dispatch_misses.toml` next to the binary. `tools/check_dispatch_misses.py`
+parses that TOML, compares it with `game.toml` plus discovery files, and emits
+candidate `[functions].extra` entries for disassembly validation. Make this
+part of the standard "after every run" workflow per CLAUDE.md.
 
 ### Step 7 — Apply state-sync workflow to find Sonic 2's white-bg bug
 - Run native + oracle to frame ~600 with no input (let attract demo run).

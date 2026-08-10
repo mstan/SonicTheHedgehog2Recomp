@@ -1,140 +1,125 @@
-"""
-check_dispatch_misses.py — read dispatch_misses.log next to the binary
-and propose extra_func lines for game.cfg.
+"""Report runtime dispatch evidence not already present in game configuration.
 
-Per PRINCIPLES.md rule 13a + the project's CLAUDE.md "after every run"
-workflow, the recompiled binary writes dispatch_misses.log on shutdown
-listing every address `call_by_address()` couldn't resolve. Each line
-is already in the cfg-compatible form `extra_func 0xADDR`. This script:
-
-  1. Reads the log next to the most recent build (defaults to the
-     Release dir).
-  2. Compares against the active game.cfg's existing extra_func set.
-  3. Prints the new (unseen) addresses, one per line, ready to append.
-  4. With --append, writes them directly into game.cfg under a
-     dated comment block.
-
-Usage:
-    python tools/check_dispatch_misses.py
-    python tools/check_dispatch_misses.py --log build/Release/dispatch_misses.log
-    python tools/check_dispatch_misses.py --append   # write into game.cfg
+The runner writes dispatch_misses.toml as a directly parseable GameConfig
+discovery file. Addresses remain evidence, not authority: verify every result
+against the disassembly before adding it to game.toml or a discovery file.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime
 import os
 import re
 import sys
+import tomllib
 
 
-REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_LOG = os.path.join(REPO_ROOT, "build", "Release", "dispatch_misses.log")
-DEFAULT_CFG = os.path.normpath(os.path.join(
-    REPO_ROOT, "..", "SonicTheHedgehogRecomp", "segagenesisrecomp",
-    "sonicthehedgehog2", "game.cfg"))
-
-# Accepts both `extra_func 0x000206` (runner output) and `extra_func 000206`
-# (existing game.cfg entries). The trailing comment after the addr is
-# allowed.
-ADDR_RE = re.compile(r"^extra_func\s+(?:0[xX])?([0-9A-Fa-f]+)\b")
-FILE_RE = re.compile(r"^extra_func_file\s+(\S+)")
-# disasm_seeds / disasm_subs / disasm_jumptables files: one address per line,
-# typically `00xxxx` hex. Lenient parser — strip comments, accept leading
-# `0x`, accept the `address  name` two-column form.
-SEED_LINE_RE = re.compile(r"^\s*(?:0[xX])?([0-9A-Fa-f]{4,8})\b")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def read_addrs(path: str) -> set[int]:
-    """Pull every address from an extra_func / extra_func_file chain."""
-    addrs: set[int] = set()
-    if not os.path.exists(path):
-        return addrs
-    base = os.path.dirname(os.path.abspath(path))
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            m = ADDR_RE.match(line)
-            if m:
-                addrs.add(int(m.group(1), 16))
-                continue
-            mf = FILE_RE.match(line)
-            if mf:
-                rel = mf.group(1)
-                seed_path = rel if os.path.isabs(rel) else os.path.join(base, rel)
-                addrs |= _read_seed_file(seed_path)
-    return addrs
+def _engine_root() -> str:
+    for name in ("engine-local", "segagenesisrecomp"):
+        candidate = os.path.join(REPO_ROOT, name)
+        if os.path.isdir(candidate):
+            return candidate
+    return os.path.join(REPO_ROOT, "segagenesisrecomp")
 
 
-def _read_seed_file(path: str) -> set[int]:
-    """Seed/sub/jumptable files are themselves cfg-snippets — same syntax."""
-    addrs: set[int] = set()
-    if not os.path.exists(path):
-        return addrs
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            line = line.split("#", 1)[0].strip()
-            if not line:
-                continue
-            m = ADDR_RE.match(line)
-            if m:
-                addrs.add(int(m.group(1), 16))
-                continue
-            m = SEED_LINE_RE.match(line)
-            if m:
-                addrs.add(int(m.group(1), 16))
+DEFAULT_EVIDENCE = os.path.join(
+    REPO_ROOT, "build", "Release", "dispatch_misses.toml"
+)
+DEFAULT_GAME = os.path.join(_engine_root(), "sonicthehedgehog2", "game.toml")
+
+
+def _native_path(path: str) -> str:
+    """Accept Windows drive paths when invoked from an MSYS Python."""
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", path):
+        drive = path[0].lower()
+        tail = path[2:].replace("\\", "/")
+        return f"/{drive}{tail}"
+    return path
+
+
+def _load_toml(path: str) -> dict:
+    with open(path, "rb") as source:
+        return tomllib.load(source)
+
+
+def read_function_addrs(path: str, visited: set[str] | None = None) -> set[int]:
+    """Read [functions].extra recursively through game.discovery_files."""
+    resolved = os.path.realpath(_native_path(path))
+    if visited is None:
+        visited = set()
+    if resolved in visited or not os.path.isfile(resolved):
+        return set()
+    visited.add(resolved)
+
+    data = _load_toml(resolved)
+    functions = data.get("functions", {})
+    addrs = {int(value) for value in functions.get("extra", [])}
+
+    base = os.path.dirname(resolved)
+    for relative in data.get("game", {}).get("discovery_files", []):
+        child = relative if os.path.isabs(relative) else os.path.join(base, relative)
+        addrs.update(read_function_addrs(child, visited))
     return addrs
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--log", default=DEFAULT_LOG,
-                    help=f"path to dispatch_misses.log (default: {DEFAULT_LOG})")
-    ap.add_argument("--cfg", default=DEFAULT_CFG,
-                    help=f"path to game.cfg (default: {DEFAULT_CFG})")
-    ap.add_argument("--append", action="store_true",
-                    help="append new addresses to game.cfg under a dated block")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--log",
+        default=DEFAULT_EVIDENCE,
+        help=f"runtime evidence TOML (default: {DEFAULT_EVIDENCE})",
+    )
+    parser.add_argument(
+        "--cfg",
+        default=DEFAULT_GAME,
+        help=f"active game.toml (default: {DEFAULT_GAME})",
+    )
+    args = parser.parse_args()
 
-    if not os.path.exists(args.log):
-        print(f"[dispatch_misses] log not found: {args.log}")
-        print("  Run the binary at least once (it writes the log on shutdown).")
+    args.log = _native_path(args.log)
+    args.cfg = _native_path(args.cfg)
+
+    if not os.path.isfile(args.log):
+        print(f"[dispatch_misses] evidence not found: {args.log}")
+        print("  Run the binary once; it writes dispatch_misses.toml at startup/shutdown.")
+        return 0
+    if not os.path.isfile(args.cfg):
+        print(f"[dispatch_misses] game config not found: {args.cfg}", file=sys.stderr)
+        return 2
+
+    evidence_data = _load_toml(args.log)
+    if evidence_data.get("format_version") != 1:
+        print("[dispatch_misses] unsupported or missing format_version", file=sys.stderr)
+        return 2
+    if evidence_data.get("evidence_kind") != "dispatch_miss":
+        print("[dispatch_misses] evidence_kind is not dispatch_miss", file=sys.stderr)
+        return 2
+
+    evidence_addrs = read_function_addrs(args.log)
+    configured_addrs = read_function_addrs(args.cfg)
+    candidates = sorted(evidence_addrs - configured_addrs)
+
+    print(f"[dispatch_misses] evidence: {args.log}")
+    print(f"  evidence addresses : {len(evidence_addrs)}")
+    print(f"[dispatch_misses] config  : {args.cfg}")
+    print(f"  configured extras  : {len(configured_addrs)}")
+    print(f"  new candidates     : {len(candidates)}")
+
+    if not candidates:
+        print("[dispatch_misses] no new candidates.")
         return 0
 
-    log_addrs = read_addrs(args.log)
-    cfg_addrs = read_addrs(args.cfg)
-    new_addrs = sorted(log_addrs - cfg_addrs)
-
-    print(f"[dispatch_misses] log    : {args.log}")
-    print(f"  log addresses     : {len(log_addrs)}")
-    print(f"[dispatch_misses] cfg    : {args.cfg}")
-    print(f"  cfg extra_func    : {len(cfg_addrs)}")
-    print(f"  new (in log only) : {len(new_addrs)}")
-
-    if not new_addrs:
-        print("[dispatch_misses] no new addresses — nothing to add.")
-        return 0
-
-    print("\n# Add to game.cfg:")
-    for a in new_addrs:
-        print(f"extra_func 0x{a:06X}")
-
-    if args.append:
-        if not os.path.exists(args.cfg):
-            print(f"\n[dispatch_misses] --append failed: cfg not found at {args.cfg}")
-            return 2
-        stamp = datetime.date.today().isoformat()
-        with open(args.cfg, "a", encoding="utf-8") as f:
-            f.write(f"\n# Added by check_dispatch_misses.py on {stamp} "
-                    f"({len(new_addrs)} addresses)\n")
-            for a in new_addrs:
-                f.write(f"extra_func 0x{a:06X}\n")
-        print(f"\n[dispatch_misses] appended {len(new_addrs)} entries to {args.cfg}")
-        print("  -> regenerate (regen.bat) and rebuild before next run.")
-    return 0
+    print("\n# Verify these against disassembly before adding them:")
+    print("[functions]")
+    print("extra = [")
+    for index, address in enumerate(candidates):
+        comma = "," if index + 1 < len(candidates) else ""
+        print(f"  0x{address:06X}{comma}")
+    print("]")
+    return 1
 
 
 if __name__ == "__main__":
