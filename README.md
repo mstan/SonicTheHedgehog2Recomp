@@ -1,5 +1,45 @@
 # SonicTheHedgehog2Recomp
 
+## Experimental widescreen mod
+
+In the launcher's **Mods** page, enable **Widescreen** and choose **Adaptive
+(fit window)**, **16:9**, **21:9**, or **32:9**. The same controls are available
+in the in-game settings overlay. It is disabled by default; selecting an
+aspect alone does not enable it. Settings persist between launches.
+
+This uses a Sonic-2-specific custom renderer through the shared framework's
+Sonic 1 mod interface. It reconstructs scenery from the real stage data,
+expands object spawning/culling and ring visibility, anchors the gameplay HUD
+to the screen, and keeps the selected canvas through title cards and fades.
+Adaptive follows live window resizing without a 32:9 cap; the practical
+limits are texture size, memory, and rendering cost.
+
+While enabled, the mod also gives single-player level simulation extra CPU
+headroom so the wider active object range does not inherit the original
+hardware's slowdown. Physics still advances once per VBlank; music, DMA,
+interrupts and display timing retain their normal clocks. Disabling the mod
+restores native CPU timing.
+
+For development, `--widescreen fit`, `--widescreen 32:9`, and
+`--widescreen off` override the saved selection. `--widescreen stage` requests
+the entire stage width; arbitrary ratios such as `--widescreen 64:9` also work.
+
+First-pass limitations:
+
+- Special-stage scenery expands, but the half-pipe and its HUD retain the
+  original centered projection.
+- Native two-player competition keeps its original split-screen rendering;
+  netplay disables the custom renderer.
+- Extreme stage-length views can exhaust the original dynamic-object pool.
+  Loading prioritizes objects nearest the player; rendering itself has no
+  Genesis sprite-per-line limit.
+- This is an experimental port, not a full-game/boss-route certification.
+  Collision and stage decompression are unchanged, but expanded activation
+  deliberately changes when off-screen enemies and objects begin updating.
+
+Renderer details and input-only validation commands are in
+[CUSTOM-VIDEO.md](segagenesisrecomp/sonicthehedgehog2/CUSTOM-VIDEO.md).
+
 ## Netplay development
 
 The native target opts into the shared `segagenesisrecomp` delay-sync runtime
