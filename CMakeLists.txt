@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp C)
+project(SonicTheHedgehog2Recomp VERSION 0.5.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
-set(SONIC2_GAME_VERSION "dev" CACHE STRING
+set(SONIC2_GAME_VERSION "0.5.0" CACHE STRING
     "Version used to match compatible Sonic 2 netplay lobbies")
 
 # ---------------------------------------------------------------------------
@@ -147,6 +147,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/video/color_lut.c"      # present-time 9-bit CRT/composite LUT
     ${SONIC2_GENERATED_SOURCES}
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_video.c"
 )
 
 if(SONIC_REVERSE_DEBUG)
@@ -251,6 +252,7 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 # Defines RECOMP_LAUNCHER (un-gates the seam in
 # the runner's main.c), links system GL, stages assets/ next to the exe.
 # The dev-only oracle target remains launcher-free.
+set(RECOMP_UI_ENABLE_MODS ON CACHE BOOL "Expose Sonic 2's opt-in built-in mods")
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 recomp_target_launcher_ui(SonicTheHedgehog2Recomp CONSOLE genesis
     BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
@@ -264,6 +266,12 @@ genesisrecomp_enable_netplay(SonicTheHedgehog2Recomp
     GAME_VERSION "${SONIC2_GAME_VERSION}"
     ICE
     PEER_VIEW)
+
+option(BUILD_TESTING "Build ROM-independent renderer and framework tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory("${RECOMP_ROOT}/tests" "${CMAKE_BINARY_DIR}/tests")
+endif()
 
 # ---------------------------------------------------------------------------
 
