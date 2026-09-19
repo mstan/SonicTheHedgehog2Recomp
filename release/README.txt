@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.5.0 — native static recompilation of Sonic the Hedgehog 2
+SonicTheHedgehog2Recomp v0.6.0 — native static recompilation of Sonic the Hedgehog 2
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -14,6 +14,31 @@ Sonic the Hedgehog 2 (World) (Rev A / REV01) ROM next to the exe, named:
 
 then run SonicTheHedgehog2Recomp.exe, or select it in the launcher. Keep the
 assets folder next to the executable. No ROM or save data is included.
+
+OPTIONAL SAVE MENU AND CAMPAIGN SRAM
+-----------------------------------
+In Mods > S3&K, supply your combined Sonic 3 & Knuckles ROM and enable
+Sonic 3-style Save Menu. This option is off by default. 1 PLAYER opens eight
+save slots plus No Save and Delete. Saves keep zone/act, Chaos Emeralds and
+completion; lives start fresh. Completed files can replay any zone at Act 1.
+The portrait is always Sonic & Tails; Options controls the actual characters.
+
+The Campaign SRAM picker is under this mod. Select an existing Sonic 2 campaign
+save anywhere to load and update that exact file. With no selection, the first
+save creates sonic2-campaign.srm beside the executable and remembers the path.
+Existing sonic2-campaign.sav files from the earlier build continue in place.
+Clear selection preserves the file. No Save creates nothing. A .bak beside the
+selected file holds its previous valid revision. ROMs are never modified.
+Raw Sonic 3 & Knuckles SRAM files are not compatible with this campaign format.
+
+OPTIONAL LOCAL PARTY
+--------------------
+Options supports up to four local player/CPU slots with unique characters.
+Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
+the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
+The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
+stages return to your chosen party. These party/save features are local-only;
+they do not expand netplay and cannot use machine quickstates.
 
 OPTIONAL WIDESCREEN
 ------------------
