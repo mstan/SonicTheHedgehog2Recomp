@@ -39,12 +39,13 @@ a solid wall to grab it, Up/Down climbs, jump releases away from the wall.
 
 P1 owns camera, lives and checkpoints. Companions respawn/catch up without
 spending P1 lives. VS remains native two-player with chosen P1/P2; NONE for P2
-is rejected. Native special stages use P1/P2 and restore companions afterward.
+is rejected. Special stages always use native Sonic and Tails, even for a solo
+campaign roster or P2=NONE. Your chosen characters and companions return afterward.
 
 ## Validation and known limits
 
-- 18 CTests and 21 serial live cases pass in the engine's ignored
-  `build/party-spawnfix-acceptance/` directory.
+- 18 CTests and 23 serial live cases pass in the engine's ignored
+  `build/party-native-special-acceptance/` directory.
 - Coverage: Options/persistence/uniqueness, swapped native roles, both 4P roster
   arrangements, widescreen, imports in both VS roles, P3/P4 input, springs, Amy
   enemy/monitor/EHZ boss hits, Knuckles terrain glide/grab/climb/wall-jump,
@@ -56,8 +57,9 @@ is rejected. Native special stages use P1/P2 and restore companions afterward.
   Four-player tests verify 251 native world ticks over 251 output frames.
 - Fixtures place actors/objects in RAM; they do not certify a complete campaign
   traversed by controller. The stock ROM is never modified.
-- Imported special-stage art is a rotated/scaled gameplay-sprite projection,
-  not original half-pipe art. CPU partners are basic followers, not pathfinders.
+- Special stages retain original Sonic/Tails art and native gameplay; imported,
+  swapped and solo campaign rosters produce identical half-pipe captures.
+  Campaign CPU partners are basic followers, not pathfinders.
   All-zone devices, power-up combinations, water palettes and full visual/audio
   fidelity need playtesting. Four physical controllers need your validation.
 - Machine quicksave/load is unavailable for experimental rosters: existing
