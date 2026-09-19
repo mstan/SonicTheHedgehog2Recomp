@@ -1,8 +1,9 @@
 # Sonic 2 local party playtest
 
-Branch: `experiment/sonic2-local-4p` in this checkout and
-`../_wt-sonic2-4p-engine`. A playable character/4P spike is ready for owner
-validation. This is not a claim of full-campaign or donor-perfect parity.
+The character/4P spike is integrated on master with pinned engine and UI
+dependencies. The `experiment/sonic2-local-4p` worktrees and local build remain
+available for playtesting. This is not a claim of full-campaign or donor-perfect
+parity. Megamix/Mighty/Shadow and six-player work were cancelled.
 
 ## Run this local build
 
@@ -88,5 +89,14 @@ accepts `-Archive` and `-RuntimeDirectory` to stage the verified private Amy
 donor for another build. No ROMs or donor art belong in commits/packages.
 
 Roster/mod settings are in `sonic2-party.ini` beside the executable. Consumer
-dependency pins stay unchanged until engine/UI commits exist upstream; this
-local build uses the explicit engine-worktree override above.
+dependency pins now reference published commits. The UI pin deliberately uses
+the tested Genesis-binding revision, which is included in UI master, rather
+than upgrading to unrelated newer UI changes. The existing local build uses
+the explicit engine-worktree override above; a recursive checkout can build
+using its pinned dependencies without that override.
+
+The engine's `docs/SONIC2_SHARED_ENGINE_VALIDATION.md` records seven Windows
+targets and byte-identical stock regression captures, including the existing
+Puyo build-file caveat. Other games retain two-controller discovery by default
+and do not enable Sonic 2's character, rendering, or save-state hooks. Save-screen
+and zone-selector work has not started; the next phase is a planning checkpoint.
