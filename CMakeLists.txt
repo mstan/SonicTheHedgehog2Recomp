@@ -148,6 +148,13 @@ set(SONIC2_SHARED_SOURCES
     ${SONIC2_GENERATED_SOURCES}
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_video.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_party.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_options.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_donor_assets.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_resources.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_mods.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_runtime.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_character.c"
 )
 
 if(SONIC_REVERSE_DEBUG)
@@ -170,6 +177,7 @@ set(SONIC2_INCLUDES_NATIVE
     "${RUNNER_ROOT}/external/superzazu"
     "${RUNNER_ROOT}/external/clowncommon"
     "${RECOMP_ROOT}/sonicthehedgehog2"
+    "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
 )
 
 # Clean-room own backend (VDP+bus+Z80 scheduler, superzazu Z80 core embedded
@@ -290,6 +298,7 @@ if(GENESIS_BUILD_COSIM)
         "${RECOMP_ROOT}/recompiler/src/rom_parser.c")
 
     add_executable(SonicTheHedgehog2Recomp_cosim
+        "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c"
         ${SONIC2_SHARED_SOURCES}
         ${OWN_BACKEND_SOURCES}
         ${SONIC2_COSIM_FLOOR_SOURCES}
