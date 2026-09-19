@@ -43,12 +43,15 @@ is rejected. Native special stages use P1/P2 and restore companions afterward.
 
 ## Validation and known limits
 
-- 18 CTests and 19 serial live cases pass in the engine's ignored
-  `build/party-acceptance-02/` directory.
+- 18 CTests and 21 serial live cases pass in the engine's ignored
+  `build/party-spawnfix-acceptance/` directory.
 - Coverage: Options/persistence/uniqueness, swapped native roles, both 4P roster
   arrangements, widescreen, imports in both VS roles, P3/P4 input, springs, Amy
   enemy/monitor/EHZ boss hits, Knuckles terrain glide/grab/climb/wall-jump,
   recovery, act reload and special-stage round trips.
+- Checkpoint-based special-stage returns now preserve companion terrain
+  collision settings. Ordinary spawning no longer blinks; hurt and protected
+  recovery retain the native blink behavior.
 - Every live case uses strict native-stack checks and has zero dispatch misses.
   Four-player tests verify 251 native world ticks over 251 output frames.
 - Fixtures place actors/objects in RAM; they do not certify a complete campaign
