@@ -1,5 +1,47 @@
 # Sonic 2 local party playtest
 
+## Phase 2: Sonic 3-style campaign saves
+
+The separate `feature/sonic2-s3-save-menu` worktrees contain a playable
+implementation. Run
+`../_wt-sonic2-save-engine/build/save-menu/Release/SonicTheHedgehog2Recomp.exe`.
+The earlier four-player build remains available below.
+
+Enable **Sonic 3-style Save Menu** in launcher **Mods -> S3&K** using the same
+verified combined donor as Knuckles. The features are independent; source
+default is OFF. Native title **1 PLAYER** opens eight cards plus **No Save**
+and **Delete**. Left/right selects, A/C/Start enters, B returns. Delete enters
+erase mode; choose a file and confirm again, or B to cancel.
+
+Robotnik carries a spinning sign above the selected file in erase mode. On the
+YES/NO sign, Left confirms and Right cancels; A/C/Start and B remain aliases.
+File captions are centered, and the normal bottom control-text footer is gone.
+The striped card shadows match the original donor capture.
+
+Cards always show Sonic & Tails, full Sonic 2 stage names/acts and Emeralds.
+Actual characters stay in Options. Saves retain zone/act, Emeralds and
+completion, with fresh lives on load. Completed files use up/down to select
+zones at Act 1 and keep new Emeralds. `sonic2-campaign.sav` sits beside settings,
+with the previous revision in `.sav.bak`. This feature is local-only and guards
+machine quickstates. Menu audio currently uses Sonic 2 Options music.
+
+Automated checks: 19 CTests, 24 campaign cases, 23 prior party cases, boot
+reference and five stock screenshot/RAM comparisons pass. Owner approved the
+layout and confirmed Act 1 saves the Act 2 destination, then accepted the
+corrections and requested integration as a default-off mod. Source/evidence
+ledger: `segagenesisrecomp/docs/SONIC2_SAVE_MENU.md`. This is bounded milestone
+acceptance, not exhaustive whole-campaign certification.
+
+The consumer pins the published engine containing campaign saves; the UI pin
+is unchanged. A recursive checkout builds with its pinned dependencies.
+The optional `-DGENESIS_RECOMP_ROOT` override remains useful for development.
+
+The integration build `build-save-menu-pinned` was configured without an engine
+override against published engine `73b3f789e9e6d1eb107e93b77b543778dddb772e`.
+Its 19 CTests and 24 campaign fixtures pass; all three stock PNGs and both RAM
+captures match the existing primary reference exactly. Evidence is under that
+build's `campaign-acceptance`, `stock-acceptance`, and `stock-comparison.json`.
+
 The character/4P spike is integrated on master with pinned engine and UI
 dependencies. The `experiment/sonic2-local-4p` worktrees and local build remain
 available for playtesting. This is not a claim of full-campaign or donor-perfect
@@ -67,9 +109,9 @@ campaign roster or P2=NONE. Your chosen characters and companions return afterwa
   snapshots cannot capture the additional host controller state.
 - Experimental rosters are local-only; vanilla netplay is not expanded.
 
-Please validate the four-player game and explicitly approve it before any new
-campaign save-slot or stage-selector work. That feature remains unimplemented.
-The engine's `docs/SONIC2_PARTY_CHECKLIST.md` is the milestone checklist.
+The owner has chosen phase 2, superseding the earlier scheduling gate.
+Whole-campaign four-player QA remains a separate limitation. The engine's
+`docs/SONIC2_PARTY_CHECKLIST.md` records phase-1 work.
 
 ## Rebuild and reproduce
 
@@ -98,5 +140,5 @@ using its pinned dependencies without that override.
 The engine's `docs/SONIC2_SHARED_ENGINE_VALIDATION.md` records seven Windows
 targets and byte-identical stock regression captures, including the existing
 Puyo build-file caveat. Other games retain two-controller discovery by default
-and do not enable Sonic 2's character, rendering, or save-state hooks. Save-screen
-and zone-selector work has not started; the next phase is a planning checkpoint.
+and do not enable Sonic 2's character, rendering, or save-state hooks. The
+current save-menu work lives in the separate phase-2 worktrees described above.

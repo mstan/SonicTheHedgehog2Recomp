@@ -1,5 +1,28 @@
 # SonicTheHedgehog2Recomp
 
+## Optional Sonic 3-style save menu
+
+In **Mods -> S3&K**, enable **Sonic 3-style Save Menu** and select your
+original combined Sonic 3 & Knuckles ROM. This is disabled by default and
+independent of the Knuckles character option. The donor supplies menu artwork;
+Sonic 2 remains the running game.
+
+Choose **1 PLAYER** on the title screen for eight save files, **No Save**, and
+**Delete**. Files retain the zone and act, Chaos Emeralds, and completion, with
+fresh lives on load. Completed files use Up/Down to choose zones at Act 1 and
+keep newly earned Emeralds. Portraits always show Sonic & Tails; actual
+characters come from Options. Left/Right selects a card, A/C/Start opens it,
+and B returns. Delete uses Robotnik's Yes/No sign: Left confirms, Right or B
+cancels; A/C/Start also confirms.
+
+The SRAM-like storage is the separate **`sonic2-campaign.sav`** file beside
+runtime settings, with the previous revision in **`sonic2-campaign.sav.bak`**.
+It does not patch the ROM or occupy emulated cartridge memory. Loading checks
+the file version, game identity, checksum, stage range and Emerald values
+before restoring known game fields. Invalid saves are preserved, and a valid
+backup can be opened read-only. Disabling the mod keeps your files. Campaign
+saves are local-only and cannot be combined with machine quickstates or netplay.
+
 ## Experimental widescreen mod
 
 In the launcher's **Mods** page, enable **Widescreen** and choose **Adaptive
