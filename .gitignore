@@ -33,6 +33,7 @@ Thumbs.db
 
 # Runtime artifacts that may end up alongside the binary
 sonic2-campaign.sav*
+sonic2-campaign.srm*
 last_rom.txt
 *.log
 rdb_*.json

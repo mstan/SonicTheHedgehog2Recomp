@@ -155,6 +155,7 @@ set(SONIC2_SHARED_SOURCES
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_assets.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_draw.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_menu.c"
+    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign_file.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign_store.c"
     "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_mods.c"

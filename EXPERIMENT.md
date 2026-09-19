@@ -2,6 +2,17 @@
 
 ## Phase 2: Sonic 3-style campaign saves
 
+Selectable-path follow-up (`beads-5dyp.4`): the save-menu mod now exposes an
+optional Campaign SRAM picker. New installs start empty and create/register
+`sonic2-campaign.srm` beside the executable on the first save; existing `.sav`
+files are preserved in place. Selected files are read and updated directly.
+Local paths remain executable-relative; external selections retain full paths.
+Clear selection returns to the default without deleting anything. The current
+development build passes 20 CTests and 28 campaign cases. The native picker,
+Clear selection and boot comparison were also checked. The owner requested
+ending validation here. Shared UI companion `beads-0fu.6` uses the existing mod resource API.
+The integration evidence below describes the earlier accepted checkpoint.
+
 The separate `feature/sonic2-s3-save-menu` worktrees contain a playable
 implementation. Run
 `../_wt-sonic2-save-engine/build/save-menu/Release/SonicTheHedgehog2Recomp.exe`.
@@ -131,9 +142,9 @@ accepts `-Archive` and `-RuntimeDirectory` to stage the verified private Amy
 donor for another build. No ROMs or donor art belong in commits/packages.
 
 Roster/mod settings are in `sonic2-party.ini` beside the executable. Consumer
-dependency pins now reference published commits. The UI pin deliberately uses
-the tested Genesis-binding revision, which is included in UI master, rather
-than upgrading to unrelated newer UI changes. The existing local build uses
+dependency pins reference published engine `7f23d3d` and UI `b1e6f3b`. The UI
+adds optional file controls to the tested Genesis-binding revision without
+unrelated newer UI changes. The existing local build uses
 the explicit engine-worktree override above; a recursive checkout can build
 using its pinned dependencies without that override.
 

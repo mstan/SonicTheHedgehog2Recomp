@@ -15,8 +15,16 @@ characters come from Options. Left/Right selects a card, A/C/Start opens it,
 and B returns. Delete uses Robotnik's Yes/No sign: Left confirms, Right or B
 cancels; A/C/Start also confirms.
 
-The SRAM-like storage is the separate **`sonic2-campaign.sav`** file beside
-runtime settings, with the previous revision in **`sonic2-campaign.sav.bak`**.
+The mod's **Campaign SRAM** picker selects an existing Sonic 2 campaign save
+anywhere on disk. Saves load from and write back to that selected file, with a
+previous-revision `.bak` beside it. The picker starts empty on a fresh install;
+the first save creates **`sonic2-campaign.srm`** beside the executable and
+remembers its path. **No Save** creates no file. Paths inside the game folder
+are stored relative to the executable, so moving the folder keeps them working;
+external files retain their full paths. **Clear selection** returns to the
+default destination and preserves both files. Existing `sonic2-campaign.sav`
+files from the first version continue to load and save in place.
+
 It does not patch the ROM or occupy emulated cartridge memory. Loading checks
 the file version, game identity, checksum, stage range and Emerald values
 before restoring known game fields. Invalid saves are preserved, and a valid
