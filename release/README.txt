@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.6.0 — native static recompilation of Sonic the Hedgehog 2
+SonicTheHedgehog2Recomp v0.6.1 — native static recompilation of Sonic the Hedgehog 2
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
