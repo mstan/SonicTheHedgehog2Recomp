@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp VERSION 0.6.0 LANGUAGES C)
+project(SonicTheHedgehog2Recomp VERSION 0.6.1 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
-set(SONIC2_GAME_VERSION "0.6.0" CACHE STRING
+set(SONIC2_GAME_VERSION "0.6.1" CACHE STRING
     "Version used to match compatible Sonic 2 netplay lobbies")
 
 # ---------------------------------------------------------------------------
