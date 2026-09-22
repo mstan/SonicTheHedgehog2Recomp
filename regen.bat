@@ -1,21 +1,14 @@
 @echo off
-rem Convenience wrapper — regenerate sonic2_full.c and sonic2_dispatch.c
-rem from sonic2.bin using the shared recompiler.
+rem Regenerate from this game's ROM/config through the configured shared compiler.
 setlocal
-set ROOT=%~dp0..\SonicTheHedgehogRecomp\segagenesisrecomp
-set GAMEDIR=%ROOT%\sonicthehedgehog2
-set RECOMP=%ROOT%\recompiler\build\Release\GenesisRecomp.exe
-
-if not exist "%RECOMP%" (
-  echo ERROR: recompiler not built. Build it first:
-  echo   cd %ROOT%\recompiler
+set "CMAKE_EXE=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+set "BUILD_DIR=%~dp0build"
+if not "%~1"=="" set "BUILD_DIR=%~f1"
+if not exist "%BUILD_DIR%\CMakeCache.txt" (
+  echo ERROR: configure this game first, with your ROM at game\sonic2.bin.
   echo   cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-  echo   cmake --build build --config Release
+  echo Optional: regen.bat path-to-another-configured-build
   exit /b 1
 )
-
-pushd "%GAMEDIR%"
-"%RECOMP%" sonic2.bin --game game.toml --reverse-debug
-set ERR=%ERRORLEVEL%
-popd
-exit /b %ERR%
+"%CMAKE_EXE%" --build "%BUILD_DIR%" --config Release --target genesisrecomp_generate_sonic2
+exit /b %ERRORLEVEL%

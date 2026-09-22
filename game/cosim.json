@@ -1,0 +1,6 @@
+{
+  "wt": "_wt-cosim-s2",
+  "exe": "SonicTheHedgehog2Recomp",
+  "waitvbl": "3384",
+  "rom": "sonic2.bin"
+}

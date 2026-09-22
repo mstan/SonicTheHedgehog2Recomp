@@ -25,9 +25,9 @@ required. libucontext's required ISC notice is packaged in the APK at
   ROM/toml/recompiler changes:
 
   ```sh
-  cd ../segagenesisrecomp/sonicthehedgehog2
-  ../../build/GenesisRecomp sonic2.bin --game game.toml \
-      --output-dir ../../android/generated/sonic2
+  cd ../game
+  ../build/GenesisRecomp sonic2.bin --game game.toml \
+      --output-dir ../android/generated/sonic2
   ```
 
   (No `--reverse-debug` — the device build is a stripped native build.)

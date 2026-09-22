@@ -28,7 +28,7 @@ def _engine_root() -> str:
 DEFAULT_EVIDENCE = os.path.join(
     REPO_ROOT, "build", "Release", "dispatch_misses.toml"
 )
-DEFAULT_GAME = os.path.join(_engine_root(), "sonicthehedgehog2", "game.toml")
+DEFAULT_GAME = os.path.join(REPO_ROOT, "game", "game.toml")
 
 
 def _native_path(path: str) -> str:

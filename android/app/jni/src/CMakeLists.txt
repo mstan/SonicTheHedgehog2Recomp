@@ -79,7 +79,7 @@ add_library(main SHARED
     "${RECOMP_ROOT}/recompiler/src/m68k_decoder.c"
     "${RECOMP_ROOT}/recompiler/src/rom_parser.c"
     ${SONIC2_GENERATED_SOURCES}
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
+    "${GAME_REPO_ROOT}/game/sonic2_spec.c"
     ${UCONTEXT_SOURCES})
 
 target_compile_definitions(main PRIVATE
@@ -96,7 +96,7 @@ target_include_directories(main PRIVATE
     "${RUNNER_ROOT}/external/ymfm/src"
     "${RUNNER_ROOT}/external/superzazu"
     "${RUNNER_ROOT}/external/clowncommon"
-    "${RECOMP_ROOT}/sonicthehedgehog2"
+    "${GAME_REPO_ROOT}/game"
     "${RECOMP_ROOT}/recompiler/src"
     "${GEN_DIR}"
     # The engine's pinned SDL headers contain both SDL.h and SDL2/SDL.h

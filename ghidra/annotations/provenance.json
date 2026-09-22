@@ -1,0 +1,11 @@
+{
+  "sonic2": {
+    "source": "game/s2disasm",
+    "commit": "65ddcc24250af08ddfdf58e36351374ace998e66",
+    "rom_sha256": "193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b",
+    "build": "build.lua",
+    "options": {},
+    "code_labels": 2952,
+    "relocated_from": "segagenesisrecomp@fc57ce247b692642a2eb4db4f3d6a9636ca8c12d"
+  }
+}
