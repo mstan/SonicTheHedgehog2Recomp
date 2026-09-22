@@ -26,6 +26,17 @@ int main(void)
     CHECK(!s2_donor_decode(rom,10,&layout,&bank,error,sizeof error));
     rom[9]=0; rom[5]=255;
     CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    rom[5]=1;
+    layout.super_palette=240; layout.super_frames=2;
+    rom[240]=0x0E; rom[241]=0xEE; rom[251]=0x42;
+    CHECK(s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    CHECK(bank.super_frames==2 && bank.super_palette[0][0]==0xEEE && bank.super_palette[1][2]==0x42);
+    previous=bank.frames[0].pixels;
+    layout.super_frames=11;
+    CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    layout.super_frames=3;
+    CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    CHECK(bank.frames[0].pixels==previous && bank.super_frames==2);
     s2_donor_free(&bank); CHECK(!bank.count && !bank.frames[0].pixels);
     puts("sonic2_donor: mapping/DPLC bounds, flip, geometry and transactional failure OK");
     return 0;

@@ -6,7 +6,8 @@
 /* See docs/SONIC2_DONOR_PORT.md. These describe verified donor revisions,
  * never offsets in the Sonic 2 host image. Callers must verify donor identity. */
 const S2DonorLayout s2_amy_171_layout = {253,0x8B8C0,0x8D6CE,0x60000,0x29E2,8,0x1C96E,44};
-const S2DonorLayout s2_sk_knuckles_layout = {251,0x14A8D6,0x14BD0A,0x1200E0,0xA8AFC,6,0x17EF4,37};
+/* PalCycle_SuperHyperKnuckles, byte-matched combined S3&K listing. */
+const S2DonorLayout s2_sk_knuckles_layout = {251,0x14A8D6,0x14BD0A,0x1200E0,0xA8AFC,6,0x17EF4,37,0x3AAE,10};
 static unsigned word(const uint8_t *p) { return (unsigned)p[0]*256+p[1]; }
 static int inside(size_t size,size_t offset,size_t length) { return offset<=size && length<=size-offset; }
 void s2_donor_free(S2DonorBank *bank)
@@ -22,7 +23,8 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
     if (!rom || !l || !out || !l->frames || l->frames>S2_DONOR_MAX_FRAMES ||
         (l->mapping_stride!=6 && l->mapping_stride!=8) ||
         !inside(size,l->mappings,l->frames*2) || !inside(size,l->dplc,l->frames*2) ||
-        !inside(size,l->palette,32) || l->animation_count>64 ||
+        !inside(size,l->palette,32) || l->animation_count>64 || l->super_frames>10 ||
+        (l->super_frames && !inside(size,l->super_palette,l->super_frames*6)) ||
         !inside(size,l->animations,l->animation_count*2)) {
         if (error && error_size) snprintf(error,error_size,"Invalid donor asset layout");
         return 0;
@@ -33,6 +35,9 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
     if (!bank) return 0;
     bank->count=l->frames;
     for (unsigned c=0;c<16;++c) bank->palette[c]=(uint16_t)word(rom+l->palette+c*2);
+    bank->super_frames=l->super_frames;
+    for (unsigned f=0;f<l->super_frames;++f) for (unsigned c=0;c<3;++c)
+        bank->super_palette[f][c]=(uint16_t)word(rom+l->super_palette+f*6+c*2);
     unsigned frame=0;
     for (;frame<l->frames;++frame) {
         size_t mp=(size_t)l->mappings+word(rom+l->mappings+frame*2);
