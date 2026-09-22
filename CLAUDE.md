@@ -1,9 +1,8 @@
 # CLAUDE.md — SonicTheHedgehog2Recomp
 
-This is the Sonic 2 release repo. The canonical session brief lives in the
-shared `segagenesisrecomp` engine — a single checkout at the workspace root,
-reached here through a local directory junction (`./segagenesisrecomp ->
-../segagenesisrecomp`):
+This repository owns the Sonic 2 implementation and release. The shared
+`segagenesisrecomp` framework is a pinned submodule, optionally replaced for
+development by `engine-local` or explicit `GENESIS_RECOMP_ROOT`.
 
 → **`segagenesisrecomp/CLAUDE.md`** — read this first.
 → **`segagenesisrecomp/PRINCIPLES.md`** — the 25 rules.
@@ -11,8 +10,10 @@ reached here through a local directory junction (`./segagenesisrecomp ->
 
 ## What's in this repo
 
-- `CMakeLists.txt` — sources runner + per-game files from the engine
-  via the local `segagenesisrecomp/` junction.
+- `CMakeLists.txt` — shared runner from the engine, per-game files from `game/`.
+- `game/` — all Sonic 2 adapters, mods, campaign/characters/menu/video, ROM
+  configuration, annotations and pinned `s2disasm/` source disassembly.
+- `tests/`, `docs/` — game-specific validation and feature ledgers.
 - `tools/` — Sonic-2-specific probes (game_state, quick_status, ring_filter,
   vbla_breakdown, vint_audit, divergence_diff, check_dispatch_misses,
   _pause_both, _2p_*).
@@ -22,14 +23,12 @@ reached here through a local directory junction (`./segagenesisrecomp ->
 
 ## Workspace layout
 
-The `segagenesisrecomp` engine is a single canonical checkout at the workspace
-root (`../segagenesisrecomp`), shared by every game repo. This repo reaches it
-through a local directory junction (`segagenesisrecomp -> ../segagenesisrecomp`,
-gitignored), so no game repo owns the engine and there is no submodule pointer
-to keep in sync. Sonic 2 does not consume any files from the Sonic 1 repo.
-
-Sonic 2's per-game files live at `segagenesisrecomp/sonicthehedgehog2/`
-(`sonic2_spec.c`, `sonic2_hybrid_table.c`).
+Game-specific implementation belongs HERE, never in the engine repository.
+The shared engine must expose reusable opt-in contracts only. Legacy engine
+game directories are not precedent for new game-specific framework code.
+See `docs/REPOSITORY_OWNERSHIP.md`. Sonic 2 does not consume Sonic 1 code.
+Place the owner ROM at `game/sonic2.bin`; generated C belongs under the build
+directory. Never commit ROMs, extracted artwork or local Ghidra databases.
 
 ## Bring-up status
 
@@ -44,7 +43,5 @@ builds and ships.
 
 1. Commit + push engine changes in the top-level `segagenesisrecomp/` checkout
    first.
-2. This repo commits independently — but if your Sonic 2 work depends on engine
-   changes, ensure they've landed upstream first (all game repos read the same
-   checkout through the junction, so a local engine commit is visible to every
-   repo immediately; push it before relying on it elsewhere).
+2. Bump this repo's engine submodule pointer only after the engine commit is
+   available upstream. Commit Sonic 2 implementation changes in this repo.

@@ -8,12 +8,8 @@ set(SONIC2_GAME_VERSION "0.6.1" CACHE STRING
 # ---------------------------------------------------------------------------
 # Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.
 #
-# All shared engine code (runner) lives in the canonical segagenesisrecomp
-# checkout at the workspace root, reached here through a local directory
-# junction (./segagenesisrecomp -> ../segagenesisrecomp). Per-game files
-# (sonic2_spec.c) live alongside the Sonic 2 generated
-# TUs in segagenesisrecomp/sonicthehedgehog2/. Sonic 2 does not consume any
-# files from Sonic 1 directly.
+# Shared framework code comes from RECOMP_ROOT. Game-specific adapters,
+# ROM layout, source annotations, donor decoders and tests belong to this repo.
 # ---------------------------------------------------------------------------
 
 # Engine root. Public layout: the committed `segagenesisrecomp` submodule
@@ -40,8 +36,8 @@ set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 # campaign SRAM remains portable and independent of this fingerprint.
 file(GLOB_RECURSE _state_inputs CONFIGURE_DEPENDS
     "${RUNNER_ROOT}/*.c" "${RUNNER_ROOT}/*.cpp" "${RUNNER_ROOT}/*.h"
-    "${RECOMP_ROOT}/sonicthehedgehog2/*.c" "${RECOMP_ROOT}/sonicthehedgehog2/*.h"
-    "${RECOMP_ROOT}/sonicthehedgehog2/*.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/game/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/*.toml"
     "${RECOMP_ROOT}/external/m68k-recomp-core/*.c" "${RECOMP_ROOT}/external/m68k-recomp-core/*.h"
     "${RECOMP_ROOT}/external/z80-recomp-core/*.c" "${RECOMP_ROOT}/external/z80-recomp-core/*.h"
     "${RECOMP_ROOT}/recompiler/src/*.c" "${RECOMP_ROOT}/recompiler/src/*.h")
@@ -125,7 +121,7 @@ set(FM_SOURCES
 
 include("${RECOMP_ROOT}/cmake/GenesisRecompGenerated.cmake")
 genesisrecomp_add_generated_sources(
-    SONIC2_GENERATED_SOURCES sonic2 sonicthehedgehog2 sonic2.bin
+    SONIC2_GENERATED_SOURCES sonic2 "${CMAKE_CURRENT_SOURCE_DIR}/game" sonic2.bin
     REVERSE_DEBUG "${SONIC_REVERSE_DEBUG}")
 
 # Prod-vs-debug TCP strip (see SonicTheHedgehogRecomp/CMakeLists.txt). ON keeps
@@ -169,21 +165,21 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/audio/fm_shadow.cpp"    # parallel ymfm chip (cleaner highs / ym3438 ladder-off)
     "${RUNNER_ROOT}/video/color_lut.c"      # present-time 9-bit CRT/composite LUT
     ${SONIC2_GENERATED_SOURCES}
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_spec.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_video.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_party.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_options.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_donor_assets.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_resources.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_assets.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_draw.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_save_menu.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign_file.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_campaign_store.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_mods.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_runtime.c"
-    "${RECOMP_ROOT}/sonicthehedgehog2/sonic2_character.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_spec.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_video.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_party.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_options.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_donor_assets.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_resources.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_assets.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_draw.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_menu.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_campaign_file.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_campaign.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_campaign_store.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_mods.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_runtime.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_character.c"
 )
 
 if(SONIC_REVERSE_DEBUG)
@@ -205,7 +201,7 @@ set(SONIC2_INCLUDES_NATIVE
     "${RUNNER_ROOT}/external/ymfm/src"
     "${RUNNER_ROOT}/external/superzazu"
     "${RUNNER_ROOT}/external/clowncommon"
-    "${RECOMP_ROOT}/sonicthehedgehog2"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game"
     "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
 )
 
@@ -252,14 +248,14 @@ function(_sonic2_finalize_target tgt includes)
             COMMENT "Copying SDL2.dll for ${tgt}")
         add_custom_command(TARGET ${tgt} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${RECOMP_ROOT}/sonicthehedgehog2/sonic2.bin"
+                "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2.bin"
                 "$<TARGET_FILE_DIR:${tgt}>/sonic2.bin"
             COMMENT "Copying Sonic 2 ROM for ${tgt}")
     endif()
     # Annotation CSV used by crash_report.c for symbol resolution (all platforms).
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${RECOMP_ROOT}/sonicthehedgehog2/annotations_from_disasm.csv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/game/annotations_from_disasm.csv"
             "$<TARGET_FILE_DIR:${tgt}>/annotations_from_disasm.csv"
         COMMENT "Copying Sonic 2 annotations for ${tgt}")
 endfunction()
@@ -307,7 +303,8 @@ genesisrecomp_enable_netplay(SonicTheHedgehog2Recomp
 option(BUILD_TESTING "Build ROM-independent renderer and framework tests" ON)
 if(BUILD_TESTING)
     enable_testing()
-    add_subdirectory("${RECOMP_ROOT}/tests" "${CMAKE_BINARY_DIR}/tests")
+    add_subdirectory("${RECOMP_ROOT}/tests" "${CMAKE_BINARY_DIR}/engine-tests")
+    add_subdirectory(tests)
 endif()
 
 # ---------------------------------------------------------------------------

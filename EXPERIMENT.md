@@ -5,13 +5,18 @@
 The `feature/sonic2-states-thumbnails` worktrees supersede the older launch
 paths below for this experiment. Build with explicit
 `GENESIS_RECOMP_ROOT=../_wt-sonic2-states-engine`; see README for controls and
-the engine's `docs/SONIC2_QUICKSTATES.md` for compatibility/validation details.
+this repo's `docs/SONIC2_QUICKSTATES.md` for compatibility/validation details.
 Quickstates now include the party and campaign session. Stage cards show
 ROM-derived Sonic 2 imagery. The trilogy campaign strategy is not in scope.
 Owner accepted the save-card layout and in-game companion behavior on
 2026-09-22. The approved checkpoint is integrated into master with engine
 `fc57ce247b692642a2eb4db4f3d6a9636ca8c12d`. The follow-up for Super forms on
 all four Player 1 characters is separate work (`beads-5dyp.10`).
+
+Repository ownership correction (`beads-3vb.8`): Sonic 2 implementation and
+feature ledgers now live in this repo's `game/`, `tests/`, `tools/` and `docs/`.
+Shared engine hooks remain opt-in. See `docs/REPOSITORY_OWNERSHIP.md`; older
+engine paths in this experiment are historical, not current edit locations.
 
 Current visible playtest:
 `F:\Projects\segagenesisrecomp\_wt-sonic2-states-game\build\states\playtest\SonicTheHedgehog2Recomp.exe`.

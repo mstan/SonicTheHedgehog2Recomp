@@ -19,7 +19,10 @@ REM   1 -- DIVERGENCE (something visibly changed)
 REM   2 -- runner / environment error
 REM   3 -- no baseline file present yet (use --write-baseline)
 @setlocal
-@set ZONE_SMOKE=%~dp0..\SonicTheHedgehogRecomp\segagenesisrecomp\tools\zone_smoke.py
-@set INPUT=%~dp0tools\smoke_enter_level_run_right.input
-python "%ZONE_SMOKE%" --game sonic2 --input "%INPUT%" --hash-frames 60 %*
+@set "ENGINE_DIR=%~dp0segagenesisrecomp"
+@if exist "%~dp0engine-local\tools\zone_smoke.py" set "ENGINE_DIR=%~dp0engine-local"
+@if defined GENESIS_RECOMP_ROOT set "ENGINE_DIR=%GENESIS_RECOMP_ROOT%"
+@set "ZONE_SMOKE=%ENGINE_DIR%\tools\zone_smoke.py"
+@set "INPUT=%~dp0tools\smoke_enter_level_run_right.input"
+python "%ZONE_SMOKE%" --game sonic2 --exe "%~dp0build\Release\SonicTheHedgehog2Recomp.exe" --rom "%~dp0game\sonic2.bin" --input "%INPUT%" --hash-frames 60 %*
 @endlocal

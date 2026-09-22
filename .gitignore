@@ -5,7 +5,7 @@ out/
 cmake-build-*/
 
 # Compiled output (this repo only has source-of-truth, not generated C —
-# generated/ lives in the sibling segagenesisrecomp/sonicthehedgehog2/)
+# translations are generated inside the selected build directory)
 *.obj
 *.exe
 *.dll
@@ -51,3 +51,12 @@ ramdump_*.bin
 # engine-local when present. Create it with scripts/link-engine.{sh,bat}.
 engine-local
 release/*.zip
+
+# Private reverse-engineering inputs and generated/runtime output.
+**/generated/
+**/__pycache__/
+*.gpr
+*.rep/
+*.lock
+*.lock~
+**/dispatch_misses.toml

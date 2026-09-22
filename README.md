@@ -186,22 +186,21 @@ interlace_display=raw
 
 ## Layout
 
-This repo contains only Sonic-2-specific build wiring. The shared engine
-(recompiler, runner) and Sonic 2's handwritten spec code live in
-[segagenesisrecomp](https://github.com/mstan/segagenesisrecomp), pulled
-in as a git submodule so a recursive clone is self-contained:
+This repo owns Sonic 2's implementation: characters/AI, campaign and quickstate
+adapters, menu/image decoders, ROM configuration, disassembly, annotations and
+game tests. Only reusable framework code comes from the pinned
+[segagenesisrecomp](https://github.com/mstan/segagenesisrecomp) submodule:
 
 ```
 SonicTheHedgehog2Recomp/                ← this repo
 ├── CMakeLists.txt                      ← Sonic 2 build wiring
+├── game/                               ← Sonic 2 source + game.toml + annotations
+│   └── s2disasm/                        ← pinned source disassembly submodule
+├── tests/, tools/, docs/                ← game-owned validation and documentation
 ├── scripts/link-engine.{sh,bat}        ← optional shared-engine setup (local dev)
 └── segagenesisrecomp/                  ← submodule (shared engine)
-    ├── runner/                         ← shared runner sources (glue.c, ...)
-    ├── clownmdemu-core/                ← DEV-ONLY oracle (AGPL; never in the native build)
-    └── sonicthehedgehog2/              ← Sonic 2 game data
-        ├── sonic2_spec.c               ← per-game GameSpec
-        ├── sonic2_hybrid_table.c       ← oracle-build override table
-        ├── annotations_from_disasm.csv
+    ├── runner/                         ← shared runtime and opt-in interfaces
+    └── recompiler/                     ← shared compiler, no Sonic 2 implementation
 ```
 
 Generated C is ignored build output under `build/generated/sonic2/`, not a
@@ -226,15 +225,13 @@ cd SonicTheHedgehog2Recomp
 # (cloned without --recursive? run: git submodule update --init --recursive)
 ```
 
-`Skipping submodule 'clownmdemu-core'` in that output is expected and correct.
-That core is AGPL and dev-only; nothing you build needs it, and CMake skips the
-dev-only `_oracle` targets automatically when it is absent.
+ROMs and generated C are not bundled; the runtime uses the clean-room backend.
 
 Builds natively on Windows (MSVC), macOS (Apple Silicon & Intel), and Linux.
 SDL2 is bundled on Windows; `brew install sdl2` on macOS; `libsdl2-dev` on Linux.
 
 Before configuring, copy your ROM to
-`segagenesisrecomp/sonicthehedgehog2/sonic2.bin`. Generated C is not checked
+`game/sonic2.bin`. Generated C is not checked
 in; CMake builds the current recompiler and regenerates it from that ROM and
 the current discovery/configuration inputs before compiling the runner.
 
@@ -286,11 +283,11 @@ Full design, verifier algorithm, and rationale: `segagenesisrecomp/docs/SHADOW_E
 regen.bat
 ```
 
-Or manually from the segagenesisrecomp tree:
+Or use the configured build's generation target (also run automatically by a
+normal build):
 
 ```cmd
-cd segagenesisrecomp\sonicthehedgehog2
-..\recompiler\build\Release\GenesisRecomp.exe sonic2.bin --game game.toml --reverse-debug
+cmake --build build --config Release --target genesisrecomp_generate_sonic2
 ```
 
 The `--reverse-debug` flag enables `rdb_on_block` / `rdb_on_insn`
