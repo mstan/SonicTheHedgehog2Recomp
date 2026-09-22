@@ -30,6 +30,10 @@ All numbers below are donor addresses, not Sonic 2 host addresses.
 | Normal character palette | `$0029E2` | `$0A8AFC` |
 | Mapping/DPLC frame count | 253 | 251 |
 | Animation table / streams | `$01C96E` / 44 | `$017EF4` / 37 |
+| Super palette (three shades x ten frames) | Derived from normal pink shades | `$003AAE` |
+
+Player 1 Super progression/rendering is described in
+[SONIC2_PARTY_SUPER.md](SONIC2_PARTY_SUPER.md).
 
 S3&K evidence: pinned skdisasm `1e1b5aff82c21175c593e42c966a6ff8b1586ff3`,
 byte-matched listing. `Map_Knuckles`, `PLC_Knuckles`, `ArtUnc_Knux`,

@@ -295,3 +295,28 @@ These are automated checks; owner validation of the new picker is pending.
 The actual native file dialog was exercised against an external fixture;
 `picker-ui-01/selected-picker.png` shows the validated selection under the mod.
 `boot-picker-01` matches the existing frame-60 reference with no dispatch misses.
+
+### Navigation audio (beads-5dyp.12, 2026-09-22)
+
+Game-owned `sonic2_save_menu.c` now queues native sound only when a card or
+replay destination actually changes. S3&K source `loc_D238`/`loc_D254` uses
+`sfx_SlotMachine` ($B7), and `loc_D4EE`/`loc_D508` uses `sfx_Switch` ($5B).
+The Sonic 2 counterparts are `SndID_CasinoBonus` ($C0) and `SndID_Blip` ($CD).
+The chime has the same note program and FM voice; playback deliberately retains
+Sonic 2's attenuation, and the switch tick retains its native pitch/channel.
+This is S3-style feedback, not bit-identical imported S3 audio. No extracted
+recordings, ROM modifications or shared engine changes are required.
+
+The adapter follows REV01 `PlaySound` ($1370): write the ID to
+`Sound_Queue.SFX0` ($FFFFE1) for the native V-int/Z80 path. Idle, opposite
+directions, card bounds, cursor travel and unavailable stage selection do not
+overwrite the sound queue. There is no new character-changing control here.
+
+Validation: 24 CTests and all 36 campaign fixtures pass. The native PCM test
+(`tests/runtime/run_sonic2_menu_audio.py`) runs the prior/current executables
+serially with identical inputs, proves pre-navigation audio is identical and
+finds changed PCM for all four directions; both dispatch-miss lists are empty.
+Private evidence: `build/menu-audio-campaign-20260922` and
+`build/menu-audio-pcm-20260922-02`. Owner accepted the completed work on
+2026-09-22 and requested commit, master integration/push and a new release.
+The final combined suite has 25 CTests; release closeout is `beads-5dyp.14`.

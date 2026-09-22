@@ -39,6 +39,8 @@ character-arrow labels. A completed card starts with TV static and `CLEAR`;
 Up/Down picks a replay act and reveals its image. Cycling past either end returns
 to CLEAR; changing cards resets the temporary choice. Opening CLEAR without
 choosing resumes the file's stored destination. No extracted artwork is bundled.
+Changing cards or replay acts plays native Sonic 2 menu feedback inspired by
+Sonic 3; idle and blocked selections stay silent.
 
 The bottom lives/continue icons always depict Sonic, independent of Options.
 Counters are saved with act/zone progress, Emerald awards and completion, not
@@ -65,6 +67,18 @@ before restoring known game fields. Invalid saves are preserved, and a valid
 backup can be opened read-only. Disabling the mod keeps your files. Campaign
 saves are local-only and cannot be combined with netplay. Compatible quickstates
 include the active campaign session, as described above.
+
+## Player 1 Super forms
+
+Sonic, Tails, Amy and Knuckles can go Super as Player 1. Collect all seven Chaos
+Emeralds and at least 50 rings, then hold jump through the apex. Each character
+keeps their own sprites and abilities, with native Super speed, invincibility,
+ring drain and reversion. Knuckles still requires the enabled S3&K donor mod;
+Amy uses the existing Amy donor. Companions and native VS do not gain Super.
+Special stages always use stock Sonic and Tails. Death pits, crushing and
+drowning remain dangerous; this does not add Hyper forms or Super Flickies.
+
+Source and validation: [Player 1 Super forms](docs/SONIC2_PARTY_SUPER.md).
 
 ## Experimental widescreen mod
 

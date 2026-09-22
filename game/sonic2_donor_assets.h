@@ -8,6 +8,7 @@ enum { S2_DONOR_MAX_FRAMES = 256, S2_DONOR_MAX_PIECES = 64 };
 typedef struct S2DonorLayout {
     unsigned frames, mappings, dplc, art, palette, mapping_stride;
     unsigned animations, animation_count;
+    unsigned super_palette, super_frames; /* optional three-shade palette cycle */
 } S2DonorLayout;
 typedef struct S2DonorFrame {
     int16_t x, y;
@@ -17,6 +18,8 @@ typedef struct S2DonorFrame {
 typedef struct S2DonorBank {
     unsigned count;
     uint16_t palette[16];
+    unsigned super_frames;
+    uint16_t super_palette[10][3];
     S2DonorFrame frames[S2_DONOR_MAX_FRAMES];
     unsigned animation_count;
     uint16_t animation_length[64];

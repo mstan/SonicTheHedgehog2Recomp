@@ -134,6 +134,21 @@ kind = "game_hook"
 [[widescreen_site]]
 addr = 0x1AB38 # Sonic_CheckGoSuper: P1 progression only
 kind = "game_hook"
+[[widescreen_site]]
+addr = 0x213E # PalCycle_SuperSonic: retain timing/unlock, isolate non-Sonic palette
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1C6F6 # Tails_JumpHeight: shared native Super eligibility at jump apex
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1C644 # Tails_Jump: Super impulse before native underwater override
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1BA14 # Obj02_Control: native Super maintenance after Tails_Display
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1BA1C # Obj02_Control: Super Tails physics after water/shoes updates
+kind = "game_hook"
 
 # Additive roster page: verified stock REV01 routine entry points. These
 [[widescreen_site]]

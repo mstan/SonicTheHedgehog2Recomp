@@ -143,6 +143,15 @@ static int approach(int position,int target)
     if (position>target) { position-=8; if (position<target) position=target; }
     return position;
 }
+static void navigation_sound(unsigned sound)
+{
+    /* S3&K loc_D238/D254 use SlotMachine; loc_D4EE/D508 use Switch.
+     * Use S2's native counterparts: CasinoBonus ($C0, same FM voice/notes)
+     * and Blip ($CD). Keep S2's own mixing/pitch, not a sampled S3 recording.
+     * REV01 PlaySound $1370 writes Sound_Queue.SFX0 ($FFFFE1); V-int passes
+     * it to the existing Z80 driver. No ROM patch or host audio side channel. */
+    m68k_write8(0xFFFFE1,(uint8_t)sound);
+}
 static void controls(void)
 {
     ++view.frame; menu_ready=1;
@@ -180,16 +189,19 @@ static void controls(void)
         unsigned old=view.selection;
         if ((press&12)==4 && view.selection>(view.erase?1u:0u)) --view.selection;
         if ((press&12)==8 && view.selection<9) ++view.selection;
-        if (old!=view.selection && view.selection>=1 && view.selection<=8) {
-            replay_stage=S2_CAMPAIGN_STAGES;
+        if (old!=view.selection) {
+            navigation_sound(0xC0);
+            if (view.selection>=1 && view.selection<=8) replay_stage=S2_CAMPAIGN_STAGES;
         }
         return;
     }
     if (!view.erase && view.selection>=1 && view.selection<=8) {
         S2CampaignSlot *s=&view.data.slots[view.selection-1];
         if (s->state==S2_SAVE_COMPLETE) {
+            unsigned old=replay_stage;
             if ((press&3)==1) replay_stage=(replay_stage+1)%(S2_CAMPAIGN_STAGES+1);
             if ((press&3)==2) replay_stage=(replay_stage+S2_CAMPAIGN_STAGES)%(S2_CAMPAIGN_STAGES+1);
+            if (old!=replay_stage) navigation_sound(0xCD);
         }
     }
     if (!(press&0xE0)) return;

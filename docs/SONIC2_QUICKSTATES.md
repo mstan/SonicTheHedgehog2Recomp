@@ -11,7 +11,8 @@ Owner acceptance 2026-09-22: in-game hitch/companion behavior and the revised
 numbered/static save cards were approved, followed by an explicit request to
 commit and integrate this work into master. The earlier pending-acceptance
 notes below are historical checkpoints. P1 Super forms for non-Sonic characters
-are a new, separately tracked follow-up (`beads-5dyp.10`).
+are a separately tracked follow-up (`beads-5dyp.10`); see
+[SONIC2_PARTY_SUPER.md](SONIC2_PARTY_SUPER.md) for that implementation.
 
 ## Controls and compatibility
 

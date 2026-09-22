@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.6.1 — native static recompilation of Sonic the Hedgehog 2
+SonicTheHedgehog2Recomp v0.7.0 — native static recompilation of Sonic the Hedgehog 2
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -19,8 +19,11 @@ OPTIONAL SAVE MENU AND CAMPAIGN SRAM
 -----------------------------------
 In Mods > S3&K, supply your combined Sonic 3 & Knuckles ROM and enable
 Sonic 3-style Save Menu. This option is off by default. 1 PLAYER opens eight
-save slots plus No Save and Delete. Saves keep zone/act, Chaos Emeralds and
-completion; lives start fresh. Completed files can replay any zone at Act 1.
+save slots plus No Save and Delete. Saves keep zone/act, Chaos Emeralds,
+completion, lives and continues at campaign checkpoints. Completed files can
+replay all 20 acts, including Metropolis Act 3. Numbered zone cards show images
+decoded from your Sonic 2 ROM; CLEAR starts with TV static. Menu movement has
+Sonic 3-style feedback played through Sonic 2's native sound driver.
 The portrait is always Sonic & Tails; Options controls the actual characters.
 
 The Campaign SRAM picker is under this mod. Select an existing Sonic 2 campaign
@@ -30,6 +33,19 @@ Existing sonic2-campaign.sav files from the earlier build continue in place.
 Clear selection preserves the file. No Save creates nothing. A .bak beside the
 selected file holds its previous valid revision. ROMs are never modified.
 Raw Sonic 3 & Knuckles SRAM files are not compatible with this campaign format.
+Older version-1 Sonic 2 campaign files remain compatible; their missing lives
+and continues start at 3/0. The next changed checkpoint upgrades the file with
+a backup. No Save also uses the native 3/0 defaults.
+
+SAVE STATES
+-----------
+Escape > Save states offers slots 1-9. Shift+F1...F9 saves; F1...F9 loads.
+Quickstates capture the complete local party, campaign session, video and
+audio at a safe native gameplay boundary. Gameplay, native pause, VS and
+special stages are supported; menus/loading/results are not save points.
+Keep the matching executable and character/mod/video setup with each state.
+Older or incompatible machine quickstates are rejected. Campaign SRAM is the
+portable progress format. Keep your prior build with its old quickstates.
 
 OPTIONAL LOCAL PARTY
 --------------------
@@ -38,7 +54,18 @@ Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
 the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
 The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
 stages return to your chosen party. These party/save features are local-only;
-they do not expand netplay and cannot use machine quickstates.
+they do not expand netplay. Compatible quickstates include the full party.
+P3/P4 follow closely, with small spacing differences; recovery no longer
+requires blocking legacy per-frame logging. Imported companions also render
+correctly while the world is frozen during Player 1's death.
+
+SUPER FORMS
+-----------
+All four characters can go Super as Player 1: collect seven Chaos Emeralds
+and at least 50 rings, then hold jump through the apex. Characters keep their
+own sprites and abilities; native ring drain and reversion still apply.
+Companions and VS players do not gain Super. Special stages are always stock
+Sonic and Tails. Death pits, crushing and drowning remain dangerous.
 
 OPTIONAL WIDESCREEN
 ------------------

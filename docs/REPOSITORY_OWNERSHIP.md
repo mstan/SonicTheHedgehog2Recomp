@@ -54,10 +54,8 @@ executable. Campaign SRAM stays portable. No production state ID is retagged.
 
 ## Remaining scope
 
-P1 Super support for Sonic/Tails/Amy/Knuckles (`beads-5dyp.10`) is separate and
-not implemented by this relocation. The current adapter blocks imported P1 at
-Sonic_CheckGoSuper `$1AB38` and Sonic_Super `$1ABA6`; native Tails lacks that
-check. Eligibility in stock Rev01 is seven emeralds, 50 rings and jump apex.
-Character-specific animation/palette and Tails physics need a tested adapter.
+P1 Super support for Sonic/Tails/Amy/Knuckles (`beads-5dyp.10`) was separate
+from this relocation. Its subsequent game-only implementation, source ledger
+and validation are documented in [SONIC2_PARTY_SUPER.md](SONIC2_PARTY_SUPER.md).
 
 Other games' legacy engine directories are explicitly outside this migration.
