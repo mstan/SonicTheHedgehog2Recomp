@@ -1,5 +1,21 @@
 # SonicTheHedgehog2Recomp
 
+## Save states
+
+Open **Escape -> Save states**, choose slot 1–9, and save or load.
+**Shift+F1…F9** saves; **F1…F9** loads the corresponding slot. Files are
+`native_save_<slot>.bin` beside the executable. Quicksaves capture the next
+completed gameplay tick, including all four players, campaign session and
+widescreen objects. Levels, paused gameplay and special stages are supported;
+menus/loading/results are not save points. Loads can start from the title.
+
+Keep the matching build and character/mod/video setup. Incompatible or damaged
+states are rejected before changing the game. Old machine-only quickstates
+are not compatible. Campaign SRAM remains the portable zone/act save format.
+Campaign quickstates must use the same selected campaign path; they rewind
+only the active slot, without overwriting other slots or immediately writing
+SRAM. These features are local-only.
+
 ## Optional Sonic 3-style save menu
 
 In **Mods -> S3&K**, enable **Sonic 3-style Save Menu** and select your
@@ -8,12 +24,30 @@ independent of the Knuckles character option. The donor supplies menu artwork;
 Sonic 2 remains the running game.
 
 Choose **1 PLAYER** on the title screen for eight save files, **No Save**, and
-**Delete**. Files retain the zone and act, Chaos Emeralds, and completion, with
-fresh lives on load. Completed files use Up/Down to choose zones at Act 1 and
+**Delete**. Files retain the zone and act, Chaos Emeralds, completion, and P1's
+lives/continues at campaign checkpoints. Completed files use Up/Down to choose
+any of the 20 acts (including Metropolis Act 3), cycling through CLEAR and
+Emerald Hill through Death Egg, and
 keep newly earned Emeralds. Portraits always show Sonic & Tails; actual
 characters come from Options. Left/Right selects a card, A/C/Start opens it,
 and B returns. Delete uses Robotnik's Yes/No sign: Left confirms, Right or B
 cancels; A/C/Start also confirms.
+
+Occupied cards use numbered `ZONE 01` through `ZONE 11` captions and thumbnails
+decoded from your Sonic 2 ROM. There are no stage-name, act, file-number or
+character-arrow labels. A completed card starts with TV static and `CLEAR`;
+Up/Down picks a replay act and reveals its image. Cycling past either end returns
+to CLEAR; changing cards resets the temporary choice. Opening CLEAR without
+choosing resumes the file's stored destination. No extracted artwork is bundled.
+
+The bottom lives/continue icons always depict Sonic, independent of Options.
+Counters are saved with act/zone progress, Emerald awards and completion, not
+on every frame or life change. Loading restores those checkpoint values; a
+zero-life checkpoint restarts with three lives. No Save keeps native 3/0 defaults.
+Older version-1 campaign files load with 3 lives and 0 continues. The next changed
+checkpoint writes version 2, preserving the previous file as `.bak`; merely
+opening an old file does not rewrite it. All seven Emeralds appear only when all
+seven were collected: completion and Emerald collection are separate flags.
 
 The mod's **Campaign SRAM** picker selects an existing Sonic 2 campaign save
 anywhere on disk. Saves load from and write back to that selected file, with a
@@ -29,7 +63,8 @@ It does not patch the ROM or occupy emulated cartridge memory. Loading checks
 the file version, game identity, checksum, stage range and Emerald values
 before restoring known game fields. Invalid saves are preserved, and a valid
 backup can be opened read-only. Disabling the mod keeps your files. Campaign
-saves are local-only and cannot be combined with machine quickstates or netplay.
+saves are local-only and cannot be combined with netplay. Compatible quickstates
+include the active campaign session, as described above.
 
 ## Experimental widescreen mod
 

@@ -1,5 +1,27 @@
 # Sonic 2 local party playtest
 
+## Current: Sonic 2 quickstates + stage imagery
+
+The `feature/sonic2-states-thumbnails` worktrees supersede the older launch
+paths below for this experiment. Build with explicit
+`GENESIS_RECOMP_ROOT=../_wt-sonic2-states-engine`; see README for controls and
+the engine's `docs/SONIC2_QUICKSTATES.md` for compatibility/validation details.
+Quickstates now include the party and campaign session. Stage cards show
+ROM-derived Sonic 2 imagery. The trilogy campaign strategy is not in scope.
+Owner accepted the save-card layout and in-game companion behavior on
+2026-09-22. The approved checkpoint is integrated into master with engine
+`fc57ce247b692642a2eb4db4f3d6a9636ca8c12d`. The follow-up for Super forms on
+all four Player 1 characters is separate work (`beads-5dyp.10`).
+
+Current visible playtest:
+`F:\Projects\segagenesisrecomp\_wt-sonic2-states-game\build\states\playtest\SonicTheHedgehog2Recomp.exe`.
+This folder contains copies of the owner's v0.6.1 settings and campaign SRAM;
+the original folder remains untouched. Escape -> Save states or Shift+F1..F9
+to save, F1..F9 to load. Keep this build with its quickstates. Validation:
+22 CTests, 36 campaign cases, 23 quickstate cases, stock frame/RAM references,
+and visible runtime Save/Load controls pass. Three pre-existing party recovery
+assertions still fail identically on v0.6.1; details are in the engine ledger.
+
 ## Phase 2: Sonic 3-style campaign saves
 
 Selectable-path follow-up (`beads-5dyp.4`): the save-menu mod now exposes an
