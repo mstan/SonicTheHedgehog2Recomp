@@ -35,6 +35,26 @@ else()
 endif()
 set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 
+# Machine quickstates contain private C layouts and translated CPU state.
+# Reconfigure on source changes and reject states from incompatible builds;
+# campaign SRAM remains portable and independent of this fingerprint.
+file(GLOB_RECURSE _state_inputs CONFIGURE_DEPENDS
+    "${RUNNER_ROOT}/*.c" "${RUNNER_ROOT}/*.cpp" "${RUNNER_ROOT}/*.h"
+    "${RECOMP_ROOT}/sonicthehedgehog2/*.c" "${RECOMP_ROOT}/sonicthehedgehog2/*.h"
+    "${RECOMP_ROOT}/sonicthehedgehog2/*.toml"
+    "${RECOMP_ROOT}/external/m68k-recomp-core/*.c" "${RECOMP_ROOT}/external/m68k-recomp-core/*.h"
+    "${RECOMP_ROOT}/external/z80-recomp-core/*.c" "${RECOMP_ROOT}/external/z80-recomp-core/*.h"
+    "${RECOMP_ROOT}/recompiler/src/*.c" "${RECOMP_ROOT}/recompiler/src/*.h")
+list(FILTER _state_inputs EXCLUDE REGEX "/(generated|s2disasm|external/SDL2)/")
+list(SORT _state_inputs)
+set(_state_fingerprint "Sonic2-state-v1;${CMAKE_C_COMPILER_ID};${CMAKE_C_COMPILER_VERSION};${CMAKE_SIZEOF_VOID_P};${CMAKE_SYSTEM_PROCESSOR}")
+foreach(_input IN LISTS _state_inputs)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_input}")
+    file(SHA256 "${_input}" _hash)
+    string(APPEND _state_fingerprint ";${_hash}")
+endforeach()
+include_directories("${CMAKE_BINARY_DIR}")
+
 # Tier-1 reverse-debugger instrumentation. ON by default for
 # day-to-day Sonic 2 bring-up (the rdb_* TCP commands / WRAM-write ring depend
 # on it). Build a stripped shipping binary with -DSONIC_REVERSE_DEBUG=OFF
@@ -113,6 +133,9 @@ genesisrecomp_add_generated_sources(
 # no-op stub and drops frame_snapshots so the shipped binary opens no port.
 option(GEN_ENABLE_TRACE
     "Build the TCP cmd server + observability rings (frame_snapshots). OFF for release." ON)
+string(SHA256 _state_id "${_state_fingerprint};${CMAKE_CXX_COMPILER_ID};${CMAKE_CXX_COMPILER_VERSION};${SONIC_REVERSE_DEBUG};${GEN_DEV_TRACE};${GEN_ENABLE_TRACE};${CMAKE_C_FLAGS};${CMAKE_CXX_FLAGS};${CMAKE_C_FLAGS_RELEASE};${CMAKE_CXX_FLAGS_RELEASE}")
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/sonic2_state_build.h"
+    CONTENT "#define SONIC2_STATE_BUILD_ID \"${_state_id}\"\n")
 if(GEN_ENABLE_TRACE)
     set(GEN_TRACE_SOURCES
         "${RUNNER_ROOT}/cmd_server.c"
