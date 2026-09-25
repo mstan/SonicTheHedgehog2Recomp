@@ -78,7 +78,7 @@ static int custom_super_palette(void)
 { return kind(0)!=S2_CHAR_SONIC && !word(0xFFD8) && g_ram[0xF65F]; }
 static int32_t fixed(unsigned a) { return (int32_t)(((uint32_t)word(a)<<16)|word(a+2)); }
 static void putfixed(unsigned a, int32_t v) { putword(a,(uint32_t)v>>16); putword(a+2,(uint32_t)v); }
-static int16_t sine(unsigned a) { a=0x33CE+(a&255)*2; return (int16_t)((g_rom[a]<<8)|g_rom[a+1]); }
+static int16_t sine(unsigned a) { a=0x33CE + (a&255)*2; return (int16_t)((g_rom[a]<<8)|g_rom[a+1]); }
 static S2Motion motion(unsigned o)
 {
     S2Motion m={0}; m.x=fixed(o+8); m.y=fixed(o+12);
