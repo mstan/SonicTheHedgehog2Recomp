@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.8.0-rc1 — rollback netplay playtest
+SonicTheHedgehog2Recomp v0.8.0-rc2 — rollback netplay playtest
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -28,8 +28,10 @@ donor-backed character, each player must supply the corresponding owner ROM.
 Each participant controls their assigned seat using their player-1 bindings.
 Quickstates and turbo are disabled during netplay.
 
-This Windows release candidate passed a build and a brief startup check.
-The final internet multiplayer playtest is still pending.
+This update fixes both peers closing when an online lobby starts the game.
+It passed local two- and four-player relay sessions, rematches, and rollback
+checks with simulated latency and packet loss. The final Internet multiplayer
+playtest is still pending. Everyone must update together from rc1.
 
 OPTIONAL SAVE MENU AND CAMPAIGN SRAM
 -----------------------------------
