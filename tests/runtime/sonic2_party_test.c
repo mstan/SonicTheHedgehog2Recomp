@@ -22,10 +22,14 @@ int main(void)
     CHECK(!s2_character_register(&amy) && !s2_character_register(NULL));
     s2_roster_slots(r,4);
     CHECK(!strcmp(r->character[2],"none"));
-    CHECK(s2_roster_cycle(r,2,1) && !strcmp(r->character[2],"amy"));
+    /* P3/P4 may repeat any character (independent host actors); P1 and P2
+     * stay distinct from each other. */
+    CHECK(s2_roster_cycle(r,2,1) && !strcmp(r->character[2],"sonic"));
+    CHECK(s2_roster_set(r,2,"amy"));
     CHECK(s2_roster_cycle(r,3,-1) && !strcmp(r->character[3],"knuckles"));
-    CHECK(!s2_roster_cycle(r,0,1)); /* every other character already used */
-    CHECK(!s2_roster_set(r,1,"amy"));
+    CHECK(s2_roster_set(r,3,"sonic") && s2_roster_set(r,3,"knuckles"));
+    CHECK(!s2_roster_set(r,0,"tails") && !s2_roster_set(r,1,"sonic"));
+    CHECK(s2_roster_set(r,1,"amy") && s2_roster_set(r,1,"tails"));
     s2_party.save_menu_enabled=1;
     CHECK(s2_party_save());
     s2_party_load("party-test-settings.ini");
@@ -46,13 +50,14 @@ int main(void)
     CHECK(s2_roster_validate(r) && !strcmp(r->character[0],"tails"));
     s2_roster_slots(r,4);
     strcpy(r->character[0],"missing"); strcpy(r->character[2],"tails");
-    CHECK(s2_roster_validate(r) && !strcmp(r->character[0],"sonic"));
-    CHECK(!strcmp(r->character[1],"none"));
+    /* P2 holds Sonic, so P1 falls back to Tails, which P3 may share. */
+    CHECK(s2_roster_validate(r) && !strcmp(r->character[0],"tails"));
+    CHECK(!strcmp(r->character[1],"sonic") && !strcmp(r->character[2],"tails"));
     strcpy(r->character[3],"sonic");
-    CHECK(s2_roster_validate(r) && !strcmp(r->character[3],"none"));
+    CHECK(!s2_roster_validate(r) && !strcmp(r->character[3],"sonic"));
     s2_roster_slots(r,999); CHECK(r->slots == 4);
     s2_roster_slots(r,0); CHECK(r->slots == 1);
     remove("sonic2-party.ini"); /* test-owned sibling fixture in isolated CTest cwd */
-    puts("sonic2_party: defaults, uniqueness, cycling, availability, recovery and persistence OK");
+    puts("sonic2_party: defaults, P1/P2 uniqueness, P3/P4 repeats, cycling, availability, recovery and persistence OK");
     return 0;
 }

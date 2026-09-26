@@ -54,8 +54,14 @@ static int selectable(const S2Roster *roster, unsigned player, const char *id)
     if (!strcmp(id, "none")) return player != 0;
     const S2Character *character = s2_character_find(id);
     if (!character || !character->available()) return 0;
+    /* Players 3 and 4 are independent host-spawned actors (own object slot,
+     * character/physics/CPU state; art banks are shared read-only), so they
+     * may repeat a character: without the Amy donor there are only three
+     * distinct characters and a fourth player still needs one to play.
+     * Players 1 and 2 stay distinct (native P1/P2 roles). */
     for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i)
-        if (i != player && !strcmp(roster->character[i], id)) return 0;
+        if (i != player && player < 2 && i < 2 && !strcmp(roster->character[i], id))
+            return 0;
     return 1;
 }
 int s2_roster_set(S2Roster *roster, unsigned player, const char *id)
@@ -94,7 +100,7 @@ int s2_roster_validate(S2Roster *roster)
         const S2Character *c = s2_character_find(roster->character[i]);
         int valid = c && c->available();
         for (unsigned j = 0; j < i; ++j)
-            if (!strcmp(roster->character[i], roster->character[j])) valid = 0;
+            if (i < 2 && !strcmp(roster->character[i], roster->character[j])) valid = 0;
         if (!valid) strcpy(roster->character[i], "none");
     }
     if (!strcmp(roster->character[0], "none")) {

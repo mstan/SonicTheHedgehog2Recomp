@@ -262,14 +262,14 @@ int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *
         !nemesis(r+0xCA5E0,1396,a->tiles+0xAC40,sizeof a->tiles-0xAC40)) goto failure;
     for (unsigned i=0;i<16;++i) a->palette[i]=(uint16_t)be16(r+0x39D262+i*2);
     for (unsigned i=0;i<32;++i) a->palette[16+i]=(uint16_t)be16(r+0xCA78+i*2);
-    for (unsigned i=0;i<70;++i) a->new_card[i]=(uint16_t)be16(r+0x3A20DE+i*2);
+    for (unsigned i=0;i<70;++i) a->new_card[i]=(uint16_t)be16(r + 0x3A20DE + i*2);
     for (unsigned frame=0;frame<4;++frame) {
         uint32_t p=be32(r+0x3A216A+frame*4)+0x200000;
         if (p>size-140) goto failure;
         for (unsigned i=0;i<70;++i) a->static_card[frame][i]=(uint16_t)be16(r+p+i*2);
     }
     for (unsigned f=0;f<S2_MENU_MAP_FRAMES;++f) {
-        size_t at=0xCE0E+be16(r+0xCE0E+f*2);
+        size_t at=0xCE0E + be16(r + 0xCE0E + f*2);
         if (at>0xD13C) goto failure;
         unsigned count=be16(r+at); at+=2;
         if (count>S2_MENU_MAP_PIECES || at+6*count>0xD13E) goto failure;

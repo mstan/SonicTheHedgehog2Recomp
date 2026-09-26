@@ -193,7 +193,15 @@ typedef struct { unsigned address; uint16_t x, y; uint8_t id, subtype, state, lo
 static Placement s_placements[SCENE_PLACEMENTS];
 static unsigned s_placement_count, s_placement_base;
 static int s_loader_active;
-void s2_video_state(S2StateIO *io)
+static void video_state(S2StateIO *io, int rollback);
+void s2_video_state(S2StateIO *io) { video_state(io, 0); }
+/* Rollback flavour: the simulation half only. s_display / s_display_frame
+ * are chosen by the scanline renderer (select_scene) -- presentation, which a
+ * replayed tick does not run -- so carrying them made the determinism probe
+ * report forks in the "game" partition whenever custom video was on
+ * (2026-09-25: 74 of 460 passes). A restore keeps the presented selection. */
+void s2_video_rb_state(S2StateIO *io) { video_state(io, 1); }
+static void video_state(S2StateIO *io, int rollback)
 {
     /* SceneFrame is pointer-free. Preserve the published frame history and
      * expanded object-loader ownership; scanline scratch is rebuilt at y=0. */
@@ -204,12 +212,13 @@ void s2_video_state(S2StateIO *io)
         if (saved.mode!=config.mode || saved.ratio!=config.ratio) io->ok=0;
     }
     S2_STATE(io,saved);
-    S2_STATE(io,s_build); S2_STATE(io,s_history); S2_STATE(io,s_display_frame);
-    int display=s_display!=NULL; S2_STATE(io,display);
+    S2_STATE(io,s_build); S2_STATE(io,s_history);
+    int display=s_display!=NULL;
+    if (!rollback) { S2_STATE(io,s_display_frame); S2_STATE(io,display); }
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
     S2_STATE(io,s_placements); S2_STATE(io,s_placement_count); S2_STATE(io,s_placement_base);
     S2_STATE(io,s_loader_active); S2_STATE(io,s_visible_objects); S2_STATE(io,s_visible_count);
-    if (io->mode==2) s_display=display?&s_display_frame:NULL;
+    if (io->mode==2 && !rollback) s_display=display?&s_display_frame:NULL;
 }
 
 static uint8_t scene_read8(unsigned a)
@@ -219,9 +228,13 @@ static uint8_t scene_read8(unsigned a)
 }
 static uint16_t scene_read16(unsigned a) { return (uint16_t)((scene_read8(a)<<8)|scene_read8(a+1)); }
 static uint32_t scene_read32(unsigned a) { return ((uint32_t)scene_read16(a)<<16)|scene_read16(a+2); }
-static void write8(unsigned a, unsigned v) { m68k_write8(0xFF0000u|(a&65535u),(uint8_t)v); }
-static void write16(unsigned a, unsigned v) { m68k_write16(0xFF0000u|(a&65535u),(uint16_t)v); }
-static void write32(unsigned a, unsigned v) { m68k_write32(0xFF0000u|(a&65535u),v); }
+/* Host edits of guest RAM: glue_poke* (genesis_host_mem.h), never the
+ * emulated bus. m68k_write* is a guest access -- it bumps the cycle budget
+ * and may yield the game fiber to the raster scheduler -- so a host hook
+ * that wrote through it made the machine's schedule depend on the host. */
+static void write8(unsigned a, unsigned v) { glue_poke8(0xFF0000u|(a&65535u),(uint8_t)v); }
+static void write16(unsigned a, unsigned v) { glue_poke16(0xFF0000u|(a&65535u),(uint16_t)v); }
+static void write32(unsigned a, unsigned v) { glue_poke32(0xFF0000u|(a&65535u),v); }
 static int view_left(int camera, int w)
 {
     int end = stage_width()-w, left = camera-(w-320)/2;
@@ -547,7 +560,12 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=g_ram[0xFE10];
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
-        s_width=width;s_requested_width=width;
+        /* Presentation width only. s_requested_width is SIMULATION (object
+         * activation, spawn culling) and comes from width() -- the sealed
+         * mode -- never from the width this machine could present (GPU
+         * texture clamp, allocation), or two peers desync (2026-09-25:
+         * a forced 360-px clamp on one peer failed the boot-digest gate). */
+        s_width=width;
         s_terrain_checks=s_terrain_errors=s_bg_checks=s_bg_errors=s_bg_unstreamed=0;
         s_uninitialized_scroll_lines=s_terrain_unstreamed=0;
         s_bad_x=s_bad_y=-1;s_bad_attr=s_bad_expected=0;

@@ -14,6 +14,7 @@
 #include "genesis_runtime.h"
 #include "input_map.h"
 #include "input_script.h"
+#include "sim_step.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +48,12 @@ typedef struct {
 /* Fifth sprite is native Obj05 (P1 Tails' separate tails), not a fifth actor. */
 static PartySprite published_sprites[5];
 static uint8_t displayed_tails;
+/* Reentrancy guards of the hooks below, hoisted from function-local statics
+ * so the rollback snapshot can carry them: the game fiber can be suspended
+ * INSIDE a hook (any bus access may yield to the raster scheduler), so at a
+ * tick boundary any of these may legitimately be 1. */
+static int s_inside_spring, s_inside_palette, s_reward, s_checking_death,
+           s_transforming, s_combat;
 static int amy_available(void) { return s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY); }
 static int knuckles_available(void) { return s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK); }
 static const S2Character amy={"amy","AMY",1,amy_available};
@@ -78,7 +85,7 @@ static int custom_super_palette(void)
 { return kind(0)!=S2_CHAR_SONIC && !word(0xFFD8) && g_ram[0xF65F]; }
 static int32_t fixed(unsigned a) { return (int32_t)(((uint32_t)word(a)<<16)|word(a+2)); }
 static void putfixed(unsigned a, int32_t v) { putword(a,(uint32_t)v>>16); putword(a+2,(uint32_t)v); }
-static int16_t sine(unsigned a) { a=0x33CE+(a&255)*2; return (int16_t)((g_rom[a]<<8)|g_rom[a+1]); }
+static int16_t sine(unsigned a) { a=0x33CE + (a&255)*2; return (int16_t)((g_rom[a]<<8)|g_rom[a+1]); }
 static S2Motion motion(unsigned o)
 {
     S2Motion m={0}; m.x=fixed(o+8); m.y=fixed(o+12);
@@ -136,7 +143,9 @@ static unsigned native_id(unsigned p)
 }
 static int human_companion(unsigned p)
 {
-    return input_player_connected(p) || input_script_player_used(p);
+    /* Sealed with the tick: a connected device or script offline, an
+     * occupied seat online (genesis_sim_human_mask). */
+    return (int)((genesis_sim_human_mask() >> p) & 1u);
 }
 static int companion_recovering(void)
 {
@@ -373,11 +382,10 @@ static int collide_extras(uint32_t pc, uint32_t single)
 }
 static int spring_extras(uint32_t pc)
 {
-    static int inside;
-    if (inside || (!objects[2] && !objects[3])) return 0;
+    if (s_inside_spring || (!objects[2] && !objects[3])) return 0;
     M68KState input=g_cpu;
     unsigned spring=input.A[0]&0xFFFF;
-    inside=1; recomp_call_addr(pc); inside=0;
+    s_inside_spring=1; recomp_call_addr(pc); s_inside_spring=0;
     M68KState result=g_cpu;
     unsigned routine=g_ram[spring+0x24];
     if (g_ram[spring]!=0x41 || routine<2 || routine>10) return 1;
@@ -438,8 +446,9 @@ static int update_player(unsigned p, uint32_t entry)
     if (p) memcpy(g_ram+0xF760,physics[p],6);
     if (p && word(0xFFD8)) memcpy(g_ram+0xEEC8,g_ram+0xEEF8,8);
     if (p) {
-        uint8_t held=word(0xFFD8)?g_ram[0xF606]:
-            (uint8_t)(input_current_mask(p)|input_script_player_mask(p));
+        /* The tick's SEALED pad (runner/sim_step.h): the live map and script
+         * offline, the published row online. Never a live device read. */
+        uint8_t held=word(0xFFD8)?g_ram[0xF606]:(uint8_t)genesis_sim_pad((int)p);
         uint8_t pressed=(uint8_t)(held&~previous_input[p]); previous_input[p]=held;
         g_ram[0xF604]=g_ram[0xF602]=g_ram[0xF606]=g_ram[0xF66A]=held;
         g_ram[0xF605]=g_ram[0xF603]=g_ram[0xF607]=g_ram[0xF66B]=pressed;
@@ -515,9 +524,8 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
-#if GENESIS_HAS_RECOMP_NET
-    if (genesis_netplay_active()) return 0;
-#endif
+    /* Online too: the party runtime reads only sealed inputs and every piece
+     * of its state is in the rollback snapshot (s2_runtime_rb_save). */
     if (pc==0x4F64) {
         /* Special stages ALWAYS use stock Sonic + Tails, even for a solo
          * campaign roster. Native controllers, art, shadows and CPU follow
@@ -546,13 +554,12 @@ int s2_runtime_hook(uint32_t pc)
     }
     if (!level()) return 0;
     if (pc==0x213E && custom_super_palette()) {
-        static int inside_palette;
-        if (inside_palette) return 0;
+        if (s_inside_palette) return 0;
         /* Native cycle owns timing AND releases transform control at $2168.
          * Its blue shades belong to Sonic, never to a companion sharing CRAM. */
         uint8_t normal[8],water[8];
         memcpy(normal,g_ram+0xFB04,8); memcpy(water,g_ram+0xF084,8);
-        inside_palette=1; recomp_call_addr(pc); inside_palette=0;
+        s_inside_palette=1; recomp_call_addr(pc); s_inside_palette=0;
         memcpy(g_ram+0xFB04,normal,8); memcpy(g_ram+0xF084,water,8);
         if (!g_ram[0xF65F]) putword(0xF65C,0); /* REV01 byte-clear leaves $F8 */
         return 1;
@@ -586,15 +593,14 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if ((pc==0x1296A || pc==0x129E0 || pc==0x12A2C) && !word(0xFFD8)) {
-        static int reward;
-        if (reward) return 0;
+        if (s_reward) return 0;
         unsigned target=g_cpu.A[1]&0xFFFF, p=0;
         while (p<4 && objects[p]!=target) ++p;
         if (p==4 || !p) return 0;
         uint32_t parent=g_cpu.A[1]; uint8_t tails_physics[6], shield[64];
         memcpy(tails_physics,g_ram+0xFEC0,6); memcpy(shield,g_ram+0xD1C0,64);
         if (pc==0x1296A) g_cpu.A[1]=0xFFFFB000u; /* shared campaign ring/life pool */
-        reward=1; recomp_call_addr(pc); reward=0; g_cpu.A[1]=parent;
+        s_reward=1; recomp_call_addr(pc); s_reward=0; g_cpu.A[1]=parent;
         if (pc==0x129E0 && native_id(p)!=2) {
             memcpy(physics[p],g_ram+0xFEC0,6); memcpy(g_ram+0xFEC0,tails_physics,6);
         }
@@ -646,12 +652,11 @@ int s2_runtime_hook(uint32_t pc)
         /* Obj02_CheckGameOver waits for the corpse to leave the level, then
          * enters TailsCPU_Despawn without spending P1's lives or locking P1's
          * camera. Apply it to Sonic/Amy/Knuckles companions as well. */
-        static int checking_death;
-        if (checking_death) return 0;
+        if (s_checking_death) return 0;
         uint16_t max_y=word(0xEEFE);
         uint8_t scroll_lock=g_ram[0xEEBF];
         putword(0xEEFE,word(0xEECE));
-        checking_death=1; native_helper(0x1CC6C); checking_death=0;
+        s_checking_death=1; native_helper(0x1CC6C); s_checking_death=0;
         putword(0xEEFE,max_y); g_ram[0xEEBF]=scroll_lock;
         if (companion_recovering() && native_id((unsigned)actor)!=2) g_ram[(g_cpu.A[0]&0xFFFF)+0x1C]=2;
         return 1;
@@ -660,11 +665,10 @@ int s2_runtime_hook(uint32_t pc)
         if (!inside_player) return 0;
         if (actor>0 || word(0xFFD8)) return 1; /* never companions or VS */
         if (pc==0x1AB38 && kind(0)!=S2_CHAR_SONIC) {
-            static int transforming;
-            if (transforming) return 0;
+            if (s_transforming) return 0;
             if (g_ram[0xFE19] || g_ram[0xFFB1]!=7 || word(0xFE20)<50 || !g_ram[0xFE1E]) return 1;
             putword(0xF65C,0); /* source cycle starts at the first fade frame */
-            transforming=1; recomp_call_addr(pc); transforming=0;
+            s_transforming=1; recomp_call_addr(pc); s_transforming=0;
             if (g_ram[0xFE19]) {
                 characters[0].special=0;
                 /* Imported donors have their own $1F transformation script.
@@ -734,9 +738,8 @@ int s2_runtime_hook(uint32_t pc)
          * deliberately cannot damage enemies with her ordinary unarmed jump. */
         S2Motion m=motion(o); uint8_t animation=g_ram[o+0x1C];
         g_ram[o+0x1C]=s2_character_attacking(&characters[actor],&m)?2:0;
-        static int combat;
-        if (combat) { g_ram[o+0x1C]=animation; return 0; }
-        combat=1; recomp_call_addr(pc); combat=0; g_ram[o+0x1C]=animation;
+        if (s_combat) { g_ram[o+0x1C]=animation; return 0; }
+        s_combat=1; recomp_call_addr(pc); s_combat=0; g_ram[o+0x1C]=animation;
         return 1;
     }
     return 0;
@@ -818,4 +821,82 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             out[dx]=rgb;
         }
     }
+}
+
+/* ---- rollback state (GameSpec rb_state_save/load) --------------------------
+ * Everything this adapter keeps outside guest RAM that a tick reads, at ANY
+ * tick boundary: role/actor bookkeeping, the reentrancy guards (the game fiber
+ * may be suspended inside a hook), per-actor character/physics/CPU state,
+ * solid-object ownership, the published overlay sprites, the save-menu and
+ * custom-video state, and the character registry (as ids, never pointers).
+ * Structs with padding are packed field by field: these bytes are also the
+ * digest every peer compares, so they must not carry padding garbage.
+ * Immutable ROM-derived caches (decoded donor art) are not state. */
+static void rb_bytes(S2StateIO *io, void *v, size_t n) { s2_state_bytes(io, v, n); }
+#define RB(io, v) rb_bytes(io, &(v), sizeof(v))
+static void rb_character(S2StateIO *io, S2CharacterState *c)
+{
+    RB(io,c->kind); RB(io,c->special); RB(io,c->age); RB(io,c->charge); RB(io,c->ledge);
+    RB(io,c->turn); RB(io,c->held); RB(io,c->pressed); RB(io,c->native_held); RB(io,c->native_pressed);
+    RB(io,c->move); RB(io,c->before_air); RB(io,c->before_jumping);
+    RB(io,c->jump_adjustment); RB(io,c->wall_x);
+    RB(io,c->animation); RB(io,c->animation_index); RB(io,c->animation_timer);
+    RB(io,c->frame); RB(io,c->render_flip); RB(io,c->animation_changed);
+}
+static void rb_all(S2StateIO *io)
+{
+    int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
+    RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);
+    RB(io,previous_input); RB(io,displayed); RB(io,companion_cpu);
+    for (unsigned p=0;p<4;++p) rb_character(io,&characters[p]);
+    RB(io,physics); RB(io,objects); RB(io,solid_flags); RB(io,solid_ids);
+    for (unsigned i=0;i<5;++i) {
+        PartySprite *ps=&published_sprites[i];
+        RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible);
+    }
+    RB(io,displayed_tails);
+    int32_t g[6]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,s_transforming,s_combat};
+    RB(io,g);
+    /* The save menu and the custom-video scene carry large host tables
+     * (~2 MB) and are only simulation when switched on; both are off online
+     * (session config seal), so a snapshot carries them only when on. */
+    int32_t menu_on=s2_save_menu_enabled()?1:0, video_on=sonic2_video.enabled()?1:0;
+    int32_t want_menu=menu_on, want_video=video_on;
+    RB(io,menu_on); RB(io,video_on);
+    if (io->mode && (menu_on!=want_menu || video_on!=want_video)) { io->ok=0; return; }
+    if (menu_on) s2_save_menu_state(io);
+    if (video_on) s2_video_rb_state(io);
+    char reg[S2_MAX_CHARACTERS][S2_CHARACTER_ID_SIZE];
+    uint32_t count=s2_character_count();
+    memset(reg,0,sizeof reg);
+    for (uint32_t i=0;i<count && i<S2_MAX_CHARACTERS;++i)
+        snprintf(reg[i],sizeof reg[i],"%s",s2_character_at(i)->id);
+    RB(io,count); RB(io,reg);
+    if (io->mode==2) {
+        active=a; inside_player=ip; actor=ac; inside_companion_cpu=icc; inside_solid=is;
+        s_inside_spring=g[0]; s_inside_palette=g[1]; s_reward=g[2];
+        s_checking_death=g[3]; s_transforming=g[4]; s_combat=g[5];
+    }
+    if (io->mode==1 && count!=s2_character_count()) io->ok=0;   /* registry is fixed after init */
+}
+size_t s2_runtime_rb_save(void *dst, size_t cap)
+{
+    S2StateIO io={0};
+    rb_all(&io);                      /* measure */
+    if (!dst) return io.pos;
+    if (cap<io.pos) return 0;
+    size_t need=io.pos;
+    memset(dst,0,need);
+    S2StateIO w={(uint8_t *)dst,need,0,0,1};
+    rb_all(&w);
+    return w.ok && w.pos==need ? need : 0;
+}
+int s2_runtime_rb_load(const void *src, size_t len)
+{
+    S2StateIO v={(uint8_t *)src,len,0,1,1};
+    rb_all(&v);
+    if (!v.ok || v.pos!=len) return 0;
+    S2StateIO io={(uint8_t *)src,len,0,2,1};
+    rb_all(&io);
+    return io.ok;
 }
