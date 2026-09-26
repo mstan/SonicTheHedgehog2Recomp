@@ -7,7 +7,7 @@ S2PartyConfig s2_party;
 static S2CampaignStore fixture;
 static S2SaveAssets assets;
 static unsigned sound_writes;
-void m68k_write8(uint32_t a,uint8_t v)
+void glue_poke8(uint32_t a,uint8_t v)   /* the host write (was m68k_write8) */
 { assert(a==0xFFFFE1); g_ram[a&65535]=v; ++sound_writes; }
 void recomp_tail_call(uint32_t pc) { (void)pc; assert(0); }
 void s2_campaign_file_load(const char *path) { (void)path; }
