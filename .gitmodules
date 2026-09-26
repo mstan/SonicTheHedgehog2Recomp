@@ -3,7 +3,7 @@
 	url = https://github.com/mstan/segagenesisrecomp.git
 [submodule "recomp-ui"]
 	path = recomp-ui
-	url = https://github.com/mstan/recomp-ui.git
+	url = https://github.com/RetroPortingToolKit/recomp-ui.git
 [submodule "game/s2disasm"]
 	path = game/s2disasm
 	url = https://github.com/sonicretro/s2disasm.git
