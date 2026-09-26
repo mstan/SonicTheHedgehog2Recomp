@@ -560,7 +560,12 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=g_ram[0xFE10];
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
-        s_width=width;s_requested_width=width;
+        /* Presentation width only. s_requested_width is SIMULATION (object
+         * activation, spawn culling) and comes from width() -- the sealed
+         * mode -- never from the width this machine could present (GPU
+         * texture clamp, allocation), or two peers desync (2026-09-25:
+         * a forced 360-px clamp on one peer failed the boot-digest gate). */
+        s_width=width;
         s_terrain_checks=s_terrain_errors=s_bg_checks=s_bg_errors=s_bg_unstreamed=0;
         s_uninitialized_scroll_lines=s_terrain_unstreamed=0;
         s_bad_x=s_bad_y=-1;s_bad_attr=s_bad_expected=0;
