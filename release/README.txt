@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.7.0 — native static recompilation of Sonic the Hedgehog 2
+SonicTheHedgehog2Recomp v0.8.0-rc1 — rollback netplay playtest
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -14,6 +14,22 @@ Sonic the Hedgehog 2 (World) (Rev A / REV01) ROM next to the exe, named:
 
 then run SonicTheHedgehog2Recomp.exe, or select it in the launcher. Keep the
 assets folder next to the executable. No ROM or save data is included.
+
+ONLINE PLAYTEST
+---------------
+Everyone must use this exact package: the lobby checks the executable and ROM.
+Use Online in the launcher to host or join the same room. Online rooms support
+up to four players; LAN / Direct IP currently supports two.
+
+For a party, the host first chooses the roster in the game's offline Options,
+then returns to the launcher. The host's roster is adopted for the match.
+Leave Sonic 3-style Save Menu disabled for netplay. If the roster uses a
+donor-backed character, each player must supply the corresponding owner ROM.
+Each participant controls their assigned seat using their player-1 bindings.
+Quickstates and turbo are disabled during netplay.
+
+This Windows release candidate passed a build and a brief startup check.
+The final internet multiplayer playtest is still pending.
 
 OPTIONAL SAVE MENU AND CAMPAIGN SRAM
 -----------------------------------
@@ -49,7 +65,8 @@ portable progress format. Keep your prior build with its old quickstates.
 
 OPTIONAL LOCAL PARTY
 --------------------
-Options supports up to four local player/CPU slots with unique characters.
+Options supports up to four local player/CPU slots. Players 1 and 2 must be
+distinct; players 3 and 4 may repeat a character.
 Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
 the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
 The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
