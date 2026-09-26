@@ -295,6 +295,12 @@ recomp_target_launcher_ui(SonicTheHedgehog2Recomp CONSOLE genesis
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.
 # ICE is enabled for Internet sessions while direct/LAN sessions remain
 # available through the same launcher flow.
+# Linux builds carry rollback netplay by default (GENESISRECOMP_NETPLAY; needs
+# the engine's external/recomp-net and external/rbengine submodules --
+# configure fails loudly without them rather than dropping netplay).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED CACHE{GENESISRECOMP_NETPLAY})
+    set(GENESISRECOMP_NETPLAY ON CACHE BOOL "Build netplay support (requires the recomp-net submodule)")
+endif()
 include(${RECOMP_ROOT}/cmake/GenesisRecompNetplay.cmake)
 genesisrecomp_enable_netplay(SonicTheHedgehog2Recomp
     GAME_VERSION "${SONIC2_GAME_VERSION}"

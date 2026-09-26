@@ -29,9 +29,63 @@ void s2_options_load(const char *settings_path)
 
 int s2_options_netplay_allowed(void)
 {
+    /* Any validated 1-4 player party runs online: its roster travels in the
+     * session config image (s2_netplay_config_image) and every peer adopts
+     * the host's. The campaign save menu stays local-only: it reads and
+     * writes the player's own campaign file, which no peer shares. */
+    S2Roster r = s2_party.roster;
+    /* s2_roster_validate REPAIRS and returns 1 when it had to change
+     * something: a roster it leaves untouched is a valid one. */
+    return !s2_party.save_menu_enabled && !s2_roster_validate(&r);
+}
+
+/* Session config seal (GameSpec netplay_config_image / _adopt). One compact
+ * line, at most 55 characters, carried in the lobby's match caps:
+ *   "r=<id>,<id>,.. m=<amy><s3k>"  (roster in player order; owner features) */
+void s2_netplay_config_image(char *out, size_t cap)
+{
     const S2Roster *r = &s2_party.roster;
-    return !s2_party.save_menu_enabled && r->slots == 2 && !strcmp(r->character[0], "sonic") &&
-        !strcmp(r->character[1], "tails");
+    size_t n = (size_t)snprintf(out, cap, "r=");
+    for (unsigned p = 0; p < r->slots && p < S2_MAX_PLAYERS && n < cap; ++p)
+        n += (size_t)snprintf(out + n, cap - n, "%s%s", p ? "," : "", r->character[p]);
+    /* The EFFECTIVE owner features: enabled AND backed by verified assets
+     * (an enabled feature without its donor ROM changes nothing). */
+    if (n < cap)
+        snprintf(out + n, cap - n, " m=%d%d",
+                 s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY) ? 1 : 0,
+                 s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0);
+}
+
+int s2_netplay_config_adopt(const char *line)
+{
+    S2Roster roster;
+    int amy = 0, s3k = 0;
+    char ids[64];
+    if (!line || strncmp(line, "r=", 2)) return -1;
+    const char *m = strstr(line, " m=");
+    size_t len = m ? (size_t)(m - line - 2) : strlen(line + 2);
+    if (len >= sizeof ids) return -1;
+    memcpy(ids, line + 2, len); ids[len] = 0;
+    if (m && strlen(m) >= 5) { amy = m[3] == '1'; s3k = m[4] == '1'; }
+    /* Owner-gated characters need this build's verified owner assets. */
+    if ((amy && !s2_resource_verified(S2_RESOURCE_AMY)) || (s3k && !s2_resource_verified(S2_RESOURCE_SK)))
+        return -1;
+    memset(&roster, 0, sizeof roster);
+    for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) strcpy(roster.character[i], "none");
+    unsigned p = 0;
+    for (char *tok = strtok(ids, ","); tok && p < S2_MAX_PLAYERS; tok = strtok(NULL, ","), ++p)
+        snprintf(roster.character[p], sizeof roster.character[p], "%s", tok);
+    roster.slots = p;
+    int keep_amy = s2_party.amy_enabled, keep_s3k = s2_party.s3k_enabled;
+    s2_party.amy_enabled = amy; s2_party.s3k_enabled = s3k;
+    if (s2_roster_validate(&roster)) {   /* 1 = had to repair: not the host's roster */
+        s2_party.amy_enabled = keep_amy; s2_party.s3k_enabled = keep_s3k;
+        return -1;
+    }
+    /* Session-scoped: set in memory, never written to sonic2-party.ini. */
+    s2_party.roster = roster;
+    s2_party.save_menu_enabled = 0;
+    return 0;
 }
 
 int s2_options_hook(uint32_t pc)
@@ -129,10 +183,12 @@ static void text_row(const GVDP *v, int line, uint32_t *out, int width,
 }
 void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
+    /* The party actors' overlay is presentation of simulated state: drawn
+     * online too. The menus below are local-only. */
+    s2_runtime_overlay(v, line, out, width);
 #if GENESIS_HAS_RECOMP_NET
     if (genesis_netplay_active()) return;
 #endif
-    s2_runtime_overlay(v, line, out, width);
     if (s2_save_menu_overlay(line,out,width)) return;
     if (g_ram[0xF600] != 0x24 || !s_ready) return;
     int left = (width - 288) / 2;

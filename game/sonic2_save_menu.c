@@ -150,7 +150,7 @@ static void navigation_sound(unsigned sound)
      * and Blip ($CD). Keep S2's own mixing/pitch, not a sampled S3 recording.
      * REV01 PlaySound $1370 writes Sound_Queue.SFX0 ($FFFFE1); V-int passes
      * it to the existing Z80 driver. No ROM patch or host audio side channel. */
-    m68k_write8(0xFFFFE1,(uint8_t)sound);
+    glue_poke8(0xFFFFE1,(uint8_t)sound);   /* host write: never the emulated bus */
 }
 static void controls(void)
 {
