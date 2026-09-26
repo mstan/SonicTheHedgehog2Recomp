@@ -865,7 +865,7 @@ static void rb_all(S2StateIO *io)
     RB(io,menu_on); RB(io,video_on);
     if (io->mode && (menu_on!=want_menu || video_on!=want_video)) { io->ok=0; return; }
     if (menu_on) s2_save_menu_state(io);
-    if (video_on) s2_video_state(io);
+    if (video_on) s2_video_rb_state(io);
     char reg[S2_MAX_CHARACTERS][S2_CHARACTER_ID_SIZE];
     uint32_t count=s2_character_count();
     memset(reg,0,sizeof reg);

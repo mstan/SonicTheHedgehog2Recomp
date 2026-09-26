@@ -193,7 +193,15 @@ typedef struct { unsigned address; uint16_t x, y; uint8_t id, subtype, state, lo
 static Placement s_placements[SCENE_PLACEMENTS];
 static unsigned s_placement_count, s_placement_base;
 static int s_loader_active;
-void s2_video_state(S2StateIO *io)
+static void video_state(S2StateIO *io, int rollback);
+void s2_video_state(S2StateIO *io) { video_state(io, 0); }
+/* Rollback flavour: the simulation half only. s_display / s_display_frame
+ * are chosen by the scanline renderer (select_scene) -- presentation, which a
+ * replayed tick does not run -- so carrying them made the determinism probe
+ * report forks in the "game" partition whenever custom video was on
+ * (2026-09-25: 74 of 460 passes). A restore keeps the presented selection. */
+void s2_video_rb_state(S2StateIO *io) { video_state(io, 1); }
+static void video_state(S2StateIO *io, int rollback)
 {
     /* SceneFrame is pointer-free. Preserve the published frame history and
      * expanded object-loader ownership; scanline scratch is rebuilt at y=0. */
@@ -204,12 +212,13 @@ void s2_video_state(S2StateIO *io)
         if (saved.mode!=config.mode || saved.ratio!=config.ratio) io->ok=0;
     }
     S2_STATE(io,saved);
-    S2_STATE(io,s_build); S2_STATE(io,s_history); S2_STATE(io,s_display_frame);
-    int display=s_display!=NULL; S2_STATE(io,display);
+    S2_STATE(io,s_build); S2_STATE(io,s_history);
+    int display=s_display!=NULL;
+    if (!rollback) { S2_STATE(io,s_display_frame); S2_STATE(io,display); }
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
     S2_STATE(io,s_placements); S2_STATE(io,s_placement_count); S2_STATE(io,s_placement_base);
     S2_STATE(io,s_loader_active); S2_STATE(io,s_visible_objects); S2_STATE(io,s_visible_count);
-    if (io->mode==2) s_display=display?&s_display_frame:NULL;
+    if (io->mode==2 && !rollback) s_display=display?&s_display_frame:NULL;
 }
 
 static uint8_t scene_read8(unsigned a)
