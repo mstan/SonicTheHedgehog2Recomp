@@ -81,6 +81,25 @@ void s2_runtime_load(void)
     s2_character_register(&knuckles); s2_character_register(&amy);
 }
 static uint16_t word(unsigned a) { return (uint16_t)((g_ram[a] << 8) | g_ram[a+1]); }
+int s2_runtime_campaign_online(void)
+{
+#if GENESIS_HAS_RECOMP_NET
+    int mode=g_ram[0xF600]&127;
+    return genesis_netplay_active() && !word(0xFFD8) && (mode==12 || mode==8);
+#else
+    return 0;
+#endif
+}
+int s2_runtime_player_position(unsigned p, int *x, int *y)
+{
+    if (p>=s2_party.roster.slots || p>=4 || !objects[p] || !g_ram[objects[p]]) return 0;
+    unsigned o=objects[p];
+    /* Despawn/flight recovery still belongs to the shared campaign. Follow
+     * the leader during recovery instead of showing the x=$4000 sentinel. */
+    if (p && companion_cpu[p][6]==0 && (companion_cpu[p][7]==2 || companion_cpu[p][7]==4)) o=objects[0];
+    *x=word(o+8); *y=(int16_t)word(o+12);
+    return 1;
+}
 static void putword(unsigned a, unsigned v) { g_ram[a]=(uint8_t)(v>>8); g_ram[a+1]=(uint8_t)v; }
 static int custom_super_palette(void)
 { return kind(0)!=S2_CHAR_SONIC && !word(0xFFD8) && g_ram[0xF65F]; }
@@ -164,6 +183,10 @@ static void companion_control(unsigned p, unsigned o)
         y>=-32 && y<256;
     g_ram[o+1]=(g_ram[o+1]&0x7F)|(visible?0x80:0);
     int human=human_companion(p);
+    /* Every online human has a camera. Distance from P1 is no longer a
+     * reason to start Tails' 300-tick offscreen recovery timer. Actual death
+     * and its normal recovery continue through the original controller. */
+    if (human && s2_runtime_campaign_online()) g_ram[o+1]|=0x80;
     /* Preserve the party's explicit controller ownership; the CPU must not
      * take over an idle connected controller after the stock ten seconds. */
     if (human) putword(0xF702,600);
@@ -539,7 +562,7 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if (pc==0x4450) { /* Level_SetPlayerMode: attract demos remain byte-identical */
-        active=g_ram[0xF600]!=0x88 && !vanilla();
+        active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_online());
         gvdp_set_unlimited_sprites(active);
         memset(published_sprites,0,sizeof published_sprites);
         if (!active) return 0;
@@ -859,10 +882,10 @@ static void rb_all(S2StateIO *io)
     RB(io,displayed_tails);
     int32_t g[6]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,s_transforming,s_combat};
     RB(io,g);
-    /* The save menu and the custom-video scene carry large host tables
-     * (~2 MB) and are only simulation when switched on; both are off online
-     * (session config seal), so a snapshot carries them only when on. */
-    int32_t menu_on=s2_save_menu_enabled()?1:0, video_on=sonic2_video.enabled()?1:0;
+    /* Online campaign rendering can become active after the cold snapshot
+     * and inactive before a rematch restore. Always carry its simulation
+     * tables so the state schema is independent of connection lifecycle. */
+    int32_t menu_on=s2_save_menu_enabled()?1:0, video_on=1;
     int32_t want_menu=menu_on, want_video=video_on;
     RB(io,menu_on); RB(io,video_on);
     if (io->mode && (menu_on!=want_menu || video_on!=want_video)) { io->ok=0; return; }

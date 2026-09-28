@@ -8,6 +8,9 @@ int s2_runtime_state_at_boundary(void);
 int s2_runtime_hook(uint32_t pc);
 void s2_runtime_load(void);
 void s2_runtime_capture(void);
+int s2_runtime_campaign_online(void);
+/* Read-only world positions, including the dynamically reserved P3/P4 slots. */
+int s2_runtime_player_position(unsigned player, int *x, int *y);
 const char *s2_runtime_state_unavailable_reason(void);
 struct GVDP;
 void s2_runtime_overlay(const struct GVDP *vdp, int line, uint32_t *out, int width);
