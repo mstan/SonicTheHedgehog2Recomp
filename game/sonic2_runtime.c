@@ -8,6 +8,7 @@
 #include "sonic2_video.h"
 #include "sonic2_state_io.h"
 #include "sonic2_save_menu.h"
+#include "sonic2_options.h"
 #include "audio/event_queue.h"
 #include "video/genesis_vdp.h"
 #include "video/genesis_dac.h"
@@ -845,6 +846,7 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
 }
 static void rb_all(S2StateIO *io)
 {
+    s2_options_rb_state(io);
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);
     RB(io,previous_input); RB(io,displayed); RB(io,companion_cpu);
