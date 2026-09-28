@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.8.0-rc2 — rollback netplay playtest
+SonicTheHedgehog2Recomp v0.8.1 — online party Options fix
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -15,23 +15,24 @@ Sonic the Hedgehog 2 (World) (Rev A / REV01) ROM next to the exe, named:
 then run SonicTheHedgehog2Recomp.exe, or select it in the launcher. Keep the
 assets folder next to the executable. No ROM or save data is included.
 
-ONLINE PLAYTEST
----------------
+ONLINE PLAY
+-----------
 Everyone must use this exact package: the lobby checks the executable and ROM.
 Use Online in the launcher to host or join the same room. Online rooms support
 up to four players; LAN / Direct IP currently supports two.
 
-For a party, the host first chooses the roster in the game's offline Options,
-then returns to the launcher. The host's roster is adopted for the match.
-Leave Sonic 3-style Save Menu disabled for netplay. If the roster uses a
-donor-backed character, each player must supply the corresponding owner ROM.
+Enable Amy and/or Knuckles under Mods before creating the room. Each player
+must supply the donor ROMs for the host's enabled character features. Leave
+Sonic 3-style Save Menu disabled for netplay; it is separate from Knuckles.
+The host's initial roster is adopted for the match. After launching, open
+Options on the title screen, set PLAYERS to 4, and choose each character.
+Start applies the roster to this session without changing saved local settings.
 Each participant controls their assigned seat using their player-1 bindings.
 Quickstates and turbo are disabled during netplay.
 
-This update fixes both peers closing when an online lobby starts the game.
-It passed local two- and four-player relay sessions, rematches, and rollback
-checks with simulated latency and packet loss. The final Internet multiplayer
-playtest is still pending. Everyone must update together from rc1.
+This patch restores the enhanced party Options menu during netplay, including
+Amy and Knuckles selection and four-player parties. Menu edits rewind with
+rollback. It includes the rc2 online startup fix. Everyone must update together.
 
 OPTIONAL SAVE MENU AND CAMPAIGN SRAM
 -----------------------------------
@@ -65,15 +66,15 @@ Keep the matching executable and character/mod/video setup with each state.
 Older or incompatible machine quickstates are rejected. Campaign SRAM is the
 portable progress format. Keep your prior build with its old quickstates.
 
-OPTIONAL LOCAL PARTY
---------------------
-Options supports up to four local player/CPU slots. Players 1 and 2 must be
+OPTIONAL PARTY CHARACTERS
+-------------------------
+Options supports up to four local or online slots. Players 1 and 2 must be
 distinct; players 3 and 4 may repeat a character.
 Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
 the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
 The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
-stages return to your chosen party. These party/save features are local-only;
-they do not expand netplay. Compatible quickstates include the full party.
+stages return to your chosen party. The campaign save menu is local-only.
+Compatible offline quickstates include the full party.
 P3/P4 follow closely, with small spacing differences; recovery no longer
 requires blocking legacy per-frame logging. Imported companions also render
 correctly while the world is frozen during Player 1's death.

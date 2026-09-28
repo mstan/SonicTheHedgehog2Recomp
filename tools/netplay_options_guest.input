@@ -1,0 +1,9 @@
+# Capture the synchronized Options overlay, then control this peer's seat.
+WAIT_RAM8 FFF600 24
+WAIT 470
+SCREENSHOT options.png
+WAIT_RAM8 FFF600 8C
+WAIT_RAM8 FFF600 0C
+WAIT 90
+PRESS A 2
+HOLD RIGHT

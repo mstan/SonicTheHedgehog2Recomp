@@ -24,6 +24,8 @@ def main():
     ap.add_argument('--exe', type=Path, help='Optional replacement executable to test')
     ap.add_argument('--rom', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True, help='New output directory')
+    ap.add_argument('--runtime-dir', type=Path, required=True,
+                    help='Dedicated reusable test installation; keep its executable paths fixed for Windows Firewall')
     ap.add_argument('--lobby-url', required=True, help='Use an isolated test server')
     ap.add_argument('--players', type=int, choices=(2, 3, 4), default=2)
     ap.add_argument('--rounds', type=int, default=1)
@@ -36,14 +38,36 @@ def main():
     ap.add_argument('--guest-video', default='off')
     ap.add_argument('--host-roster', default='sonic,tails')
     ap.add_argument('--guest-roster', default='sonic,tails')
+    ap.add_argument('--amy', type=Path, help='Private Amy in Sonic 2 Rev 1.7.1 donor')
+    ap.add_argument('--s3k', type=Path, help='Private combined Sonic 3 & Knuckles donor')
     ap.add_argument('--gameplay', action='store_true')
+    ap.add_argument('--options', action='store_true',
+                    help='Select four characters through online Options, then enter gameplay')
     args = ap.parse_args()
     if args.rounds < 1 or args.frames < 120 or args.timeout < 1:
         ap.error('rounds/timeout must be positive and frames must be at least 120')
     if not args.rom.is_file() or not args.package.is_file():
         ap.error('ROM and package must exist')
+    for donor in (args.amy, args.s3k):
+        if donor and not donor.is_file():
+            ap.error(f'Donor must exist: {donor}')
+    if args.options:
+        if not args.amy or not args.s3k or args.host_roster != 'sonic,tails' or args.rounds != 1:
+            ap.error('--options requires both donors, the default host roster, and one round')
+        args.gameplay = True
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
+    runtime = args.runtime_dir.resolve()
+    runtime.mkdir(parents=True, exist_ok=True)
+    # One test session at a time, reusing the same executable paths. Results
+    # remain separate, without registering fresh applications with Firewall.
+    lock = runtime / '.netplay-validation.lock'
+    try:
+        lock_file = lock.open('x')
+    except FileExistsError:
+        ap.error(f'Test runtime already in use: {lock}')
+    lock_file.write(str(os.getpid()))
+    lock_file.close()
     lobby = 's2-launch-' + secrets.token_hex(8)  # Fits the lobby's 31-character name.
     processes, logs, originals = [], [], []
     failures, results, timelines = [], [], []
@@ -51,18 +75,26 @@ def main():
         for seat in range(args.players):
             work = out / f'seat{seat}'
             work.mkdir()
+            install = runtime / f'seat{seat}'
+            install.mkdir(exist_ok=True)
             with zipfile.ZipFile(args.package) as package:
-                package.extractall(work)
-            exe = work / 'SonicTheHedgehog2Recomp.exe'
+                package.extractall(install)
+            exe = install / 'SonicTheHedgehog2Recomp.exe'
             if args.exe:
                 shutil.copy2(args.exe, exe)
             roster = (args.host_roster if seat == 0 else args.guest_roster).split(',')
             party = f'version=1\nslots={len(roster)}\n'
             party += ''.join(f'player{p+1}={c}\n' for p, c in enumerate(roster))
+            party += f'amy_enabled={int(bool(args.amy))}\ns3k_enabled={int(bool(args.s3k))}\nsave_menu_enabled=0\n'
+            if args.amy:
+                party += f'amy_path={args.amy.resolve().as_posix()}\n'
+            if args.s3k:
+                party += f's3k_path={args.s3k.resolve().as_posix()}\n'
             video = args.host_video if seat == 0 else args.guest_video
             settings = f'[mods.widescreen]\nenabled={int(video != "off")}\naspect={video}\n'
             for name, value in [('settings.ini', settings), ('sonic2-party.ini', party)]:
-                (work / name).write_text(value, encoding='utf-8')
+                (install / name).write_text(value, encoding='utf-8')
+                shutil.copy2(install / name, work / name)
             originals.append({name: (work / name).read_bytes() for name in ('settings.ini', 'sonic2-party.ini')})
             env = {k: v for k, v in os.environ.items()
                    if not k.startswith(('GENESIS_', 'RNET_', 'SDL_', 'LNG_'))}
@@ -78,11 +110,14 @@ def main():
                        RNET_SIM_SEED=str(314159 + seat))
             command = [str(exe), str(args.rom.resolve()), '--no-launcher']
             if args.gameplay:
-                script = Path(__file__).parent / f'netplay_campaign_{"host" if seat == 0 else "guest"}.input'
+                scenario = 'options' if args.options else 'campaign'
+                script = Path(__file__).parent / f'netplay_{scenario}_{"host" if seat == 0 else "guest"}.input'
                 # Reaching this capture proves the input script passed the
                 # native level-loading transition rather than idling at title.
                 text = script.read_text(encoding='utf-8').replace('HOLD RIGHT',
                     'SCREENSHOT gameplay.png\nDUMP_RAM gameplay.ram\nHOLD RIGHT')
+                for capture in ('options.png', 'gameplay.png', 'gameplay.ram'):
+                    text = text.replace(capture, (work / capture).as_posix())
                 (work / 'input.txt').write_text(text, encoding='utf-8')
                 command += ['--input-script', str(work / 'input.txt')]
             log = (work / 'process.log').open('w', encoding='utf-8')
@@ -110,6 +145,10 @@ def main():
                 failures.append(f'seat {seat}: build lacks preboot regression mode')
             if len(rows) != args.rounds:
                 failures.append(f'seat {seat}: completed {len(rows)} rounds, expected {args.rounds}')
+            expected_game = f'game=r={args.host_roster} m={int(bool(args.amy))}{int(bool(args.s3k))}'
+            game_configs = re.findall(r'^game=.*$', content, re.MULTILINE)
+            if len(game_configs) < args.rounds or any(c != expected_game for c in game_configs):
+                failures.append(f'seat {seat}: host roster/donor settings were not adopted: {game_configs}')
             for row in rows:
                 if ('desyncs=0 ' not in row or 'refusal=none' not in row
                         or int(re.search(r'sim=(\d+)', row)[1]) < args.frames):
@@ -117,12 +156,18 @@ def main():
             if args.mispredict and not any(int(re.search(r'episodes=(\d+)', row)[1]) > 0 for row in rows):
                 failures.append(f'seat {seat}: rollback was not exercised')
             for name, original in originals[seat].items():
-                if (work / name).read_bytes() != original:
+                if (runtime / f'seat{seat}' / name).read_bytes() != original:
                     failures.append(f'seat {seat}: local {name} was changed')
             if args.gameplay:
                 ram = work / 'gameplay.ram'
                 if not ram.exists() or len(ram.read_bytes()) != 65536 or ram.read_bytes()[0xF600] != 0x0C:
                     failures.append(f'seat {seat}: did not reach level gameplay')
+                elif args.options:
+                    data = ram.read_bytes()
+                    if [data[p] for p in (0xB000, 0xB040, 0xCFC0, 0xCF80)] != [1, 2, 1, 1]:
+                        failures.append(f'seat {seat}: online Options did not spawn all four actors')
+                    if not (work / 'options.png').is_file():
+                        failures.append(f'seat {seat}: missing online Options capture')
             # Final drain samples can be emitted by only one peer; compare the
             # interior confirmed timeline in order, including repeated rounds.
             hashes = [(int(t), h) for t, h in re.findall(r'TIMELINE t=(\d+) d=(\w+)', content)
@@ -146,6 +191,7 @@ def main():
                 process.wait()
         for log in logs:
             log.close()
+        lock.unlink()
 
 
 if __name__ == '__main__':
