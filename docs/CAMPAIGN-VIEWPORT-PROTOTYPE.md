@@ -59,9 +59,10 @@ vertical adjustment. Water palettes, per-zone scroll effects, dynamic art,
 boss boundaries and distant partners at stage transitions need playtesting.
 The existing leader-driven progression is intentionally retained.
 
-More than four players is outside this prototype. The four-player scene math
-is covered without launching four processes; live validation uses only two
-participants, in the same fixed test installations to avoid new Firewall
+More than four players is outside this prototype. Automated checks use at
+most two participants in the same fixed test installations. The owner also
+explicitly requested and tried one visible four-peer desktop session, using
+the same established executable path for every process to avoid new Firewall
 application registrations.
 
 ## Validation
@@ -85,7 +86,16 @@ matched, with no desyncs/refusals. Both processes then cold-reset into offline
 play and completed another 1,800 ticks. Screenshots show all four characters.
 This checks donor rendering and rematch state, not a four-human Internet game.
 
+The subsequent owner-requested four-peer session used Sonic/Tails/Knuckles/Amy
+and four independent windows, all in the same local campaign. It ran through
+approximately 3,910 confirmed ticks with matching hashes, natural rollback,
+zero desyncs and no refusal on every peer. Closing the Tails window ended the
+session normally. The owner confirmed the four-player experience and approved
+committing and merging this work. Full-campaign and four-human Internet
+coverage remain outside this validation.
+
 The reproducible harness is `tools/validate_netplay_launch.py --campaign-views`.
 It requires a private ROM, an isolated lobby server and a fixed `--runtime-dir`.
-Do not create new executable installation paths per run or launch more than
-two game processes concurrently.
+Do not create new executable installation paths per run. Automated testing
+stays at two game processes concurrently unless the owner explicitly requests
+a larger interactive session.

@@ -20,8 +20,9 @@ Emerald Hill check kept the players over 1,500 pixels apart without the old
 companion return, with matching shared-state hashes. A separate Knuckles/Amy
 session passed rollback, rematch and return-to-offline checks.
 
-Remaining limitations: four-human play and the complete campaign have not
-been playtested. Zone-specific parallax, water and stage transitions need
+An owner-requested four-peer desktop session also passed with matching state
+hashes and zero desyncs. Remaining limitations: four-human Internet play and
+the complete campaign have not been playtested. Zone-specific parallax, water and stage transitions need
 review. Visited areas remain active until object-slot pressure requires
 streaming around all players; unlimited permanent entity activation is not
 implemented. Shared progression still follows the existing leader rules.
