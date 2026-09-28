@@ -4,6 +4,10 @@
  * No collision, layout, decompression or tile-streaming data is rewritten.
  */
 #include "sonic2_video.h"
+#include "sonic2_runtime.h"
+#if GENESIS_HAS_RECOMP_NET
+#include "netplay/genesis_netplay.h"
+#endif
 #include "genesis_runtime.h"
 #include "video/genesis_vdp.h"
 #include "video/genesis_dac.h"
@@ -30,6 +34,7 @@ static GVDP s_video_frame;
 static uint8_t s_world_frame[0xA800];
 static int s_frame_level,s_frame_special,s_frame_fg_x,s_frame_fg_y,s_frame_bg_y;
 static unsigned s_frame_zone;
+static int s_frame_campaign_view, s_frame_view_x, s_frame_view_y;
 static void scene_mode_changed(int was_enabled);
 
 static uint16_t ram16(unsigned a)
@@ -76,7 +81,13 @@ static int configure(const char *mode)
     scene_mode_changed(was_enabled);
     return 1;
 }
-static int enabled(void) { return s_mode != VIDEO_OFF; }
+static int enabled(void)
+{
+#if GENESIS_HAS_RECOMP_NET
+    if (genesis_netplay_active()) return 1;
+#endif
+    return s_mode != VIDEO_OFF;
+}
 unsigned s2_video_main_cpu_divisor(void)
 {
     /* Level_MainLoop ($4360) still waits for the real V-int every tick.
@@ -94,7 +105,7 @@ static int width(int dw, int dh, int nw, int nh)
         result = s_stage_width > nw ? s_stage_width : nw;
     }
     else if (s_mode == VIDEO_RATIO) result = nh * s_ratio;
-    else if (dw > 0 && dh > 0) result = (double)nh * dw / dh;
+    else if (s_mode == VIDEO_FIT && dw > 0 && dh > 0) result = (double)nh * dw / dh;
     /* Bound by representable dimensions and the SDL texture limit (runner),
      * never by an aspect preset. Even a stage-length viewport is supported. */
     if (result > INT_MAX - 1.0) result = INT_MAX - 1.0;
@@ -165,6 +176,7 @@ typedef struct {
     uint8_t sat[640];
     int scene; /* 1 level, 2 special, 0 menu */
     int camera_x, camera_y; /* coordinates used when capturing world sprites */
+    int views[4][2]; /* all players' origins, identical on every peer */
 } SceneFrame;
 static SceneFrame s_build, s_history[3], s_display_frame;
 static const SceneFrame *s_display;
@@ -193,6 +205,11 @@ typedef struct { unsigned address; uint16_t x, y; uint8_t id, subtype, state, lo
 static Placement s_placements[SCENE_PLACEMENTS];
 static unsigned s_placement_count, s_placement_base;
 static int s_loader_active;
+/* Native world bookkeeping: visited horizontal cells stay awake until the
+ * original object routines need more slots. Under pressure retain the union
+ * of ALL player windows; never sacrifice a remote player's live scenery. */
+static uint8_t s_active_cells[128];
+static int s_streaming_pressure;
 static void video_state(S2StateIO *io, int rollback);
 void s2_video_state(S2StateIO *io) { video_state(io, 0); }
 /* Rollback flavour: the simulation half only. s_display / s_display_frame
@@ -209,7 +226,10 @@ static void video_state(S2StateIO *io, int rollback)
     if (io->mode) {
         if (io->pos>io->size || sizeof saved>io->size-io->pos) { io->ok=0; return; }
         memcpy(&saved,io->data+io->pos,sizeof saved);
-        if (saved.mode!=config.mode || saved.ratio!=config.ratio) io->ok=0;
+        /* Quickstates belong to one video setup. Cold session resets also
+         * use the rollback serializer, after the launcher has selected the
+         * next setup; keep that new configuration while clearing the world. */
+        if (!rollback && (saved.mode!=config.mode || saved.ratio!=config.ratio)) io->ok=0;
     }
     S2_STATE(io,saved);
     S2_STATE(io,s_build); S2_STATE(io,s_history);
@@ -218,6 +238,8 @@ static void video_state(S2StateIO *io, int rollback)
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
     S2_STATE(io,s_placements); S2_STATE(io,s_placement_count); S2_STATE(io,s_placement_base);
     S2_STATE(io,s_loader_active); S2_STATE(io,s_visible_objects); S2_STATE(io,s_visible_count);
+    S2_STATE(io,s_active_cells); S2_STATE(io,s_streaming_pressure);
+    if (io->mode==2 && rollback) s_requested_width=saved.width;
     if (io->mode==2 && !rollback) s_display=display?&s_display_frame:NULL;
 }
 
@@ -252,6 +274,40 @@ static void activation_bounds(int camera,int w,int *lo,int *hi)
     *lo=(left-128)&~127;
     *hi=((left+w+192)&~127)+128;
 }
+static int clamp(int value,int lo,int hi)
+{
+    if (hi<lo) hi=lo;
+    return value<lo?lo:value>hi?hi:value;
+}
+static void player_camera(unsigned p,int *x,int *y)
+{
+    *x=ram16(0xEE00); *y=(int16_t)ram16(0xEE04);
+    int px,py;
+    if (p && s2_runtime_player_position(p,&px,&py)) {
+        *x=clamp(px-144,ram16(0xEEC8),ram16(0xEECA));
+        *y=clamp(py-96,(int16_t)ram16(0xEECC),(int16_t)ram16(0xEECE));
+    }
+}
+static int active_x(int x)
+{
+    return x>=0 && x<16384 && s_active_cells[(unsigned)x>>7];
+}
+static void campaign_cells(void)
+{
+    /* All four actors participate, regardless of which peer renders them. */
+    if (s_streaming_pressure) memset(s_active_cells,0,sizeof s_active_cells);
+    for (unsigned p=0;p<4;++p) {
+        int x,y,lo,hi;
+        if (!s2_runtime_player_position(p,&x,&y)) continue;
+        player_camera(p,&x,&y);
+        activation_bounds(x,s_requested_width,&lo,&hi);
+        for (int cell=clamp(lo/128,0,127);cell<clamp(hi/128,0,128);++cell) s_active_cells[cell]=1;
+    }
+}
+static int scene_contains(int x,int lo,int hi)
+{
+    return s2_runtime_campaign_online()?active_x(x):x>=lo && x<hi;
+}
 
 static void scene_mode_changed(int was_enabled)
 {
@@ -277,7 +333,7 @@ static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
         uint16_t attr=(uint16_t)(scene_read16(p+2)+gfx);
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
-        if(y+dy>=224 || y+dy+((size&3)+1)*8<=0)continue;
+        if(!s2_runtime_campaign_online() && (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         SceneSprite *q=&s_build.sprites[s_build.count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)size;q->hud=(uint8_t)anchor;
     }
@@ -311,25 +367,30 @@ static void spawn_scene(void)
     load_placements();s_loader_active=1;
     int camera=ram16(0xEE00),w=enabled()?s_requested_width:320;
     int lo,hi;activation_bounds(camera,w,&lo,&hi);
+    if (s2_runtime_campaign_online()) campaign_cells();
     int player=ram16(0xB008);s_pool_pressure=0;
     for(unsigned i=0;i<s_placement_count;++i) {
         Placement *p=&s_placements[i];
-        if((int)p->x<lo || (int)p->x>=hi)p->loaded=0;
+        if(!scene_contains(p->x,lo,hi))p->loaded=0;
         else if(!p->loaded && placement_alive(p))p->loaded=1;
     }
     for(unsigned pass=0;pass<s_placement_count;++pass) {
         int best=-1,distance=INT_MAX;
         for(unsigned i=0;i<s_placement_count;++i) {
             Placement *p=&s_placements[i];
-            if(p->loaded || (int)p->x<lo || (int)p->x>=hi)continue;
+            if(p->loaded || !scene_contains(p->x,lo,hi))continue;
             if(p->state && (g_ram[0xFC02+p->state]&128)){p->loaded=1;continue;}
             int d=abs((int)p->x-player);
+            if (s2_runtime_campaign_online()) for (unsigned n=1;n<4;++n) {
+                int x,y;
+                if (s2_runtime_player_position(n,&x,&y) && abs((int)p->x-x)<d) d=abs((int)p->x-x);
+            }
             if(d<distance){best=(int)i;distance=d;}
         }
         if(best<0)break;
         Placement *p=&s_placements[best];unsigned o;
         for(o=0xB400;o<0xD000 && g_ram[o];o+=64){}
-        if(o==0xD000){++s_pool_pressure;break;}
+        if(o==0xD000){++s_pool_pressure;if(s2_runtime_campaign_online())s_streaming_pressure=1;break;}
         write16(o+8,p->x);write16(o+12,p->y&4095);
         unsigned flip=(p->y>>13)&3;
         write8(o+1,flip);write8(o+0x22,flip);write8(o+0x23,p->state);
@@ -356,6 +417,8 @@ static void capture_objects(void)
     s_build.scene=gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
     int cam=ram16(0xEEF0),cy=ram16(0xEEF4);
     s_build.camera_x=cam;s_build.camera_y=cy;
+    for (unsigned p=0;p<4;++p) player_camera(p,&s_build.views[p][0],&s_build.views[p][1]);
+    int campaign=s2_runtime_campaign_online();
     int left=gameplay()?view_left(cam,s_requested_width):cam-(s_requested_width-320)/2;
     if(gameplay() && g_ram[0xF711]) {
         unsigned blink=(g_ram[0xFE05]&8)==0;
@@ -366,7 +429,7 @@ static void capture_objects(void)
         for(unsigned o=0xE806;o<end;o+=6) {
             if(ram16(o)&0x8000)continue;
             int x=ram16(o+2),y=ram16(o+4);
-            if(x<left-16 || x>=left+s_requested_width+16)continue;
+            if(!campaign && (x<left-16 || x>=left+s_requested_width+16))continue;
             unsigned fr=g_ram[o+1]?g_ram[o+1]:g_ram[0xFEA3];
             unsigned map=0x1736Au+(int16_t)scene_read16(0x1736Au+fr*2u);
             add_mapping(map,0,0x26BC,0,x-cam,(int16_t)(y-cy),0,1);
@@ -382,9 +445,11 @@ static void capture_objects(void)
                 x=(int16_t)(ram16(o+8)-cam);
                 y=(int16_t)(ram16(o+12)-cy);
                 int radius=g_ram[o+(multi?0xE:0x19)];
-                if(x+radius<left-cam || x-radius>=left-cam+s_requested_width)continue;
-                if(flags&16){int h=g_ram[o+(multi?0x14:0x16)];if(y+h<0 || y-h>=224)continue;}
-                else {y=((y+128)&2047)-128;if(y<-32 || y>=256)continue;}
+                if(!campaign) {
+                    if(x+radius<left-cam || x-radius>=left-cam+s_requested_width)continue;
+                    if(flags&16){int h=g_ram[o+(multi?0x14:0x16)];if(y+h<0 || y-h>=224)continue;}
+                    else {y=((y+128)&2047)-128;if(y<-32 || y>=256)continue;}
+                }
                 if(s_visible_count<144)s_visible_objects[s_visible_count++]=o;
             } else {x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;}
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
@@ -393,7 +458,8 @@ static void capture_objects(void)
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
                 for(unsigned n=0;n<count;++n) {
                     unsigned child=o+0x10+n*6;
-                    int sx=(int16_t)(ram16(child)-cam),sy=((ram16(child+2)-cy+128)&2047)-128;
+                    int sx=(int16_t)(ram16(child)-cam),sy=(int16_t)(ram16(child+2)-cy);
+                    if (!campaign) sy=((sy+128)&2047)-128;
                     add_mapping(map,g_ram[child+5],gfx,flags,sx,sy,0,0);
                 }
             } else add_mapping(map,g_ram[o+0x1A],gfx,flags,x,y,anchor,(flags&32)!=0);
@@ -410,6 +476,7 @@ static void publish_sprites(void)
     SceneFrame *dst=&s_history[s_serial%3];
     dst->count=s_build.count;dst->serial=s_serial;dst->scene=s_build.scene;
     dst->camera_x=s_build.camera_x;dst->camera_y=s_build.camera_y;
+    memcpy(dst->views,s_build.views,sizeof dst->views);
     memcpy(dst->sat,s_build.sat,640);
     memcpy(dst->sprites,s_build.sprites,s_build.count*sizeof(SceneSprite));
 }
@@ -417,6 +484,7 @@ int s2_video_hook(uint32_t pc)
 {
     if(pc==0x17AA4 && !g_ram[0xF76C]) {
         s_placement_base=s_placement_count=0;s_loader_active=0;
+        memset(s_active_cells,0,sizeof s_active_cells);s_streaming_pressure=0;
     }
     if(pc==0x17B84 && gameplay() && (enabled() || s_loader_active)) {spawn_scene();return 1;}
     if(!enabled() || ram16(0xFFD8))return 0;
@@ -436,6 +504,7 @@ int s2_video_hook(uint32_t pc)
         int radius=pc==0x16F3E?g_ram[o+0x19]:0;
         int left=view_left(ram16(0xEE00),s_requested_width);
         g_cpu.D[0]=(x+radius<left || x-radius>=left+s_requested_width || y<0 || y>=224)?1:0;
+        if (s2_runtime_campaign_online()) g_cpu.D[0]=!active_x(x);
         g_cpu.SR=(uint16_t)((g_cpu.SR&~15u)|(g_cpu.D[0]?0:4));
         return 1;
     }
@@ -443,7 +512,7 @@ int s2_video_hook(uint32_t pc)
         if(gameplay()) {
             int x=(uint16_t)((uint16_t)g_cpu.D[0]+ram16(0xF7DA));
             int lo,hi;activation_bounds(ram16(0xEE00),s_requested_width,&lo,&hi);
-            g_cpu.D[0]=(g_cpu.D[0]&0xFFFF0000u)|((x<lo || x>=hi)?641u:320u);
+            g_cpu.D[0]=(g_cpu.D[0]&0xFFFF0000u)|(scene_contains(x,lo,hi)?320u:641u);
         }
         return 0;
     }
@@ -480,6 +549,7 @@ static void select_scene(const GVDP *v)
         s_display_frame.count=s_display->count;s_display_frame.scene=s_display->scene;
         s_display_frame.serial=s_display->serial;
         s_display_frame.camera_x=s_display->camera_x;s_display_frame.camera_y=s_display->camera_y;
+        memcpy(s_display_frame.views,s_display->views,sizeof s_display_frame.views);
         memcpy(s_display_frame.sat,s_display->sat,sizeof s_display_frame.sat);
         memcpy(s_display_frame.sprites,s_display->sprites,s_display->count*sizeof(SceneSprite));
         s_display=&s_display_frame;
@@ -574,6 +644,15 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
             if(p){s_priority=p;s_priority_capacity=width;}
         }
         select_scene(v);
+        s_frame_campaign_view=0;
+#if GENESIS_HAS_RECOMP_NET
+        if (s2_runtime_campaign_online() && s_display && s_display->scene==1) {
+            int p=genesis_netplay_local_player();
+            if (p<0 || p>=4) p=0; /* spectators watch the campaign leader */
+            s_frame_campaign_view=1;
+            s_frame_view_x=s_display->views[p][0];s_frame_view_y=s_display->views[p][1];
+        }
+#endif
     }
     v=&s_video_frame;
     uint32_t backdrop=palette[v->reg[7]&63];
@@ -617,6 +696,10 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
     }
     int camera=level?unwrap(-hs_a,s_frame_fg_x):ram16(0xEE00);
     int camera_y=unwrap(v->vsram[0],s_frame_fg_y);
+    int native_camera=camera,native_camera_y=camera_y;
+    if (level && s_frame_campaign_view) {
+        camera=s_frame_view_x;camera_y=s_frame_view_y;
+    }
     if(line==0) {
         if(level)s_stage_width=stage_width();
         s_camera=camera;s_camera_y=camera_y;++s_frames;
@@ -628,6 +711,7 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
     int wy=camera_y+line;
     int bg_world=level && !special;
     int by=bg_world?unwrap(v->vsram[1],s_frame_bg_y)+line:line+(v->vsram[1]&1023);
+    if (bg_world && s_frame_campaign_view) by+=(camera_y-native_camera_y)/4;
     int bg_width=0;
     if(bg_world) {
         int row=((by>>7)&15)*256;
@@ -638,8 +722,9 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
         int reference_bx=nx-hs_b,bx=reference_bx;
         if(level && s_frame_zone==0) {
             int margin=(width-nw)/2;
-            bx=x-margin-hs_b+ehz_parallax(s_left+margin,line)-ehz_parallax(camera,line);
+            bx=x-margin-hs_b+ehz_parallax(s_left+margin,line)-ehz_parallax(native_camera,line);
         }
+        else if (level && s_frame_campaign_view) bx+=(camera-native_camera)/2;
         int background_x=bx;
         if(bg_width>0) { background_x%=bg_width;if(background_x<0)background_x+=bg_width; }
         uint16_t a=level?world_attr(s_world_frame,wx,wy,0):plane_attr(v,base_a,nx-hs_a,line+(v->vsram[0]&1023));
@@ -658,7 +743,7 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
          * determines shadow; native operator sprites remain in the center. */
         if(special && (v->reg[12]&8) && !s_priority[x])
             out[x]=shadow[p?p:v->reg[7]&63];
-        if(nx>=0 && nx<nw && !(x&7) && !missing_scroll) {
+        if(nx>=0 && nx<nw && !(x&7) && !missing_scroll && !s_frame_campaign_view) {
             if(level && !native_terrain_streamed(wy,s_frame_fg_y)) {
                 ++s_terrain_unstreamed;
             } else if(level) {
@@ -714,6 +799,9 @@ void s2_video_command(int id, const char *json)
 }
 void s2_video_actor_origin(const GVDP *v, int line, int width, int *left, int *top)
 {
+    if (s_frame_campaign_view && s2_runtime_campaign_online()) {
+        *left=s_left;*top=s_camera_y;return;
+    }
     int mode=v->reg[11]&3, row=mode==0?0:mode==2?line&~7:line;
     if (!g_ram[0xFE10] && row>=222) row=221;
     unsigned base=(v->reg[13]&63u)<<10;

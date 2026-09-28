@@ -3,7 +3,9 @@
 2026-09-28. Branch `explore/campaign-viewports`, based on Sonic 2 master
 `e37fdcad0d4774cfb8947e87af6b3aaad531d635` (v0.8.1). Tracked in central
 Beads `beads-5dyp.18`. This is a source investigation and an offline sizing
-tool, **not an implemented or playtested camera feature**.
+tool. This document records the original investigation. The subsequent
+prototype and its validation are described in [CAMPAIGN-VIEWPORT-PROTOTYPE.md](CAMPAIGN-VIEWPORT-PROTOTYPE.md)
+under `beads-5dyp.19`; statements below describe the baseline unless noted.
 
 ## Conclusion
 

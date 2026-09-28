@@ -29,6 +29,7 @@ def main():
     ap.add_argument('--lobby-url', required=True, help='Use an isolated test server')
     ap.add_argument('--players', type=int, choices=(2, 3, 4), default=2)
     ap.add_argument('--rounds', type=int, default=1)
+    ap.add_argument('--then-offline', action='store_true', help='Also verify the same processes can cold-reset back to local play')
     ap.add_argument('--frames', type=int, default=600)
     ap.add_argument('--timeout', type=int, default=90)
     ap.add_argument('--latency', type=int, default=0)
@@ -41,9 +42,15 @@ def main():
     ap.add_argument('--amy', type=Path, help='Private Amy in Sonic 2 Rev 1.7.1 donor')
     ap.add_argument('--s3k', type=Path, help='Private combined Sonic 3 & Knuckles donor')
     ap.add_argument('--gameplay', action='store_true')
+    ap.add_argument('--campaign-views', action='store_true',
+                    help='Two peers separate for over 300 ticks; capture their independent campaign views')
     ap.add_argument('--options', action='store_true',
                     help='Select four characters through online Options, then enter gameplay')
     args = ap.parse_args()
+    if args.campaign_views:
+        if args.players != 2 or args.rounds != 1 or args.mispredict or args.options:
+            ap.error('--campaign-views uses one two-peer round with normal inputs')
+        args.gameplay = True
     if args.rounds < 1 or args.frames < 120 or args.timeout < 1:
         ap.error('rounds/timeout must be positive and frames must be at least 120')
     if not args.rom.is_file() or not args.package.is_file():
@@ -99,6 +106,7 @@ def main():
             env = {k: v for k, v in os.environ.items()
                    if not k.startswith(('GENESIS_', 'RNET_', 'SDL_', 'LNG_'))}
             env.update(SDL_VIDEODRIVER='dummy', SDL_RENDER_DRIVER='software', SDL_AUDIODRIVER='dummy',
+                       LNG_TEST_HIDDEN='1',
                        GENESIS_NO_LAUNCHER='1', GENESIS_RUN_DONE='1', GENESIS_NET_TIMELINE_EVERY='60',
                        GENESIS_LOBBY_SELFTEST='host' if seat == 0 else 'guest',
                        GENESIS_LOBBY_SELFTEST_PREBOOT='1', GENESIS_LOBBY_SELFTEST_NAME=f'seat{seat}',
@@ -109,14 +117,16 @@ def main():
                        RNET_SIM_LATENCY_MS=str(args.latency), RNET_SIM_LOSS_PCT=str(args.loss),
                        RNET_SIM_SEED=str(314159 + seat))
             command = [str(exe), str(args.rom.resolve()), '--no-launcher']
+            if args.then_offline:
+                env['GENESIS_LOBBY_SELFTEST_THEN_OFFLINE'] = '1'
             if args.gameplay:
-                scenario = 'options' if args.options else 'campaign'
+                scenario = 'views' if args.campaign_views else 'options' if args.options else 'campaign'
                 script = Path(__file__).parent / f'netplay_{scenario}_{"host" if seat == 0 else "guest"}.input'
                 # Reaching this capture proves the input script passed the
                 # native level-loading transition rather than idling at title.
                 text = script.read_text(encoding='utf-8').replace('HOLD RIGHT',
                     'SCREENSHOT gameplay.png\nDUMP_RAM gameplay.ram\nHOLD RIGHT')
-                for capture in ('options.png', 'gameplay.png', 'gameplay.ram'):
+                for capture in ('options.png', 'gameplay.png', 'gameplay.ram', 'apart.png', 'apart.ram', 'retained.png', 'retained.ram'):
                     text = text.replace(capture, (work / capture).as_posix())
                 (work / 'input.txt').write_text(text, encoding='utf-8')
                 command += ['--input-script', str(work / 'input.txt')]
@@ -143,6 +153,10 @@ def main():
                 failures.append(f'seat {seat}: exit={code}, timeout={timed_out}')
             if '[lobby-selftest] preboot launcher ordering' not in content:
                 failures.append(f'seat {seat}: build lacks preboot regression mode')
+            if '[session] cold reset FAILED' in content:
+                failures.append(f'seat {seat}: cold reset failed')
+            if args.then_offline and ('offline Play after' not in content or 'RUN_DONE' not in content):
+                failures.append(f'seat {seat}: did not finish local play after leaving netplay')
             if len(rows) != args.rounds:
                 failures.append(f'seat {seat}: completed {len(rows)} rounds, expected {args.rounds}')
             expected_game = f'game=r={args.host_roster} m={int(bool(args.amy))}{int(bool(args.s3k))}'
@@ -168,6 +182,21 @@ def main():
                         failures.append(f'seat {seat}: online Options did not spawn all four actors')
                     if not (work / 'options.png').is_file():
                         failures.append(f'seat {seat}: missing online Options capture')
+            if args.campaign_views:
+                for phase in ('apart', 'retained'):
+                    capture = work / f'{phase}.ram'
+                    if not capture.exists() or len(capture.read_bytes()) != 65536:
+                        failures.append(f'seat {seat}: missing {phase} capture')
+                        continue
+                    data = capture.read_bytes()
+                    word = lambda at: int.from_bytes(data[at:at+2], 'big')
+                    if data[0xF600] != 0x0C or word(0xFFD8):
+                        failures.append(f'seat {seat}: {phase} is not campaign gameplay')
+                    if abs(word(0xB008)-word(0xB048)) < 400 or data[0xB064] != 2 or word(0xF708) != 6:
+                        failures.append(f'seat {seat}: {phase} companion did not remain independently playable '
+                                        f'(x={word(0xB008)},{word(0xB048)}, routine={data[0xB064]}, AI={word(0xF708)})')
+                    if not (work / f'{phase}.png').is_file():
+                        failures.append(f'seat {seat}: missing {phase} screen')
             # Final drain samples can be emitted by only one peer; compare the
             # interior confirmed timeline in order, including repeated rounds.
             hashes = [(int(t), h) for t, h in re.findall(r'TIMELINE t=(\d+) d=(\w+)', content)
