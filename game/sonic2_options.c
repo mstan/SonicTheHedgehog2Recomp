@@ -3,6 +3,7 @@
 #include "sonic2_resources.h"
 #include "sonic2_runtime.h"
 #include "sonic2_save_menu.h"
+#include "sonic2_state_io.h"
 #include "genesis_runtime.h"
 #include "video/genesis_vdp.h"
 #include "video/genesis_dac.h"
@@ -14,7 +15,17 @@
 
 static unsigned s_cursor;
 static int s_ready;
-static const char *s_notice;
+enum { NOTICE_NONE, NOTICE_VS_PLAYERS, NOTICE_SAVE_FAILED };
+static unsigned s_notice;
+
+static int online(void)
+{
+#if GENESIS_HAS_RECOMP_NET
+    return genesis_netplay_active();
+#else
+    return 0;
+#endif
+}
 
 void s2_options_load(const char *settings_path)
 {
@@ -90,11 +101,9 @@ int s2_netplay_config_adopt(const char *line)
 
 int s2_options_hook(uint32_t pc)
 {
-#if GENESIS_HAS_RECOMP_NET
-    /* A vanilla lobby retains the native menu on both peers. Offline settings
-     * must never become an unsynchronized live roster during a match. */
-    if (genesis_netplay_active()) return 0;
-#endif
+    /* The native pressed-button bytes come from synchronized simulation input
+     * online. Menu edits are therefore replayable game state, just like play.
+     * Only the agreed, verified donor features are selectable in this session. */
     /* REV01 audited routine boundaries. Replacing an RTS-style routine leaves
      * the synthetic return slot to the generated BSR/JSR caller, as native
      * generated RTS does. No manual stack pop, no patched ROM bytes. */
@@ -102,7 +111,7 @@ int s2_options_hook(uint32_t pc)
         if ((uint8_t)g_cpu.D[0] == 1 && !s2_roster_vs_ready(&s2_party.roster)) {
             g_ram[0xF600] = 0x24;
             g_ram[0xFF8C] = 0;
-            s_notice = "VS NEEDS PLAYER 1 AND PLAYER 2";
+            s_notice = NOTICE_VS_PLAYERS;
             return 1;
         }
         return 0;
@@ -123,7 +132,7 @@ int s2_options_hook(uint32_t pc)
         if ((press & 3) == 2) s_cursor = (s_cursor + 1) % 6;
         int direction = (press & 12) == 4 ? -1 : (press & 12) == 8 ? 1 : 0;
         if (direction) {
-            s_notice = NULL;
+            s_notice = NOTICE_NONE;
             if (!s_cursor) {
                 unsigned slots = s2_party.roster.slots;
                 slots = direction > 0 ? slots % 4 + 1 : (slots + 2) % 4 + 1;
@@ -138,17 +147,31 @@ int s2_options_hook(uint32_t pc)
     }
     case 0x909A:
         s2_roster_validate(&s2_party.roster);
-        if (!s2_party_save()) {
-            s_notice = "SETTINGS SAVE FAILED";
+        /* Applying a shared roster must never write a guest's local settings
+         * or perform filesystem I/O again during rollback replay. */
+        if (!online() && !s2_party_save()) {
+            s_notice = NOTICE_SAVE_FAILED;
             recomp_tail_call(0x9060);
         } else {
             s_ready = 0;
-            s_notice = NULL;
+            s_notice = NOTICE_NONE;
             g_ram[0xF600] = 4; /* native TitleScreen, not Sega or a level */
         }
         return 1;
     default: return 0;
     }
+}
+
+/* The mutable menu and roster must rewind together. Donor paths and enable
+ * flags stay local/session configuration and are never changed by this menu.
+ * Notices use stable IDs instead of process-local string pointers. */
+void s2_options_rb_state(S2StateIO *io)
+{
+    S2_STATE(io, s_cursor);
+    S2_STATE(io, s_ready);
+    S2_STATE(io, s_notice);
+    S2_STATE(io, s2_party.roster.slots);
+    S2_STATE(io, s2_party.roster.character);
 }
 
 /* Sample the actual font already loaded by MenuScreen. A=30, digits=16,
@@ -183,13 +206,10 @@ static void text_row(const GVDP *v, int line, uint32_t *out, int width,
 }
 void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
-    /* The party actors' overlay is presentation of simulated state: drawn
-     * online too. The menus below are local-only. */
+    /* The party and Options overlays present synchronized simulation state.
+     * The campaign save menu remains local-only. */
     s2_runtime_overlay(v, line, out, width);
-#if GENESIS_HAS_RECOMP_NET
-    if (genesis_netplay_active()) return;
-#endif
-    if (s2_save_menu_overlay(line,out,width)) return;
+    if (!online() && s2_save_menu_overlay(line,out,width)) return;
     if (g_ram[0xF600] != 0x24 || !s_ready) return;
     int left = (width - 288) / 2;
     if (line >= 16 && line < 208) {
@@ -219,6 +239,9 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
         text_row(v,line,out,width,left+28,y,label,color);
         text_row(v,line,out,width,left+176,y,value,color);
     }
-    const char *hint = s_notice ? s_notice : "D PAD SELECT    START SAVE";
+    const char *hint = s_notice == NOTICE_VS_PLAYERS ? "VS NEEDS PLAYER 1 AND PLAYER 2"
+                     : s_notice == NOTICE_SAVE_FAILED ? "SETTINGS SAVE FAILED"
+                     : online() ? "D PAD SELECT    START APPLY"
+                     : "D PAD SELECT    START SAVE";
     text_row(v,line,out,width,(width-(int)strlen(hint)*8)/2,188,hint,0xFFB5C5F5u);
 }
