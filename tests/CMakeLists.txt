@@ -22,6 +22,9 @@ s2_test(sonic2_save_draw "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_save_
 s2_test(sonic2_campaign_file "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_campaign_store.c"
     "${S2_GAME}/sonic2_campaign_file.c" "${S2_GAME}/sonic2_party.c")
 s2_test(sonic2_party "${S2_GAME}/sonic2_party.c")
+s2_test(sonic2_options_netplay "${S2_GAME}/sonic2_party.c")
+target_compile_definitions(sonic2_options_netplay_test PRIVATE GENESIS_HAS_RECOMP_NET=1)
+target_include_directories(sonic2_options_netplay_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/party-fixtures")
 set_tests_properties(sonic2_party PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/party-fixtures")
 s2_test(sonic2_donor "${S2_GAME}/sonic2_donor_assets.c")

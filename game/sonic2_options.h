@@ -5,6 +5,8 @@ int s2_options_hook(uint32_t pc);
 void s2_options_overlay(const struct GVDP *vdp, int line, uint32_t *out, int width);
 void s2_options_load(const char *settings_path);
 int s2_options_netplay_allowed(void);
+struct S2StateIO;
+void s2_options_rb_state(struct S2StateIO *io);
 
 #include <stddef.h>
 /* Netplay session config seal (GameSpec netplay_config_image / _adopt). */
