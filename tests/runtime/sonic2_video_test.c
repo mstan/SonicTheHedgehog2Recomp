@@ -3,6 +3,13 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
+static int online,local_player;
+static int positions[4][2];
+int genesis_netplay_active(void){return online;}
+int genesis_netplay_local_player(void){return local_player;}
+int s2_runtime_campaign_online(void){return online && !ram16(0xFFD8) && (g_ram[0xF600]&127)==12;}
+int s2_runtime_player_position(unsigned p,int *x,int *y)
+{if(p>=4)return 0;*x=positions[p][0];*y=positions[p][1];return 1;}
 void s2_options_overlay(const GVDP *v,int line,uint32_t *out,int width)
 { (void)v; (void)line; (void)out; (void)width; }
 void glue_poke8(uint32_t a,uint8_t v){g_ram[a&65535]=v;}
@@ -140,6 +147,51 @@ int main(void)
     s2_video_vblank();CHECK(s_tick_lag==1 && s_publication_lag==1);
     word(g_ram,0xFE04,13);++s_serial;s2_video_vblank();CHECK(s_tick_multi==1);
     CHECK(sonic2_video.configure("off"));s2_video_vblank();CHECK(s_tick_samples==3);
+    /* Four distant actors share activation even with native video settings.
+     * Visited cells survive departure, with a safe all-view union if the
+     * original object routines run out of slots. No local-seat input here. */
+    online=1;CHECK(sonic2_video.enabled());
+    CHECK(sonic2_video.width(1920,1080,320,224)==320);
+    memset(g_ram+0x8000,0,0x1000);
+    for(int n=0;n<80;++n)g_ram[0x8000+n]=1;
+    word(g_ram,0xEE00,0);word(g_ram,0xEECA,9900);word(g_ram,0xEECE,1024);
+    for(int p=0;p<4;++p){positions[p][0]=144+p*2048;positions[p][1]=96;}
+    memset(s_active_cells,0,sizeof s_active_cells);campaign_cells();
+    CHECK(active_x(0) && active_x(2048) && active_x(4096) && active_x(6144));
+    CHECK(!active_x(1024));
+    positions[3][0]=8336;campaign_cells();CHECK(active_x(6144) && active_x(8192));
+    s_streaming_pressure=1;campaign_cells();CHECK(!active_x(6144) && active_x(8192));
+    /* Each seat reprojects the SAME immutable scene, including world pieces
+     * outside P1's vertical screen. Rendering must not change rollback data. */
+    memset(&s_build,0,sizeof s_build);s_build.scene=1;
+    s_build.count=2;
+    s_build.sprites[0]=(SceneSprite){16,0,0x8001,0,1};
+    s_build.sprites[1]=(SceneSprite){2048,400,0x8001,0,0};
+    s_build.views[1][0]=2048;s_build.views[1][1]=400;
+    s_build.views[2][0]=2046;s_build.views[2][1]=400;
+    s_build.views[3][0]=2044;s_build.views[3][1]=400;
+    publish_sprites();memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    S2StateIO measure={0};s2_video_rb_state(&measure);
+    unsigned char *before=malloc(measure.pos),*after=malloc(measure.pos);
+    CHECK(before && after);
+    S2StateIO save={0};save.data=before;save.size=measure.pos;save.ok=1;s2_video_rb_state(&save);
+    local_player=0;sonic2_video.scanline(&v,0,native320,320,out,320);
+    CHECK(out[0]!=0xFFFF0000 && out[16]==0xFFFF0000);
+    local_player=1;sonic2_video.scanline(&v,0,native320,320,out,320);
+    CHECK(out[0]==0xFFFF0000 && out[16]==0xFFFF0000);
+    int left,top;s2_video_actor_origin(&v,0,320,&left,&top);CHECK(left==2048 && top==400);
+    local_player=2;sonic2_video.scanline(&v,0,native320,320,out,320);CHECK(out[2]==0xFFFF0000);
+    local_player=3;sonic2_video.scanline(&v,0,native320,320,out,320);
+    CHECK(out[4]==0xFFFF0000);s2_video_actor_origin(&v,0,320,&left,&top);CHECK(left==2044 && top==400);
+    save.pos=0;save.data=after;s2_video_rb_state(&save);CHECK(!memcmp(before,after,measure.pos));
+    online=0;CHECK(!sonic2_video.enabled());
+    /* A return to local play may select a different aspect before the cold
+     * reset. Restore world bookkeeping while retaining that local choice. */
+    CHECK(sonic2_video.configure("16:9"));memset(s_active_cells,0,sizeof s_active_cells);
+    save.pos=0;save.mode=1;save.data=before;s2_video_rb_state(&save);CHECK(save.ok);
+    save.pos=0;save.mode=2;s2_video_rb_state(&save);CHECK(save.ok && active_x(8192));
+    CHECK(s_mode==VIDEO_RATIO && sonic2_video.width(1,1,320,224)==398);
+    free(before);free(after);
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and Sonic/Tails ring gates PASS");
     return 0;
 }
