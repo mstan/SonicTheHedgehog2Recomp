@@ -266,6 +266,17 @@ ninja -C build SonicTheHedgehog2Recomp
 ./build/SonicTheHedgehog2Recomp "path/to/Sonic the Hedgehog 2.bin"
 ```
 
+**Release packages (prod flags, netplay on, ROM never packaged).** The version
+comes from git (`git tag v0.8.2` first; off a tag it reads `0.8.2-3-g<sha>`):
+
+```bash
+powershell -File tools\make_release.ps1   # release\SonicTheHedgehog2Recomp-windows-x64-v0.8.2.zip
+bash tools/build-linux.sh                 # release-linux/SonicTheHedgehog2Recomp-linux-0.8.2-x86_64.AppImage
+```
+
+On Linux, drop `sonic2.bin` beside the `.AppImage` and run it; settings,
+campaign saves and quickstates are kept next to the `.AppImage`.
+
 > **Local dev across games:** to share ONE engine checkout instead of a per-repo
 > submodule copy, clone `segagenesisrecomp` at the workspace root and run
 > `scripts/link-engine.sh` (macOS/Linux) or `scripts\link-engine.bat` (Windows).
