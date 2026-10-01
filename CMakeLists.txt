@@ -2,8 +2,35 @@ cmake_minimum_required(VERSION 3.16)
 project(SonicTheHedgehog2Recomp VERSION 0.7.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
-set(SONIC2_GAME_VERSION "0.8.2-campaign1" CACHE STRING
-    "Version used to match compatible Sonic 2 netplay lobbies")
+# Build version = netplay lobby key + release package name. Derived from git on
+# every configure (v0.8.1 -> "0.8.1"; off a tag "0.8.1-4-ge590525"; uncommitted
+# edits add "-dirty"), so it can never go stale. SONIC2_GAME_VERSION_OVERRIDE
+# exists for builds outside a git checkout (source tarballs).
+set(SONIC2_GAME_VERSION_OVERRIDE "" CACHE STRING
+    "Force the Sonic 2 build/netplay version instead of deriving it from git")
+unset(SONIC2_GAME_VERSION CACHE)   # retired cache knob: never let a stale value win
+if(SONIC2_GAME_VERSION_OVERRIDE)
+    set(SONIC2_GAME_VERSION "${SONIC2_GAME_VERSION_OVERRIDE}")
+else()
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* -C "${CMAKE_CURRENT_SOURCE_DIR}"
+                    describe --tags --dirty --match "v[0-9]*"
+            OUTPUT_VARIABLE SONIC2_GAME_VERSION
+            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
+            RESULT_VARIABLE _s2_describe_rc)
+    endif()
+    if(NOT GIT_FOUND OR NOT _s2_describe_rc EQUAL 0 OR NOT SONIC2_GAME_VERSION)
+        message(FATAL_ERROR "Cannot derive the Sonic 2 version from git (no tagged "
+            "checkout). Pass -DSONIC2_GAME_VERSION_OVERRIDE=<version>.")
+    endif()
+    string(REGEX REPLACE "^v" "" SONIC2_GAME_VERSION "${SONIC2_GAME_VERSION}")
+endif()
+message(STATUS "Sonic 2 version: ${SONIC2_GAME_VERSION}")
+# Release scripts name their packages from this, so packages always match the
+# version compiled into the executable.
+file(WRITE "${CMAKE_BINARY_DIR}/sonic2_version.txt" "${SONIC2_GAME_VERSION}\n")
 
 # ---------------------------------------------------------------------------
 # Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.

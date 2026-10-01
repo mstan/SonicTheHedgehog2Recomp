@@ -60,3 +60,7 @@ release/*.zip
 *.lock
 *.lock~
 **/dispatch_misses.toml
+
+# Release packaging output
+release-linux/
+release/*.sha256
