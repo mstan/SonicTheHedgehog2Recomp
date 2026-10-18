@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.8.1 — online party Options fix
+SonicTheHedgehog2Recomp v0.8.3 — native coverage update
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
