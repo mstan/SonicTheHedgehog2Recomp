@@ -1,0 +1,24 @@
+# Canonical REV01 s2disasm/s2.asm: one-entry computed JSR tables omitted by
+# the listing extractor's conservative two-consecutive-entry threshold.
+# Each anonymous '+' target is an original source boundary, not a runtime
+# guess. Retain that threshold for unannotated data; these tables are explicit.
+#
+# ObjB5_Main's off_3B442: branches to ObjB5_CheckPlayers at $03B456.
+# Widescreen Wing Fortress encounters exercise it.
+# ROM: table word $0002 at $03B442; BRA.W $03B456 at $03B444.
+[[jump_table]]
+start = 0x03B442
+end = 0x03B444
+stride = 2
+format = "pcrel16"
+
+# ObjA2_Main's off_384F6: Slicer's homing pincer acceleration (Metropolis).
+# ROM: table word $0002 at $0384F6; BSR.W orientation helper at $0384F8.
+[[jump_table]]
+start = 0x0384F6
+end = 0x0384F8
+stride = 2
+format = "pcrel16"
+
+[functions]
+extra = [0x0384F8, 0x03B444]
