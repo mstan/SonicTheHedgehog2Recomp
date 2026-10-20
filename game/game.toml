@@ -32,6 +32,7 @@ annotations = "annotations_from_disasm.csv"
 discovery_files = [
     "sonic2.disasm_labels.toml",
     "sonic2.disasm_jumptables.toml",
+    "sonic2.single_entry_tables.toml",
 ]
 
 # ---------------------------------------------------------------------------

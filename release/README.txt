@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp - experimental Megamix characters / six-character local party
+SonicTheHedgehog2Recomp ? Megamix characters and six-player campaign
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
