@@ -15,11 +15,63 @@ import subprocess
 import time
 
 p = argparse.ArgumentParser(description=__doc__)
+p.add_argument('--grade-only', action='store_true',
+               help='Analyze retained logs/RAM without launching another game')
 for name in ('exe', 'rom', 'config', 'server', 'out'):
     p.add_argument('--'+name, type=Path, required=True)
 a = p.parse_args()
 out = a.out.resolve()
-out.mkdir(parents=True, exist_ok=False)
+out.mkdir(parents=True, exist_ok=a.grade_only)
+def grade(out, exit_codes):
+    report = dict(peers=[], passed=False, limitations=['same machine/build only', 'Internet/NAT untested',
+        'Local fixture server selects its legacy SFU relay; production host relay is unqualified'])
+    timeline = None
+    slots = set()
+    objects = (0xB000, 0xB040, 0xCFC0, 0xCF80, 0xCF40, 0xCF00)
+    if exit_codes is None:
+        report['limitations'].append('Retained logs only; process exit codes were not recorded')
+    for index in range(6):
+        if exit_codes is not None:
+            assert exit_codes[index] == 0, f'Peer {index} exited {exit_codes[index]}; see own run.log'
+        work = out/f'peer{index}'
+        text = (work/'run.log').read_text(encoding='utf-8', errors='replace')
+        launch = re.search(r'fill_launch=1 slot=(\d+) players=6 session=\d+ .*occupied=3f', text)
+        assert launch, f'Peer {index} did not enter a full six-seat lobby'
+        slot = int(launch[1])
+        slots.add(slot)
+        summaries = re.findall(r'NETPLAY_DRIVER [^\n]+', text)
+        assert len(summaries) == 1 and 'desyncs=0 ' in summaries[0] and 'refusal=none' in summaries[0], summaries
+        ticks = int(re.search(r'sim=(\d+)', summaries[0])[1])
+        assert ticks >= 1180, summaries
+        if ticks < 1200:
+            assert 'coordinated stop complete' in text, 'Unexpected early session stop'
+        hashes = [(int(t), h) for t, h in re.findall(r'TIMELINE t=(\d+) d=(\w+)', text) if int(t) < 1200]
+        assert len(hashes) >= 18, 'Missing confirmed digest samples'
+        if timeline is None:
+            timeline = hashes
+        else:
+            assert hashes == timeline, f'Peer {index} differs from the host timeline'
+        entry = dict(peer=index, slot=slot, summary=summaries[0], confirmed_samples=len(hashes))
+        if index:
+            at = objects[slot]
+            before = (work/'baseline.bin').read_bytes()
+            jumped = (work/f'jump-{index}.bin').read_bytes()
+            x = lambda r: int.from_bytes(r[at+8:at+10], 'big')
+            assert jumped[at+0x22]&2, f'Guest slot {slot+1} did not jump from its own network input'
+            assert x(jumped) > x(before), f'Guest slot {slot+1} did not move from its own network input'
+            entry.update(jumped=True, x_before=x(before), x_after=x(jumped))
+        report['peers'].append(entry)
+    assert slots == set(range(6)), slots
+    report['passed'] = True
+    (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
+    print(json.dumps(report, indent=2), flush=True)
+
+
+if a.grade_only:
+    saved = out/'exit-codes.json'
+    grade(out, json.loads(saved.read_text()) if saved.exists() else None)
+    raise SystemExit(0)
+
 clean = {k: v for k, v in os.environ.items()
          if not k.startswith(('GENESIS_', 'RNET_', 'SDL_', 'LNG_', 'DISCORD_', 'JWT_'))}
 server_dir = out/'server'
@@ -27,8 +79,13 @@ server_dir.mkdir()
 with socket.socket() as s:
     s.bind(('127.0.0.1', 0))
     ws_port = s.getsockname()[1]
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+    s.bind(('127.0.0.1', 0))
+    relay_port = s.getsockname()[1]
 server_env = dict(clean, BIND_ADDR=f'127.0.0.1:{ws_port}', REQUIRE_AUTH='false',
-                  DISCORD_REQUIRED='false', INPUT_RELAY_ENABLED='false',
+                  DISCORD_REQUIRED='false', INPUT_RELAY_ENABLED='true',
+                  INPUT_RELAY_BIND=f'127.0.0.1:{relay_port}',
+                  INPUT_RELAY_ADVERTISE_PORT=str(relay_port),
                   INPUT_RELAY_ADVERTISE_HOST='127.0.0.1', INPUT_RELAY_ALLOW_LOOPBACK='1',
                   RUST_LOG='info', LOBBY_GAME_ALLOWLIST='')
 logs = []
@@ -79,7 +136,8 @@ try:
             GENESIS_LOBBY_SELFTEST_PLAYERS='6', GENESIS_LOBBY_SELFTEST_SPECTATORS='0',
             GENESIS_LOBBY_SELFTEST_LOBBY=f'genesis-six-{ws_port}',
             GENESIS_NET_LOBBY_URL=f'ws://127.0.0.1:{ws_port}',
-            GENESIS_RB_FORCE_MISPREDICT='0')
+            GENESIS_RB_FORCE_MISPREDICT='0',
+            RNET_HOST_RELAY_NO_ROUTER='1', RNET_HOST_RELAY_ENDPOINT='127.0.0.1:7777')
         log = (work/'run.log').open('w', encoding='utf-8')
         logs.append(log)
         proc = subprocess.Popen([str(exe), str(a.rom.resolve()), '--no-launcher',
@@ -91,41 +149,9 @@ try:
     deadline = time.monotonic()+120
     while any(proc.poll() is None for proc in peers) and time.monotonic() < deadline:
         time.sleep(.2)
-    report = dict(peers=[], passed=False, limitations=['same machine/build only', 'Internet/NAT untested'])
-    timeline = None
-    slots = set()
-    objects = (0xB000, 0xB040, 0xCFC0, 0xCF80, 0xCF40, 0xCF00)
-    for index, proc in enumerate(peers):
-        assert proc.poll() == 0, f'Peer {index} exited {proc.poll()}; see own run.log'
-        work = out/f'peer{index}'
-        text = (work/'run.log').read_text(encoding='utf-8', errors='replace')
-        launch = re.search(r'fill_launch=1 slot=(\d+) players=6 session=\d+ .*occupied=3f', text)
-        assert launch, f'Peer {index} did not enter a full six-seat lobby'
-        slot = int(launch[1])
-        slots.add(slot)
-        summaries = re.findall(r'NETPLAY_DRIVER [^\n]+', text)
-        assert len(summaries) == 1 and 'desyncs=0 ' in summaries[0] and 'refusal=none' in summaries[0], summaries
-        assert int(re.search(r'sim=(\d+)', summaries[0])[1]) >= 1200, summaries
-        hashes = [(int(t), h) for t, h in re.findall(r'TIMELINE t=(\d+) d=(\w+)', text) if int(t) < 1200]
-        assert len(hashes) >= 18, 'Missing confirmed digest samples'
-        if timeline is None:
-            timeline = hashes
-        else:
-            assert hashes == timeline, f'Peer {index} differs from the host timeline'
-        entry = dict(peer=index, slot=slot, summary=summaries[0], confirmed_samples=len(hashes))
-        if index:
-            at = objects[slot]
-            before = (work/'baseline.bin').read_bytes()
-            jumped = (work/f'jump-{index}.bin').read_bytes()
-            x = lambda r: int.from_bytes(r[at+8:at+10], 'big')
-            assert jumped[at+0x22]&2, f'Guest slot {slot+1} did not jump from its own network input'
-            assert x(jumped) > x(before), f'Guest slot {slot+1} did not move from its own network input'
-            entry.update(jumped=True, x_before=x(before), x_after=x(jumped))
-        report['peers'].append(entry)
-    assert slots == set(range(6)), slots
-    report['passed'] = True
-    (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
-    print(json.dumps(report, indent=2), flush=True)
+    exit_codes = [proc.poll() for proc in peers]
+    (out/'exit-codes.json').write_text(json.dumps(exit_codes)+'\n')
+    grade(out, exit_codes)
 finally:
     for proc in reversed(children):
         if proc.poll() is None:

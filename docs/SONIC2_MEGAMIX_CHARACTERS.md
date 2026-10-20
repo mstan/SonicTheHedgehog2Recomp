@@ -369,3 +369,22 @@ Validation is deliberately limited to focused seat/input/roster tests and one
 muted local-server six-peer lobby/rollback gameplay smoke, per owner request.
 Internet/NAT, mixed builds/architectures and six physical gamepads are not
 qualified by that smoke. Shadow retains the documented corkscrew limitation.
+
+The main executable at `10365e3` passes nine focused checks: roster adoption,
+party/character behavior, six virtual controllers, six scripted inputs, saved
+P5/P6 bindings, audio recovery, frame pacing and the Genesis launcher seat cap.
+The single gameplay session in `build-release-windows/six-peer-smoke-ready`
+fills all six seats (`occupied=3f`), runs 1,198-1,203 ticks and produces 19
+identical confirmed digests on every peer, with zero desyncs and a real rollback
+episode. Each of the five guests moves and jumps its assigned actor, including
+slots 5 and 6. Coordinated shutdown can stop a peer just before tick 1,200;
+the retained-evidence grader accounts for that documented stop behavior.
+
+Two earlier launches were blocked by fixture setup: the available older local
+server always selects its SFU relay, which first was disabled and then
+advertised port zero. Neither reached gameplay. Its explicit loopback relay
+port fixes that setup. This validates six-seat simulation through that local
+relay, not the production host relay or Internet/NAT deployment. The original
+grader stopped on the shutdown tick threshold before recording exit codes;
+regrading the existing complete logs/RAM passes and records that evidence limit.
+No additional gameplay session was launched to regrade it.
