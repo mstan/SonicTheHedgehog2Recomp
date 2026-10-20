@@ -649,7 +649,7 @@ static void scanline(const GVDP *v, int line, const uint32_t *native, int nw,
 #if GENESIS_HAS_RECOMP_NET
         if (s2_runtime_campaign_online() && s_display && s_display->scene==1) {
             int p=genesis_netplay_local_player();
-            if (p<0 || p>=4) p=0; /* spectators watch the campaign leader */
+            if (p<0 || p>=S2_MAX_PLAYERS) p=0; /* spectators watch the campaign leader */
             s_frame_campaign_view=1;
             s_frame_view_x=s_display->views[p][0];s_frame_view_y=s_display->views[p][1];
         }

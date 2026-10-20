@@ -23,6 +23,7 @@
 #include "sonic_extras.h"
 #include "sonic2_video.h"
 #include "sonic2_options.h"
+#include "sonic2_party.h"
 #include "sonic2_mods.h"
 #include "sonic2_runtime.h"
 #include "sonic2_state_build.h"

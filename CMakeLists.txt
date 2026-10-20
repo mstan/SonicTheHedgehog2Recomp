@@ -326,7 +326,7 @@ add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
         "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/assets/megamix"
     COMMENT "Staging Megamix author credits")
 
-# Two-player delay-synchronized netplay. The engine owns the transport,
+# Up to six-player rollback netplay. The engine owns the transport,
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.
 # ICE is enabled for Internet sessions while direct/LAN sessions remain
 # available through the same launcher flow.
