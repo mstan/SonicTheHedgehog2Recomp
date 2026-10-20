@@ -9,23 +9,27 @@
 #include <string.h>
 static const RecompLauncherCModProvider *base;
 static char error[256];
-static const char *ids[] = { "sonic2.amy", "sonic2.s3k" };
-static const char *names[] = { "Amy Rose", "S3&K" };
-static const char *features[] = { "amy", "knuckles", "save-menu" };
+static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix" };
+static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)" };
+static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow" };
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
 {
-    if (p) for (int i = 0; i < 2; ++i)
+    if (p) for (int i = 0; i < 3; ++i)
         if (!strcmp(p, ids[i])) {
-            if (!f || !strcmp(f, features[i])) return i;
+            int feature=i==2?3:i;
+            if (!f || !strcmp(f, features[feature])) return feature;
             if (i==1 && !strcmp(f,features[2])) return 2;
+            if (i==2 && !strcmp(f,features[4])) return 4;
         }
     return -1;
 }
-static int *flag(int i) { return i==2 ? &s2_party.save_menu_enabled : i ? &s2_party.s3k_enabled : &s2_party.amy_enabled; }
-static int ready(int i) { return i==2 ? s2_resource_save_assets()!=NULL : s2_resource_verified(i); }
-static int packages(void *ctx) { (void)ctx; return 2 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
-static int feature_count(void *ctx) { (void)ctx; return 3 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
+static int *flag(int i) { return i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
+static unsigned resource_id(int i) { return i>=3?S2_RESOURCE_MEGAMIX:i?S2_RESOURCE_SK:S2_RESOURCE_AMY; }
+static char *path(int i) { return i>=3?s2_party.mighty_path:i?s2_party.s3k_path:s2_party.amy_path; }
+static int ready(int i) { return i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
+static int packages(void *ctx) { (void)ctx; return 3 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
+static int feature_count(void *ctx) { (void)ctx; return 5 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
 static const char *status(int i)
 {
     if (!*flag(i)) return "Disabled";
@@ -36,24 +40,24 @@ static const char *status(int i)
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 {
     (void)ctx;
-    if (i >= 2) return base && base->package_get && base->package_get(base->ctx, i - 2, out);
+    if (i >= 3) return base && base->package_get && base->package_get(base->ctx, i - 3, out);
     if (i < 0 || !out) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, ids[i]); COPY(out->name, names[i]); COPY(out->version, "0.1.0");
-    COPY(out->author, i ? "SEGA / Sonic Team; host adapter contributors" : "E-122-Psi and Amy hack contributors; host adapter contributors");
-    COPY(out->description, i ? "Owner-ROM-gated Knuckles and Sonic 3-style campaign saves. Enable each feature independently."
+    COPY(out->author, i==2?"Team Megamix; SEGA / Sonic Team; host adapter contributors":i ? "SEGA / Sonic Team; host adapter contributors" : "E-122-Psi and Amy hack contributors; host adapter contributors");
+    COPY(out->description, i==2?"Mighty and Shadow from the verified Megamix v3 donor. Shadow includes double jump, homing, ring boosts and Chaos Control. Both character options are experimental.":i ? "Owner-ROM-gated Knuckles and Sonic 3-style campaign saves. Enable each feature independently."
         : "Additive Amy Rev 1.7.1 gameplay import. Leaves the Sonic 2 title and default Sonic/Tails roster unchanged.");
-    COPY(out->license, "Owner-supplied assets; not redistributed"); COPY(out->status, status(i));
-    if (i && s2_party.save_menu_enabled) COPY(out->status,status(2));
-    out->enabled = *flag(i) || (i && s2_party.save_menu_enabled); return 1;
+    COPY(out->license, "Owner-supplied assets; not redistributed"); COPY(out->status, status(i==2?3:i));
+    if (i==1 && s2_party.save_menu_enabled) COPY(out->status,status(2));
+    out->enabled = *flag(i==2?3:i) || (i==1 && s2_party.save_menu_enabled) || (i==2 && s2_party.shadow_enabled); return 1;
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
 {
-    if (i >= 3) return base && base->feature_get && base->feature_get(base->ctx, i - 3, out);
+    if (i >= 5) return base && base->feature_get && base->feature_get(base->ctx, i - 5, out);
     RecompLauncherCModPackage p;
-    if (!out || i<0 || !package_get(ctx, i?1:0, &p)) return 0;
+    if (!out || i<0 || !package_get(ctx, i>=3?2:i?1:0, &p)) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, features[i]); COPY(out->package_id, p.id);
     COPY(out->package_name, p.name); COPY(out->package_version, p.version);
-    COPY(out->name, i==2 ? "Sonic 3-style Save Menu" : i ? "Knuckles" : "Amy Rose"); COPY(out->author, p.author);
+    COPY(out->name, i==4?"Shadow (Experimental)":i==3?"Mighty (Experimental)":i==2 ? "Sonic 3-style Save Menu" : i ? "Knuckles" : "Amy Rose"); COPY(out->author, p.author);
     COPY(out->description, i==2 ? "Eight campaign files plus No Save. Resume zone/act and Chaos Emeralds with current Options characters. Clear a file to select zones. Saves use a separate file; your ROM stays unchanged. Local play only." : p.description);
     COPY(out->group, i==2 ? "Campaign" : "Characters"); COPY(out->status, status(i));
     out->enabled = *flag(i); return 1;
@@ -65,7 +69,7 @@ static int enable(void *ctx, const char *p, const char *f, int on)
     /* Amy defaults ON even before private assets are staged; S3&K can only
      * become enabled with a verified owner image. Neither auto-picks a player. */
     if (i && on && !ready(i)) {
-        COPY(error, "Select and verify your Sonic 3 & Knuckles ROM first"); return 0;
+        COPY(error, i>=3?"Select and verify your Sonic Megamix v3 ROM first":"Select and verify your Sonic 3 & Knuckles ROM first"); return 0;
     }
     *flag(i) = on != 0; s2_roster_validate(&s2_party.roster); return 1;
 }
@@ -76,6 +80,10 @@ static int set_enabled(void *ctx, const char *p, int on)
         if (on && (!ready(1) || !ready(2))) { COPY(error,"Select and verify your Sonic 3 & Knuckles ROM first"); return 0; }
         s2_party.s3k_enabled=s2_party.save_menu_enabled=on!=0;
         s2_roster_validate(&s2_party.roster); return 1;
+    }
+    if (i==3) {
+        if (!enable(ctx,p,features[3],on)) return 0;
+        return enable(ctx,p,features[4],on);
     }
     if (i == 0) return enable(ctx, p, features[i], on);
     return base && base->set_enabled && base->set_enabled(base->ctx, p, on);
@@ -110,12 +118,12 @@ static int resource_get(void *ctx, const char *p, const char *f, int n, RecompLa
     }
     if (n || !out) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, "owner-rom");
-    COPY(out->label, i ? "Sonic 3 & Knuckles combined ROM" : "Amy in Sonic 2 Rev 1.7.1 ROM");
+    COPY(out->label, i>=3?"Sonic Megamix v3 ROM":i ? "Sonic 3 & Knuckles combined ROM" : "Amy in Sonic 2 Rev 1.7.1 ROM");
     COPY(out->description, "Verified by exact size and SHA-256. Character and save-menu assets share one donor. The source ROM is never patched into Sonic 2.");
-    COPY(out->path, i ? s2_party.s3k_path : s2_party.amy_path);
+    COPY(out->path, path(i));
     COPY(out->file_patterns, "*.bin,*.md"); COPY(out->file_description, "Unheadered Mega Drive ROM");
-    out->required = 1; out->verified = s2_resource_owner_verified(i?1:0);
-    COPY(out->status, ready(i) ? "SHA-256 verified; feature assets decoded" : s2_resource_error(i?1:0)); return 1;
+    out->required = 1; out->verified = s2_resource_owner_verified(resource_id(i));
+    COPY(out->status, ready(i) ? "SHA-256 verified; feature assets decoded" : s2_resource_error(resource_id(i))); return 1;
 }
 static int resource_set(void *ctx, const char *p, const char *f, const char *r, const char *path)
 {
@@ -126,10 +134,11 @@ static int resource_set(void *ctx, const char *p, const char *f, const char *r, 
         COPY(error,s2_campaign_file_error()); return 0;
     }
     if (!r || strcmp(r, "owner-rom")) return 0;
-    int ok = s2_resource_set(i?1:0, path);
-    if (!ok) COPY(error, s2_resource_error(i?1:0));
+    int ok = s2_resource_set(resource_id(i), path);
+    if (!ok) COPY(error, s2_resource_error(resource_id(i)));
     if (!s2_resource_verified(S2_RESOURCE_SK)) s2_party.s3k_enabled = 0;
     if (!s2_resource_save_assets()) s2_party.save_menu_enabled=0;
+    if (!s2_resource_verified(S2_RESOURCE_MEGAMIX)) s2_party.mighty_enabled=0;
     s2_roster_validate(&s2_party.roster); return ok;
 }
 static int commit(void *ctx, const char *image)
@@ -137,6 +146,9 @@ static int commit(void *ctx, const char *image)
     (void)ctx; error[0] = 0;
     if ((s2_party.s3k_enabled && !ready(1)) || (s2_party.save_menu_enabled && !ready(2))) {
         COPY(error, "S3&K requires a verified owner ROM"); return 0;
+    }
+    if (s2_party.mighty_enabled && !ready(3)) {
+        COPY(error,"Mighty requires a verified Megamix v3 owner ROM"); return 0;
     }
     s2_roster_validate(&s2_party.roster);
     if (base && base->commit && !base->commit(base->ctx, image)) {

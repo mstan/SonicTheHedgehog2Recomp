@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.8.1 — online party Options fix
+SonicTheHedgehog2Recomp - experimental Megamix characters / six-character local party
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -68,8 +68,10 @@ portable progress format. Keep your prior build with its old quickstates.
 
 OPTIONAL PARTY CHARACTERS
 -------------------------
-Options supports up to four local or online slots. Players 1 and 2 must be
-distinct; players 3 and 4 may repeat a character.
+Options supports six local party slots and up to four online human seats.
+Players 1 and 2 must be distinct; later slots may repeat a character.
+Six-character local parties use AI companions for slots 5 and 6. Six-peer
+netplay is pending separate implementation and validation.
 Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
 the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
 The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
@@ -81,8 +83,8 @@ correctly while the world is frozen during Player 1's death.
 
 SUPER FORMS
 -----------
-All four characters can go Super as Player 1: collect seven Chaos Emeralds
-and at least 50 rings, then hold jump through the apex. Characters keep their
+All six characters can go Super as Player 1: collect seven Chaos Emeralds
+and at least 50 rings, then hold jump through the apex (Shadow uses B+C in air). Characters keep their
 own sprites and abilities; native ring drain and reversion still apply.
 Companions and VS players do not gain Super. Special stages are always stock
 Sonic and Tails. Death pits, crushing and drowning remain dangerous.
@@ -107,6 +109,26 @@ LICENSE
 This software: PolyForm Noncommercial 1.0.0 — see LICENSE.
 Third-party components (ymfm BSD-3-Clause, superzazu Z80 MIT, clowncommon
 ISC, SDL2 zlib): see THIRD-PARTY-LICENSES.md.
+
+Shadow the Hedgehog (fifth character option, experimental)
+Enable Shadow under Megamix Characters in Mods with your verified Sonic
+Megamix v3 donor, then select SHADOW EXP in title OPTIONS. This replaces the
+retired sprite-sheet prototype with donor animations and source-derived
+abilities. B/C jumps; press again in air for double jump/homing. A boosts on
+ground for five rings; hold A during homing to chain targets for five rings
+each. A curls into a ball in free fall. B+C together in air transforms/reverts
+with seven Emeralds and 50 rings. Super ground A starts Chaos Control (hold A;
+faster ring drain); Super airborne A with an invincibility-monitor reward
+triggers Chaos Blast. Default keyboard: X/C = B/C, Z = A.
+Graphics, animations and original mechanics: Team Megamix.
+Characters: SEGA / Sonic Team. Credits: assets/megamix/CREDITS.txt.
+Special stages, HUD/lives and title/results art remain stock.
+
+Mighty the Armadillo (sixth character option, experimental)
+Enable Mighty in Mods with your verified Sonic Megamix v3 donor ROM, then
+select MIGHTY in title OPTIONS. Graphics: Team Megamix; characters: SEGA /
+Sonic Team. The initial Sonic 2 spike uses Sonic physics; Megamix shield
+inventory and elemental abilities are not yet included. No donor art ships. Shadow and Mighty share one verified donor.
 
 Sonic the Hedgehog 2 is a trademark of SEGA. This project is not affiliated
 with or endorsed by SEGA. No game ROM is distributed.

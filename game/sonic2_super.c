@@ -28,7 +28,7 @@ uint16_t s2_super_color(unsigned kind,unsigned index,uint16_t normal,
     /* Tails' S2 fur is 14/15/11 (S3 rearranged these to 8/9/11).
      * Amy keeps her own pink shades. Derived highlights need no new donor. */
     if (!((kind==S2_CHAR_TAILS && (index==14 || index==15 || index==11)) ||
-          (kind==S2_CHAR_AMY && index>=2 && index<=5))) return normal;
+          ((kind==S2_CHAR_AMY || kind==S2_CHAR_MIGHTY) && index>=2 && index<=5))) return normal;
     unsigned out=0;
     for (unsigned shift=0;shift<12;shift+=4) {
         unsigned value=(normal>>shift)&14;

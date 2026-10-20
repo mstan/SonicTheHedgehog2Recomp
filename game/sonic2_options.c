@@ -33,6 +33,7 @@ void s2_options_load(const char *settings_path)
     s2_resources_load(settings_path);
     if (!s2_resource_verified(S2_RESOURCE_SK)) s2_party.s3k_enabled = 0;
     if (!s2_resource_save_assets()) s2_party.save_menu_enabled=0;
+    if (!s2_resource_verified(S2_RESOURCE_MEGAMIX)) s2_party.mighty_enabled=0;
     s2_save_menu_load(settings_path);
     s2_runtime_load();
     s2_roster_validate(&s2_party.roster);
@@ -40,18 +41,18 @@ void s2_options_load(const char *settings_path)
 
 int s2_options_netplay_allowed(void)
 {
-    /* Any validated 1-4 player party runs online: its roster travels in the
+    /* A validated party of up to six runs online: its roster travels in the
      * session config image (s2_netplay_config_image) and every peer adopts
      * the host's. The campaign save menu stays local-only: it reads and
      * writes the player's own campaign file, which no peer shares. */
     S2Roster r = s2_party.roster;
     /* s2_roster_validate REPAIRS and returns 1 when it had to change
      * something: a roster it leaves untouched is a valid one. */
-    return !s2_party.save_menu_enabled && !s2_roster_validate(&r);
+    return r.slots<=S2_NETPLAY_PLAYERS && !s2_party.save_menu_enabled && !s2_roster_validate(&r);
 }
 
 /* Session config seal (GameSpec netplay_config_image / _adopt). One compact
- * line, at most 55 characters, carried in the lobby's match caps:
+ * line, bounded by the six registered character IDs, carried in match caps:
  *   "r=<id>,<id>,.. m=<amy><s3k>"  (roster in player order; owner features) */
 void s2_netplay_config_image(char *out, size_t cap)
 {
@@ -62,35 +63,45 @@ void s2_netplay_config_image(char *out, size_t cap)
     /* The EFFECTIVE owner features: enabled AND backed by verified assets
      * (an enabled feature without its donor ROM changes nothing). */
     if (n < cap)
-        snprintf(out + n, cap - n, " m=%d%d",
+        snprintf(out + n, cap - n, " m=%d%d%d%d",
                  s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY) ? 1 : 0,
-                 s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0);
+                 s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0,
+                 s2_party.mighty_enabled && s2_resource_verified(S2_RESOURCE_MEGAMIX) ? 1 : 0,
+                 s2_party.shadow_enabled && s2_resource_shadow_bank() ? 1 : 0);
 }
 
 int s2_netplay_config_adopt(const char *line)
 {
     S2Roster roster;
-    int amy = 0, s3k = 0;
-    char ids[64];
+    int amy = 0, s3k = 0, mighty = 0, shadow = 0;
+    char ids[S2_MAX_PLAYERS * S2_CHARACTER_ID_SIZE];
     if (!line || strncmp(line, "r=", 2)) return -1;
     const char *m = strstr(line, " m=");
     size_t len = m ? (size_t)(m - line - 2) : strlen(line + 2);
     if (len >= sizeof ids) return -1;
     memcpy(ids, line + 2, len); ids[len] = 0;
     if (m && strlen(m) >= 5) { amy = m[3] == '1'; s3k = m[4] == '1'; }
+    if (m && strlen(m) >= 6) mighty = m[5] == '1';
+    if (m && strlen(m) >= 7) shadow = m[6] == '1';
     /* Owner-gated characters need this build's verified owner assets. */
-    if ((amy && !s2_resource_verified(S2_RESOURCE_AMY)) || (s3k && !s2_resource_verified(S2_RESOURCE_SK)))
+    if ((amy && !s2_resource_verified(S2_RESOURCE_AMY)) || (s3k && !s2_resource_verified(S2_RESOURCE_SK)) ||
+        (mighty && !s2_resource_verified(S2_RESOURCE_MEGAMIX)) || (shadow && !s2_resource_shadow_bank()))
         return -1;
     memset(&roster, 0, sizeof roster);
     for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) strcpy(roster.character[i], "none");
     unsigned p = 0;
-    for (char *tok = strtok(ids, ","); tok && p < S2_MAX_PLAYERS; tok = strtok(NULL, ","), ++p)
+    for (char *tok = strtok(ids, ","); tok; tok = strtok(NULL, ","), ++p) {
+        if (p>=S2_NETPLAY_PLAYERS) return -1;
         snprintf(roster.character[p], sizeof roster.character[p], "%s", tok);
+    }
     roster.slots = p;
-    int keep_amy = s2_party.amy_enabled, keep_s3k = s2_party.s3k_enabled;
-    s2_party.amy_enabled = amy; s2_party.s3k_enabled = s3k;
+    int keep_amy = s2_party.amy_enabled, keep_s3k = s2_party.s3k_enabled, keep_mighty=s2_party.mighty_enabled;
+    int keep_shadow=s2_party.shadow_enabled;
+    s2_party.amy_enabled = amy; s2_party.s3k_enabled = s3k; s2_party.mighty_enabled=mighty; s2_party.shadow_enabled=shadow;
     if (s2_roster_validate(&roster)) {   /* 1 = had to repair: not the host's roster */
         s2_party.amy_enabled = keep_amy; s2_party.s3k_enabled = keep_s3k;
+        s2_party.mighty_enabled=keep_mighty;
+        s2_party.shadow_enabled=keep_shadow;
         return -1;
     }
     /* Session-scoped: set in memory, never written to sonic2-party.ini. */
@@ -128,21 +139,22 @@ int s2_options_hook(uint32_t pc)
     case 0x90E0: {
         s_ready = 1;
         unsigned press = g_ram[0xF605] | g_ram[0xF607];
-        if ((press & 3) == 1) s_cursor = (s_cursor + 5) % 6;
-        if ((press & 3) == 2) s_cursor = (s_cursor + 1) % 6;
+        if ((press & 3) == 1) s_cursor = (s_cursor + S2_MAX_PLAYERS+1) % (S2_MAX_PLAYERS+2);
+        if ((press & 3) == 2) s_cursor = (s_cursor + 1) % (S2_MAX_PLAYERS+2);
         int direction = (press & 12) == 4 ? -1 : (press & 12) == 8 ? 1 : 0;
         if (direction) {
             s_notice = NOTICE_NONE;
             if (!s_cursor) {
                 unsigned slots = s2_party.roster.slots;
-                slots = direction > 0 ? slots % 4 + 1 : (slots + 2) % 4 + 1;
+                unsigned limit=online()?S2_NETPLAY_PLAYERS:S2_MAX_PLAYERS;
+                slots = direction > 0 ? slots % limit + 1 : (slots + limit-2) % limit + 1;
                 s2_roster_slots(&s2_party.roster, slots);
-            } else if (s_cursor <= 4) {
+            } else if (s_cursor <= S2_MAX_PLAYERS) {
                 s2_roster_cycle(&s2_party.roster, s_cursor - 1, direction);
             }
         }
         /* B anywhere, or A/C on BACK: reuse the native Start exit branch. */
-        if ((press & 16) || (s_cursor == 5 && (press & 96))) g_ram[0xF605] |= 128;
+        if ((press & 16) || (s_cursor == S2_MAX_PLAYERS+1 && (press & 96))) g_ram[0xF605] |= 128;
         return 1;
     }
     case 0x909A:
@@ -219,9 +231,9 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
         }
     }
     text_row(v,line,out,width,left+104,28,"OPTIONS",0xFFFFD85Cu);
-    for (unsigned row = 0; row < 6; ++row) {
-        int y = 52 + row * 22;
-        int disabled = row >= 1 && row <= 4 && row > s2_party.roster.slots;
+    for (unsigned row = 0; row < S2_MAX_PLAYERS+2; ++row) {
+        int y = 44 + row * 18;
+        int disabled = row >= 1 && row <= S2_MAX_PLAYERS && row > s2_party.roster.slots;
         uint32_t color = disabled ? 0xFF6C7390u : row == s_cursor ? 0xFFFFD85Cu : 0xFFF4F5FFu;
         if (row == s_cursor && line >= y && line < y + 8) {
             int size = 4 - (line < y + 4 ? y + 3 - line : line - y - 4);
@@ -231,7 +243,7 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
         char label[32], value[40];
         value[0] = 0;
         if (!row) { strcpy(label,"PLAYERS"); snprintf(value,sizeof value,"%u",s2_party.roster.slots); }
-        else if (row <= 4) {
+        else if (row <= S2_MAX_PLAYERS) {
             snprintf(label,sizeof label,"PLAYER %u",row);
             const S2Character *c = s2_character_find(s2_party.roster.character[row-1]);
             snprintf(value,sizeof value,"%s",c ? c->label : "NONE");

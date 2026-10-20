@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-enum { S2_MAX_PLAYERS = 4, S2_MAX_CHARACTERS = 16, S2_CHARACTER_ID_SIZE = 32 };
+enum { S2_MAX_PLAYERS = 6, S2_NETPLAY_PLAYERS = S2_MAX_PLAYERS, S2_MAX_CHARACTERS = 16, S2_CHARACTER_ID_SIZE = 32 };
 typedef struct S2Character {
     const char *id;
     const char *label;
@@ -20,8 +20,11 @@ typedef struct S2PartyConfig {
     int amy_enabled;
     int s3k_enabled;
     int save_menu_enabled; /* independent default-OFF S3&K feature */
+    int mighty_enabled; /* default-OFF, verified Megamix v3 donor */
+    int shadow_enabled; /* requires the same verified Megamix donor */
     char amy_path[1024];
     char s3k_path[1024];
+    char mighty_path[1024];
     char campaign_path[1024]; /* empty until selected or first save; exe-relative */
 } S2PartyConfig;
 

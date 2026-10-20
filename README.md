@@ -5,7 +5,7 @@
 Open **Escape -> Save states**, choose slot 1–9, and save or load.
 **Shift+F1…F9** saves; **F1…F9** loads the corresponding slot. Files are
 `native_save_<slot>.bin` beside the executable. Quicksaves capture the next
-completed gameplay tick, including all four players, campaign session and
+completed gameplay tick, including the full party, campaign session and
 widescreen objects. Levels, paused gameplay and special stages are supported;
 menus/loading/results are not save points. Loads can start from the title.
 
@@ -68,10 +68,59 @@ backup can be opened read-only. Disabling the mod keeps your files. Campaign
 saves are local-only and cannot be combined with netplay. Compatible quickstates
 include the active campaign session, as described above.
 
+## Shadow the Hedgehog (experimental)
+
+Shadow now uses **Sonic Megamix v3** graphics, directional animations, water
+and Super palettes, and source-derived abilities. The sprite-sheet prototype
+has been retired. In **Mods -> Megamix Characters**, select the same verified
+owner ROM used for Mighty, enable **Shadow (Experimental)**, and choose
+**SHADOW EXP** in title **OPTIONS**. No donor artwork or ROM ships in releases.
+
+- **B/C:** jump, then press again for a double jump or homing attack when an
+  eligible enemy or monitor is nearby in front.
+- **A on ground:** boost for five rings. Hold A during a homing attack to chain
+  targets; each additional target costs five rings and requires more than five.
+- **A in free fall:** curl into a ball.
+- **B+C together in air:** transform/revert with seven Emeralds and 50 rings.
+- **Super, A on ground:** Chaos Control; hold A to maintain speed, tap for more
+  acceleration. Rings drain faster. Release A to cancel.
+- **Super, A in air with an active invincibility-monitor reward:** Chaos Blast.
+
+Default keyboard: **X/C = B/C**, **Z = A**. Terrain, enemies, checkpoints,
+death and stage transitions remain native Sonic 2. HUD/lives and special-stage
+art remain stock. This is an experimental behavior port, with full campaign
+and online qualification still outstanding. Graphics, animations and original
+mechanics: **Team Megamix**; characters: **SEGA / Sonic Team**.
+[Credits](game/assets/megamix/CREDITS.txt) and
+[source bindings/validation](docs/SONIC2_MEGAMIX_CHARACTERS.md).
+
+## Six-character local party
+
+Title **OPTIONS** supports up to six party slots. All six characters can travel
+together with independent AI companions. Players 1 and 2 stay distinct; later
+slots may repeat characters. The current input/netplay runtime supports four
+human seats; six-character parties are currently local and use AI for the last
+two companions. Native VS remains two competitors. Six-peer netplay is pending.
+
+## Mighty the Armadillo (experimental spike)
+
+Mighty is the sixth character option. In **Mods**, select your raw **Sonic
+Megamix v3** ROM and enable **Mighty (Experimental)**, then choose **MIGHTY**
+in the title's **OPTIONS** roster. The exact donor is 1,283,224 bytes with
+SHA-256 `85d9e9ba79f0035d5854618666ff198871abe1931558496e6563b1cd90e5cdbe`.
+For a ZIP donor, `py tools/import_sonic2_mighty.py <donor.zip> --runtime <game-folder>`
+privately stages the verified ROM. Donor artwork is not bundled in releases.
+
+This Sonic 2 spike uses native Sonic physics and timing, with mappings,
+DPLCs and palettes from the same verified Megamix v3 source as Sonic 3's
+Mighty import. Some unusual poses use nearby source artwork. The Megamix
+shield inventory and elemental abilities are not yet ported to Sonic 2.
+Graphics credit: **Team Megamix**; characters: **SEGA / Sonic Team**.
+
 ## Player 1 Super forms
 
-Sonic, Tails, Amy and Knuckles can go Super as Player 1. Collect all seven Chaos
-Emeralds and at least 50 rings, then hold jump through the apex. Each character
+Sonic, Tails, Amy, Knuckles, Shadow and Mighty can go Super as Player 1. Collect all seven Chaos
+Emeralds and at least 50 rings, then hold jump through the apex (Shadow uses B+C in air). Each character
 keeps their own sprites and abilities, with native Super speed, invincibility,
 ring drain and reversion. Knuckles still requires the enabled S3&K donor mod;
 Amy uses the existing Amy donor. Companions and native VS do not gain Super.

@@ -55,7 +55,11 @@ int main(void)
     CHECK(!strcmp(r->character[1],"sonic") && !strcmp(r->character[2],"tails"));
     strcpy(r->character[3],"sonic");
     CHECK(!s2_roster_validate(r) && !strcmp(r->character[3],"sonic"));
-    s2_roster_slots(r,999); CHECK(r->slots == 4);
+    s2_roster_slots(r,999); CHECK(r->slots == S2_MAX_PLAYERS);
+    CHECK(s2_roster_set(r,4,"sonic") && s2_roster_set(r,5,"tails"));
+    CHECK(!s2_roster_validate(r) && s2_party_save());
+    s2_party_load("party-test-settings.ini");
+    CHECK(r->slots==6 && !strcmp(r->character[4],"sonic") && !strcmp(r->character[5],"tails"));
     s2_roster_slots(r,0); CHECK(r->slots == 1);
     remove("sonic2-party.ini"); /* test-owned sibling fixture in isolated CTest cwd */
     puts("sonic2_party: defaults, P1/P2 uniqueness, P3/P4 repeats, cycling, availability, recovery and persistence OK");

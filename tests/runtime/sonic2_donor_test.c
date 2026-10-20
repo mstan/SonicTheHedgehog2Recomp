@@ -38,6 +38,19 @@ int main(void)
     CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
     CHECK(bank.frames[0].pixels==previous && bank.super_frames==2);
     s2_donor_free(&bank); CHECK(!bank.count && !bank.frames[0].pixels);
+    /* S1/Megamix byte counts, five-byte pieces, signed byte X and flips. */
+    memset(rom,0,sizeof rom); layout=(S2DonorLayout){1,0,2,128,64,5};
+    rom[1]=4; rom[3]=20; rom[4]=1; rom[5]=0xFC; rom[9]=0xFC;
+    rom[22]=1; memset(rom+128,0x12,32);
+    CHECK(s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    CHECK(bank.frames[0].x==-4 && bank.frames[0].y==-4 && bank.frames[0].pixels[0]==1);
+    rom[7]=8; /* tile high byte: horizontal flip */
+    CHECK(s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    CHECK(bank.frames[0].pixels[0]==2);
+    previous=bank.frames[0].pixels; rom[8]=2; /* tile low byte: missing tile */
+    CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
+    CHECK(bank.frames[0].pixels==previous);
+    s2_donor_free(&bank);
     puts("sonic2_donor: mapping/DPLC bounds, flip, geometry and transactional failure OK");
     return 0;
 }

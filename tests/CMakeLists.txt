@@ -32,8 +32,15 @@ s2_test(sonic2_video)
 target_compile_definitions(sonic2_video_test PRIVATE GENESIS_HAS_RECOMP_NET=1)
 target_include_directories(sonic2_video_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
 s2_test(sonic2_save_menu "${S2_GAME}/sonic2_campaign.c")
-s2_test(sonic2_character "${S2_GAME}/sonic2_character.c")
+s2_test(sonic2_character "${S2_GAME}/sonic2_character.c" "${S2_GAME}/sonic2_shadow.c" "${S2_GAME}/sonic2_super.c")
 s2_test(sonic2_super "${S2_GAME}/sonic2_super.c")
+s2_test(sonic2_shadow "${S2_GAME}/sonic2_shadow.c" "${S2_GAME}/sonic2_character.c" "${S2_GAME}/sonic2_super.c")
+s2_test(sonic2_mighty "${S2_GAME}/sonic2_mighty.c" "${S2_GAME}/sonic2_shadow_roster.c"
+    "${S2_GAME}/sonic2_party.c" "${S2_GAME}/sonic2_super.c"
+    "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_donor_assets.c"
+    "${S2_GAME}/sonic2_save_assets.c" "${S2_GAME}/sonic2_campaign.c"
+    "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
+target_include_directories(sonic2_mighty_test PRIVATE "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/recomp-ui/src/recomp_launcher.h")
     set(S2_SHA "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")

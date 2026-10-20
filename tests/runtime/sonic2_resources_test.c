@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==3 && p->feature_count(p->ctx)==4);
+    assert(p->package_count(p->ctx)==4 && p->feature_count(p->ctx)==6);
     assert(p->feature_enable(p->ctx,"base","wide",1) && delegated==1);
     assert(!p->feature_enable(p->ctx,"sonic2.s3k","knuckles",1));
     assert(!s2_party.s3k_enabled && *p->last_error(p->ctx));
@@ -30,6 +30,11 @@ int main(int argc, char **argv)
     assert(p->feature_get(p->ctx,0,&f) && f.enabled && !strcmp(f.id,"amy"));
     assert(p->feature_get(p->ctx,1,&f) && !f.enabled && !strcmp(f.package_name,"S3&K"));
     assert(p->feature_get(p->ctx,2,&f) && !f.enabled && !strcmp(f.id,"save-menu"));
+    assert(p->feature_get(p->ctx,3,&f) && !f.enabled && !strcmp(f.id,"mighty"));
+    assert(p->feature_get(p->ctx,4,&f) && f.enabled && !strcmp(f.id,"shadow"));
+    assert(!p->feature_enable(p->ctx,"sonic2.megamix","mighty",1));
+    assert(!p->set_enabled(p->ctx,"sonic2.megamix",1));
+    assert(!p->feature_enable(p->ctx,"sonic2.megamix","save-menu",1));
     assert(p->feature_resource_count(p->ctx,"sonic2.s3k","knuckles")==1);
     assert(p->feature_resource_count(p->ctx,"sonic2.s3k","save-menu")==2);
     RecompLauncherCModResource resource;

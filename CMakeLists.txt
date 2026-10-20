@@ -64,7 +64,7 @@ set(RUNNER_ROOT "${RECOMP_ROOT}/runner")
 file(GLOB_RECURSE _state_inputs CONFIGURE_DEPENDS
     "${RUNNER_ROOT}/*.c" "${RUNNER_ROOT}/*.cpp" "${RUNNER_ROOT}/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/game/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/game/*.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/*.toml" "${CMAKE_CURRENT_SOURCE_DIR}/game/*.inc"
     "${RECOMP_ROOT}/external/m68k-recomp-core/*.c" "${RECOMP_ROOT}/external/m68k-recomp-core/*.h"
     "${RECOMP_ROOT}/external/z80-recomp-core/*.c" "${RECOMP_ROOT}/external/z80-recomp-core/*.h"
     "${RECOMP_ROOT}/recompiler/src/*.c" "${RECOMP_ROOT}/recompiler/src/*.h")
@@ -208,6 +208,9 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_runtime.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_super.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_character.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_shadow.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_shadow_roster.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_mighty.c"
 )
 
 if(SONIC_REVERSE_DEBUG)
@@ -317,6 +320,11 @@ set(RECOMP_UI_ENABLE_MODS ON CACHE BOOL "Expose Sonic 2's opt-in built-in mods")
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 recomp_target_launcher_ui(SonicTheHedgehog2Recomp CONSOLE genesis
     BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
+add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/game/assets/megamix"
+        "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/assets/megamix"
+    COMMENT "Staging Megamix author credits")
 
 # Two-player delay-synchronized netplay. The engine owns the transport,
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.

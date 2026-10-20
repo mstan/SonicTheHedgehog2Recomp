@@ -250,9 +250,10 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x164F4: case 0x1B848: case 0x1AC3E: case 0x1B350: case 0x3F554:
     case 0x15F9C: case 0x19718: case 0x19778: case 0x197D0: case 0x19880:
     case 0x19C32: case 0x19C8A: case 0x19CE2:
+    case 0xF77A: case 0xF810: case 0xF872:
     case 0x18888: case 0x3F5A0:
     case 0x3F73C: case 0x3F69C:
-    case 0x1296A: case 0x129E0: case 0x12A2C:
+    case 0x1296A: case 0x129E0: case 0x12A2C: case 0x12A5C:
         return s2_runtime_hook(pc);
     case 0x3CF6: case 0x8FCC: case 0x90E0: case 0x9186: case 0x91F8: case 0x909A:
         return s2_options_hook(pc);
@@ -263,7 +264,7 @@ static int s2_instruction_hook(uint32_t pc)
 const GameSpec g_game_spec = {
     .video                  = &sonic2_video,
     .instruction_hook       = s2_instruction_hook,
-    .logical_players        = 4,
+    .logical_players        = S2_MAX_PLAYERS,
     .load_settings          = s2_options_load,
     .mods                   = s2_mods,
     .netplay_allowed        = s2_options_netplay_allowed,

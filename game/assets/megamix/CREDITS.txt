@@ -1,0 +1,13 @@
+Sonic the Hedgehog Megamix v3 characters
+
+Graphics, animations and original character mechanics: Team Megamix.
+Original characters and Sonic the Hedgehog: SEGA / Sonic Team.
+Project: https://www.headcannon.com/TeamMegamix/
+
+Mighty and Shadow assets are decoded from the owner's exact verified Megamix
+v3 ROM. ROMs, extracted sprites, palettes and music are not distributed here.
+The game source license does not relicense third-party donor material.
+
+The former Shadow sprite-sheet prototype is deprecated and is not loaded,
+embedded or packaged. Its historical spike ZIP and local QA captures remain
+in the workspace. The owner's original sheet is preserved in Downloads.
