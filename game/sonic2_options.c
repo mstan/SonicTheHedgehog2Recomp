@@ -51,15 +51,24 @@ int s2_options_netplay_allowed(void)
     return r.slots<=S2_NETPLAY_PLAYERS && !s2_party.save_menu_enabled && !s2_roster_validate(&r);
 }
 
-/* Session config seal (GameSpec netplay_config_image / _adopt). One compact
- * line, bounded by the six registered character IDs, carried in match caps:
- *   "r=<id>,<id>,.. m=<amy><s3k>"  (roster in player order; owner features) */
+/* Stable compact IDs keep six long character names within the shared lobby's
+ * 48-byte game configuration. They do not depend on registration order.
+ * The parser also accepts the original named form. */
+static const char *const wire_characters[]={"sonic","tails","amy","knuckles","shadow","mighty","none"};
+static const char *const wire_ids[]={"0","1","2","3","4","5","6"};
+static const char *wire_id(const char *id)
+{
+    for (unsigned i=0;i<sizeof wire_characters/sizeof *wire_characters;++i)
+        if (!strcmp(id,wire_characters[i])) return wire_ids[i];
+    return id;
+}
+/* Session config seal: "r=4,1,0,3,2,5 m=1111", in player order. */
 void s2_netplay_config_image(char *out, size_t cap)
 {
     const S2Roster *r = &s2_party.roster;
     size_t n = (size_t)snprintf(out, cap, "r=");
     for (unsigned p = 0; p < r->slots && p < S2_MAX_PLAYERS && n < cap; ++p)
-        n += (size_t)snprintf(out + n, cap - n, "%s%s", p ? "," : "", r->character[p]);
+        n += (size_t)snprintf(out + n, cap - n, "%s%s", p ? "," : "", wire_id(r->character[p]));
     /* The EFFECTIVE owner features: enabled AND backed by verified assets
      * (an enabled feature without its donor ROM changes nothing). */
     if (n < cap)
@@ -92,7 +101,10 @@ int s2_netplay_config_adopt(const char *line)
     unsigned p = 0;
     for (char *tok = strtok(ids, ","); tok; tok = strtok(NULL, ","), ++p) {
         if (p>=S2_NETPLAY_PLAYERS) return -1;
-        snprintf(roster.character[p], sizeof roster.character[p], "%s", tok);
+        const char *id=tok;
+        if (strlen(tok)==1 && tok[0]>='0' && tok[0]<='6')
+            id=wire_characters[tok[0]-'0'];
+        snprintf(roster.character[p], sizeof roster.character[p], "%s", id);
     }
     roster.slots = p;
     int keep_amy = s2_party.amy_enabled, keep_s3k = s2_party.s3k_enabled, keep_mighty=s2_party.mighty_enabled;

@@ -94,13 +94,13 @@ mechanics: **Team Megamix**; characters: **SEGA / Sonic Team**.
 [Credits](game/assets/megamix/CREDITS.txt) and
 [source bindings/validation](docs/SONIC2_MEGAMIX_CHARACTERS.md).
 
-## Six-character local party
+## Six-player campaign party
 
 Title **OPTIONS** supports up to six party slots. All six characters can travel
 together with independent AI companions. Players 1 and 2 stay distinct; later
-slots may repeat characters. The current input/netplay runtime supports four
-human seats; six-character parties are currently local and use AI for the last
-two companions. Native VS remains two competitors. Six-peer netplay is pending.
+slots may repeat characters. Up to six human players are supported locally
+and in online rooms. Unoccupied local slots use AI companions. Native VS
+remains two competitors.
 
 ## Mighty the Armadillo (experimental spike)
 

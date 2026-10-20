@@ -65,7 +65,7 @@ HUD/lives, title/results and special-stage art remain stock. Mighty retains
 Sonic physics and animation semantics; its shield inventory/elemental powers
 remain outside the accepted graphics spike.
 
-## Six-character local party
+## Six-player campaign party
 
 The roster and Options now support six independent campaign actors. The four
 extra objects reserve native slots from the pool's high end. Character state,
@@ -74,10 +74,11 @@ scale with `S2_MAX_PLAYERS`. Larger parties use wider grounded spacing while
 airborne/recovering companions retain native history following. Read-only art
 banks are shared. Native VS still uses two competitors.
 
-The existing input/session runtime has four human seats. Slots 5/6 are AI in
-this local playtest. Six-slot rosters are rejected for online sessions, rather
-than silently dropping participants. Six-peer netplay remains a separate
-implementation/qualification milestone. No engine/submodule edits are included.
+The shared input/session runtime and Genesis launcher support six human seats.
+The game advertises six-player capacity, adopts six-character online rosters,
+and gives seats 5/6 their own input and campaign camera. Local slots without a
+connected/configured human source retain AI following. Native VS remains two
+competitors. Engine and launcher pins include the six-player changes.
 
 ## Validation evidence, 2026-10-19
 
@@ -352,3 +353,19 @@ supplying the missing perspective frames. The owner explicitly allowed leaving
 this visual limitation when no matching sequence exists; no pose substitution
 or runtime changes were made for this audit, and the running R6 was preserved.
 The limitation remains part of Shadow's experimental presentation.
+
+## Main integration and six human seats
+
+The owner confirmed buzzing/freezing resolved and authorized main-build
+integration. Character work is combined with the current v0.8.3 main coverage
+fixes, the shared audio/diagnostic/exit fixes, six host input seats and the
+Genesis launcher six-seat profile. The existing two physical controller ports
+remain intact; four additional sealed logical inputs feed campaign actors.
+Six-player rosters use stable compact IDs in match caps so repeated long names
+fit the existing network-library extension ABI. The session config revision
+is advanced and strict build/config/digest checks remain enabled.
+
+Validation is deliberately limited to focused seat/input/roster tests and one
+muted local-server six-peer lobby/rollback gameplay smoke, per owner request.
+Internet/NAT, mixed builds/architectures and six physical gamepads are not
+qualified by that smoke. Shadow retains the documented corkscrew limitation.

@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp ? Megamix characters and six-player campaign
+SonicTheHedgehog2Recomp - Megamix characters and six-player campaign
 ==============================================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -19,19 +19,19 @@ ONLINE PLAY
 -----------
 Everyone must use this exact package: the lobby checks the executable and ROM.
 Use Online in the launcher to host or join the same room. Online rooms support
-up to four players; LAN / Direct IP currently supports two.
+up to six players; LAN / Direct IP currently supports two.
 
 Enable Amy and/or Knuckles under Mods before creating the room. Each player
 must supply the donor ROMs for the host's enabled character features. Leave
 Sonic 3-style Save Menu disabled for netplay; it is separate from Knuckles.
 The host's initial roster is adopted for the match. After launching, open
-Options on the title screen, set PLAYERS to 4, and choose each character.
+Options on the title screen, set PLAYERS up to 6, and choose each character.
 Start applies the roster to this session without changing saved local settings.
 Each participant controls their assigned seat using their player-1 bindings.
 Quickstates and turbo are disabled during netplay.
 
 This patch restores the enhanced party Options menu during netplay, including
-Amy and Knuckles selection and four-player parties. Menu edits rewind with
+Amy, Knuckles, Mighty and Shadow selection and six-player parties. Menu edits rewind with
 rollback. It includes the rc2 online startup fix. Everyone must update together.
 
 OPTIONAL SAVE MENU AND CAMPAIGN SRAM
@@ -68,10 +68,10 @@ portable progress format. Keep your prior build with its old quickstates.
 
 OPTIONAL PARTY CHARACTERS
 -------------------------
-Options supports six local party slots and up to four online human seats.
+Options supports up to six local or online human players.
 Players 1 and 2 must be distinct; later slots may repeat a character.
-Six-character local parties use AI companions for slots 5 and 6. Six-peer
-netplay is pending separate implementation and validation.
+Unoccupied local party slots use AI companions. Configure controllers in the
+launcher; each online participant uses their own player-1 bindings.
 Amy Rose requires your Amy in Sonic 2 Rev 1.7.1 donor ROM; Knuckles requires
 the combined Sonic 3 & Knuckles donor. Select them under their Mods entries.
 The save-menu toggle is independent of Knuckles. Native Sonic/Tails special
