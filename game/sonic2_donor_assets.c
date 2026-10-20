@@ -8,6 +8,10 @@
 const S2DonorLayout s2_amy_171_layout = {253,0x8B8C0,0x8D6CE,0x60000,0x29E2,8,0x1C96E,44};
 /* PalCycle_SuperHyperKnuckles, byte-matched combined S3&K listing. */
 const S2DonorLayout s2_sk_knuckles_layout = {251,0x14A8D6,0x14BD0A,0x1200E0,0xA8AFC,6,0x17EF4,37,0x3AAE,10};
+/* Same verified v3 bindings as Sonic 3's tools/megamix/v3_rom.py. S1
+ * mappings/DPLCs have byte counts, five-byte pieces and signed byte X. */
+const S2DonorLayout s2_megamix_mighty_layout = {176,0x2A9D6,0x2C3D2,0xA9364,0x2C60,5,0x1AA1C,38};
+const S2DonorLayout s2_megamix_shadow_layout = {176,0x2B6A4,0x2CA1C,0xBE2E4,0x2C80,5,0x1AA1C,38,0,0,0x1AB5E,38};
 static unsigned word(const uint8_t *p) { return (unsigned)p[0]*256+p[1]; }
 static int inside(size_t size,size_t offset,size_t length) { return offset<=size && length<=size-offset; }
 void s2_donor_free(S2DonorBank *bank)
@@ -21,11 +25,12 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
 {
     if (error && error_size) error[0]=0;
     if (!rom || !l || !out || !l->frames || l->frames>S2_DONOR_MAX_FRAMES ||
-        (l->mapping_stride!=6 && l->mapping_stride!=8) ||
+        (l->mapping_stride!=5 && l->mapping_stride!=6 && l->mapping_stride!=8) ||
         !inside(size,l->mappings,l->frames*2) || !inside(size,l->dplc,l->frames*2) ||
         !inside(size,l->palette,32) || l->animation_count>64 || l->super_frames>10 ||
         (l->super_frames && !inside(size,l->super_palette,l->super_frames*6)) ||
-        !inside(size,l->animations,l->animation_count*2)) {
+        !inside(size,l->animations,l->animation_count*2) || l->super_animation_count>64 ||
+        !inside(size,l->super_animations,l->super_animation_count*2)) {
         if (error && error_size) snprintf(error,error_size,"Invalid donor asset layout");
         return 0;
     }
@@ -42,9 +47,10 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
     for (;frame<l->frames;++frame) {
         size_t mp=(size_t)l->mappings+word(rom+l->mappings+frame*2);
         size_t dp=(size_t)l->dplc+word(rom+l->dplc+frame*2);
-        if (!inside(size,mp,2) || !inside(size,dp,2)) goto bad;
-        unsigned pieces=word(rom+mp), cues=word(rom+dp);
-        mp+=2; dp+=2;
+        unsigned count_size=l->mapping_stride==5?1:2;
+        if (!inside(size,mp,count_size) || !inside(size,dp,count_size)) goto bad;
+        unsigned pieces=count_size==1?rom[mp]:word(rom+mp), cues=count_size==1?rom[dp]:word(rom+dp);
+        mp+=count_size; dp+=count_size;
         if (pieces>S2_DONOR_MAX_PIECES || cues>64 ||
             !inside(size,mp,pieces*l->mapping_stride) || !inside(size,dp,cues*2)) goto bad;
         uint8_t tiles[1024*32]; unsigned tile_count=0;
@@ -59,7 +65,7 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
         int minx=32767,miny=32767,maxx=-32768,maxy=-32768;
         for (unsigned piece=0;piece<pieces;++piece) {
             const uint8_t *p=rom+mp+piece*l->mapping_stride;
-            int y=(int8_t)p[0],x=(int16_t)word(p+l->mapping_stride-2);
+            int y=(int8_t)p[0],x=l->mapping_stride==5?(int8_t)p[4]:(int16_t)word(p+l->mapping_stride-2);
             unsigned w=((p[1]>>2)&3)+1,h=(p[1]&3)+1,attr=word(p+2);
             if ((attr&2047)+w*h>tile_count || (attr&0x6000)) goto bad;
             if (x<minx) minx=x;
@@ -76,7 +82,7 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
         /* Native SAT priority: earlier pieces win overlapping nonzero pixels. */
         for (unsigned piece=0;piece<pieces;++piece) {
             const uint8_t *p=rom+mp+piece*l->mapping_stride;
-            int y=(int8_t)p[0],x=(int16_t)word(p+l->mapping_stride-2);
+            int y=(int8_t)p[0],x=l->mapping_stride==5?(int8_t)p[4]:(int16_t)word(p+l->mapping_stride-2);
             unsigned w=(((p[1]>>2)&3)+1)*8,h=((p[1]&3)+1)*8,attr=word(p+2);
             for (unsigned py=0;py<h;++py) for (unsigned px=0;px<w;++px) {
                 unsigned sx=attr&0x0800?w-1-px:px,sy=attr&0x1000?h-1-py:py;
@@ -89,8 +95,13 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
         }
     }
     bank->animation_count=l->animation_count;
-    for (unsigned i=0;i<l->animation_count;++i) {
-        size_t at=(size_t)l->animations+word(rom+l->animations+i*2);
+    bank->super_animation_count=l->super_animation_count;
+    for (unsigned n=0;n<l->animation_count+l->super_animation_count;++n) {
+        unsigned super=n>=l->animation_count,i=super?n-l->animation_count:n;
+        unsigned base=super?l->super_animations:l->animations;
+        /* ADDA.W sign-extends relative animation offsets. Super scripts
+         * intentionally refer back into the normal sequence bank. */
+        size_t at=(size_t)((int64_t)base+(int16_t)word(rom+base+i*2));
         unsigned length=1;
         if (!inside(size,at,2)) goto bad;
         for (;;) {
@@ -100,15 +111,20 @@ int s2_donor_decode(const uint8_t *rom,size_t size,const S2DonorLayout *l,
                 if (code==0xFD || code==0xFE) {
                     if (!inside(size,at,length+1)) goto bad;
                     unsigned argument=rom[at+length++];
-                    if ((code==0xFD && argument>=l->animation_count) ||
+                    if ((code==0xFD && argument>=(super?l->super_animation_count:l->animation_count)) ||
                         (code==0xFE && (!argument || argument>length-3))) goto bad;
                 }
                 break;
             }
             if (code>=l->frames) goto bad;
         }
-        bank->animation_length[i]=(uint16_t)length;
-        memcpy(bank->animations[i],rom+at,length);
+        if (super) {
+            bank->super_animation_length[i]=(uint16_t)length;
+            memcpy(bank->super_animations[i],rom+at,length);
+        } else {
+            bank->animation_length[i]=(uint16_t)length;
+            memcpy(bank->animations[i],rom+at,length);
+        }
     }
     s2_donor_free(out); *out=*bank; free(bank);
     return 1;

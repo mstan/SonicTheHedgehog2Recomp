@@ -39,9 +39,9 @@ void s2_party_defaults(void)
     s2_party.roster.slots = 2;
     strcpy(s2_party.roster.character[0], "sonic");
     strcpy(s2_party.roster.character[1], "tails");
-    strcpy(s2_party.roster.character[2], "none");
-    strcpy(s2_party.roster.character[3], "none");
+    for (unsigned p=2;p<S2_MAX_PLAYERS;++p) strcpy(s2_party.roster.character[p], "none");
     s2_party.amy_enabled = 1;
+    s2_party.shadow_enabled = 1;
     s_count = 0;
     s2_character_register(&s_sonic);
     s2_character_register(&s_tails);
@@ -54,7 +54,7 @@ static int selectable(const S2Roster *roster, unsigned player, const char *id)
     if (!strcmp(id, "none")) return player != 0;
     const S2Character *character = s2_character_find(id);
     if (!character || !character->available()) return 0;
-    /* Players 3 and 4 are independent host-spawned actors (own object slot,
+    /* Players 3 through 6 are independent host-spawned actors (own object slot,
      * character/physics/CPU state; art banks are shared read-only), so they
      * may repeat a character: without the Amy donor there are only three
      * distinct characters and a fourth player still needs one to play.
@@ -139,8 +139,11 @@ void s2_party_load(const char *settings_path)
         else if (!strcmp(line, "amy_enabled")) s2_party.amy_enabled = atoi(value) == 1;
         else if (!strcmp(line, "s3k_enabled")) s2_party.s3k_enabled = atoi(value) == 1;
         else if (!strcmp(line, "save_menu_enabled")) s2_party.save_menu_enabled = atoi(value) == 1;
+        else if (!strcmp(line, "mighty_enabled")) s2_party.mighty_enabled = atoi(value) == 1;
+        else if (!strcmp(line, "shadow_enabled")) s2_party.shadow_enabled = atoi(value) == 1;
         else if (!strcmp(line, "amy_path")) snprintf(s2_party.amy_path, sizeof s2_party.amy_path, "%s", value);
         else if (!strcmp(line, "s3k_path")) snprintf(s2_party.s3k_path, sizeof s2_party.s3k_path, "%s", value);
+        else if (!strcmp(line, "mighty_path")) snprintf(s2_party.mighty_path, sizeof s2_party.mighty_path, "%s", value);
         else if (!strcmp(line, "campaign_path")) snprintf(s2_party.campaign_path, sizeof s2_party.campaign_path, "%s", value);
         else for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) {
             char key[16]; snprintf(key, sizeof key, "player%u", i + 1);
@@ -160,6 +163,8 @@ int s2_party_save(void)
         s2_party.roster.slots, s2_party.amy_enabled, s2_party.s3k_enabled, s2_party.amy_path, s2_party.s3k_path);
     for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) fprintf(file, "player%u=%s\n", i + 1, s2_party.roster.character[i]);
     fprintf(file, "save_menu_enabled=%d\n", s2_party.save_menu_enabled);
+    fprintf(file, "mighty_enabled=%d\nmighty_path=%s\n", s2_party.mighty_enabled, s2_party.mighty_path);
+    fprintf(file, "shadow_enabled=%d\n",s2_party.shadow_enabled);
     fprintf(file, "campaign_path=%s\n", s2_party.campaign_path);
     int ok = !ferror(file);
     if (fclose(file)) ok = 0;

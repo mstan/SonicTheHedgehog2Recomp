@@ -5,6 +5,8 @@
 #include "sonic2_resources.h"
 #include "sonic2_character.h"
 #include "sonic2_super.h"
+#include "sonic2_shadow.h"
+#include "sonic2_mighty.h"
 #include "sonic2_video.h"
 #include "sonic2_state_io.h"
 #include "sonic2_save_menu.h"
@@ -23,31 +25,31 @@
 #include "netplay/genesis_netplay.h"
 #endif
 static int active, inside_player, actor = -1;
-static uint8_t previous_input[4];
+static uint8_t previous_input[S2_MAX_PLAYERS];
 /* The native character decides whether to submit a sprite, including hurt
  * flashing. Reuse that decision instead of approximating its timer phase. */
-static uint8_t displayed[4];
+static uint8_t displayed[S2_MAX_PLAYERS];
 /* Tails_control_counter through Tails_CPU_jumping ($F702..$F70F).
  * Each companion runs the original P2 AI with its own native state. */
-static uint8_t companion_cpu[4][14];
+static uint8_t companion_cpu[S2_MAX_PLAYERS][14];
 static int inside_companion_cpu;
-static S2CharacterState characters[4];
-static uint8_t physics[4][6];
-static unsigned objects[4]={0xB000,0xB040,0,0};
+static S2CharacterState characters[S2_MAX_PLAYERS];
+static uint8_t physics[S2_MAX_PLAYERS][6];
+static unsigned objects[S2_MAX_PLAYERS]={0xB000,0xB040};
 static S2DonorBank native_banks[2];
 /* The native status byte only has standing/pushing bits for two players.
  * Extra actors retain those two bits per solid on the host. The actual actor
  * objects have real, reserved native pool addresses, so monitor/platform
  * parent links stay valid across ticks (no temporary Sidekick alias). */
-static uint8_t solid_flags[2][144], solid_ids[144];
+static uint8_t solid_flags[S2_MAX_PLAYERS-2][144], solid_ids[144];
 static int inside_solid;
 typedef struct {
     int16_t x,y;
     uint16_t art;
-    uint8_t frame,flip,visible;
+    uint8_t frame,flip,visible,wet;
 } PartySprite;
-/* Fifth sprite is native Obj05 (P1 Tails' separate tails), not a fifth actor. */
-static PartySprite published_sprites[5];
+/* Final sprite is native Obj05 (P1 Tails' separate tails). */
+static PartySprite published_sprites[S2_MAX_PLAYERS+1];
 static uint8_t displayed_tails;
 /* Reentrancy guards of the hooks below, hoisted from function-local statics
  * so the rollback snapshot can carry them: the game fiber can be suspended
@@ -63,22 +65,29 @@ static unsigned kind(unsigned p)
 {
     const char *id=s2_party.roster.character[p];
     return !strcmp(id,"amy")?S2_CHAR_AMY:!strcmp(id,"knuckles")?S2_CHAR_KNUCKLES:
-        !strcmp(id,"tails")?S2_CHAR_TAILS:S2_CHAR_SONIC;
+        !strcmp(id,"tails")?S2_CHAR_TAILS:!strcmp(id,"shadow")?S2_CHAR_SHADOW:
+        !strcmp(id,"mighty")?S2_CHAR_MIGHTY:S2_CHAR_SONIC;
 }
 static const S2DonorBank *bank(unsigned p)
 {
     unsigned k=kind(p);
+    if (k==S2_CHAR_SHADOW) return s2_resource_shadow_bank();
+    if (k==S2_CHAR_MIGHTY) return s2_resource_bank(S2_RESOURCE_MEGAMIX);
     return k<S2_CHAR_AMY?&native_banks[k]:s2_resource_bank(k==S2_CHAR_AMY?S2_RESOURCE_AMY:S2_RESOURCE_SK);
 }
-static int imported(void) { return actor>=0 && kind((unsigned)actor)>=S2_CHAR_AMY; }
+/* Donor controllers adapt native motion and replace animation/art. Mighty
+ * retains Sonic's controller and maps its frames at presentation. */
+static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_AMY || kind((unsigned)actor)==S2_CHAR_KNUCKLES || kind((unsigned)actor)==S2_CHAR_SHADOW); }
 void s2_runtime_load(void)
 {
     active=inside_player=0; actor=-1;
     gvdp_set_unlimited_sprites(0);
     memset(published_sprites,0,sizeof published_sprites);
-    objects[2]=objects[3]=0;
+    memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
     s2_donor_free(&native_banks[0]); s2_donor_free(&native_banks[1]);
     s2_character_register(&knuckles); s2_character_register(&amy);
+    s2_shadow_register();
+    s2_mighty_register();
 }
 static uint16_t word(unsigned a) { return (uint16_t)((g_ram[a] << 8) | g_ram[a+1]); }
 int s2_runtime_campaign_online(void)
@@ -92,7 +101,7 @@ int s2_runtime_campaign_online(void)
 }
 int s2_runtime_player_position(unsigned p, int *x, int *y)
 {
-    if (p>=s2_party.roster.slots || p>=4 || !objects[p] || !g_ram[objects[p]]) return 0;
+    if (p>=s2_party.roster.slots || p>=S2_MAX_PLAYERS || !objects[p] || !g_ram[objects[p]]) return 0;
     unsigned o=objects[p];
     /* Despawn/flight recovery still belongs to the shared campaign. Follow
      * the leader during recovery instead of showing the x=$4000 sentinel. */
@@ -106,6 +115,7 @@ static int custom_super_palette(void)
 static int32_t fixed(unsigned a) { return (int32_t)(((uint32_t)word(a)<<16)|word(a+2)); }
 static void putfixed(unsigned a, int32_t v) { putword(a,(uint32_t)v>>16); putword(a+2,(uint32_t)v); }
 static int16_t sine(unsigned a) { a=0x33CE + (a&255)*2; return (int16_t)((g_rom[a]<<8)|g_rom[a+1]); }
+static unsigned ring_address(void) { return actor>0 && word(0xFFD8)?0xFED0:0xFE20; }
 static S2Motion motion(unsigned o)
 {
     S2Motion m={0}; m.x=fixed(o+8); m.y=fixed(o+12);
@@ -114,6 +124,10 @@ static S2Motion motion(unsigned o)
     m.animation=g_ram[o+0x1C]; m.frame=g_ram[o+0x1A]; m.jumping=g_ram[o+0x3C];
     m.hurt=g_ram[o+0x24]>=4; m.boosted=word(o+0x34)!=0 || (o==0xB000 && g_ram[0xFE19]);
     m.control_locked=!!(g_ram[o+0x2A]&1);
+    m.rings=word(ring_address()); m.super=actor==0 && !word(0xFFD8) && g_ram[0xFE19];
+    m.physics_top=word(0xF760);
+    m.speed_shoes=word(o+0x34)!=0;
+    m.invincible_monitor=word(o+0x32)>1 || (actor>=0 && characters[actor].shadow_monitor_ticks!=0);
     return m;
 }
 static void store_motion(unsigned o, const S2Motion *m)
@@ -131,6 +145,41 @@ static M68KState native_helper(uint32_t pc)
     M68KState result=g_cpu; g_cpu=before; return result;
 }
 static int16_t host_call(uint32_t pc) { return (int16_t)native_helper(pc).D[1]; }
+static uint8_t shadow_angle(int dx,int dy)
+{
+    M68KState saved=g_cpu;
+    g_cpu.D[1]=(uint16_t)dx; g_cpu.D[2]=(uint16_t)dy;
+    uint8_t a=(uint8_t)native_helper(0x364E).D[0]; g_cpu=saved; return a;
+}
+static int shadow_target(unsigned o,int monitors)
+{
+    unsigned id=g_ram[o],collision=g_ram[o+0x20];
+    if (!id || !collision) return 0;
+    if (id==0x26) return monitors && g_ram[o+0x24]<4;
+    return (!(collision&0xC0) && (collision&63)>=5) || collision==0xCC;
+}
+static void shadow_contacts(unsigned o,S2Contacts *c)
+{
+    if (actor<0 || kind((unsigned)actor)!=S2_CHAR_SHADOW) return;
+    S2CharacterState *s=&characters[actor]; c->angle=shadow_angle;
+    if (s->shadow_target>=0xB400 && s->shadow_target<0xD000 && !(s->shadow_target&63) && shadow_target(s->shadow_target,1)) c->target=s->shadow_target;
+    else {
+        unsigned distance=0x4000;
+        for (unsigned at=0xB400;at<0xD000;at+=0x40) {
+            if (at==s->shadow_target || at==s->shadow_last_target || !shadow_target(at,1)) continue;
+            int dx=(int16_t)(word(at+8)-word(o+8)),dy=(int16_t)(word(at+12)-word(o+12));
+            if (!s->shadow_chain && ((g_ram[o+0x22]&1)?dx>=16:dx<=-16)) continue;
+            /* Bound before squaring to keep the signed product portable. */
+            if (dx<=-128 || dx>=128 || dy<=-128 || dy>=128) continue;
+            unsigned d=(unsigned)(dx*dx+dy*dy);
+            if (d<distance) { distance=d; c->target=at; }
+        }
+    }
+    if (c->target) {
+        c->target_dx=(int16_t)(word(c->target+8)-word(o+8));
+        c->target_dy=(int16_t)(word(c->target+12)-word(o+12));
+    }
+}
 static S2Contacts contacts(unsigned o)
 {
     S2Contacts c={64,64,64,sine};
@@ -142,6 +191,31 @@ static S2Contacts contacts(unsigned o)
     c.wall=host_call((g_ram[o+0x22]&1)?0x1F05E:0x1EEDC);
     c.ceiling=host_call(0x1EF2E);
     g_cpu.D[5]=d5; memcpy(g_ram+0xF768,angles,4); return c;
+}
+static void shadow_effects(unsigned p,unsigned o,S2Motion *m)
+{
+    if (kind(p)!=S2_CHAR_SHADOW) return;
+    if (m->rings!=word(ring_address())) {
+        putword(ring_address(),m->rings);
+        g_ram[actor>0 && word(0xFFD8)?0xFEC9:0xFE1D]|=0x81;
+    }
+    if (m->physics_override) putword(0xF760,m->physics_top);
+    if (characters[p].shadow_chaos && m->super && word(0xF670)>10) putword(0xF670,10);
+    if (m->blast) {
+        fprintf(stderr,"[Shadow] P%u Chaos Blast\n",p+1);
+        /* v3 $198F0/$117094. Run native kill/hurt effects, keeping actual
+         * boss handlers, points, explosions and stage transitions intact. */
+        M68KState saved=g_cpu;
+        for (unsigned at=0xB400;at<0xD000;at+=0x40) {
+            if (!(g_ram[at+1]&0x80) || !shadow_target(at,0)) continue;
+            unsigned hp=g_ram[at+0x21],hits=hp?hp/2:1;
+            for (unsigned h=0;h<hits;++h) {
+                g_cpu.A[0]=0xFFFF0000u|o; g_cpu.A[1]=0xFFFF0000u|at;
+                native_helper(0x3F7C8);
+            }
+        }
+        g_cpu=saved; putword(o+0x10,0); putword(o+0x12,0); putword(o+0x14,0);
+    }
 }
 static int vanilla(void)
 {
@@ -192,7 +266,8 @@ static void companion_control(unsigned p, unsigned o)
     if (human) putword(0xF702,600);
     uint16_t index=word(0xEED2),record_x=0;
     unsigned record=0;
-    int varied=p>=2 && !human && word(0xF708)==6 && !g_ram[o+0x2A] &&
+    int six=s2_party.roster.slots>4;
+    int varied=(p>=2 || six) && !human && word(0xF708)==6 && !g_ram[o+0x2A] &&
         visible && !(g_ram[o+0x22]&0x2E);
     if (varied) {
         /* Retain native history timing, jump retries and acceleration. Only
@@ -203,10 +278,11 @@ static void companion_control(unsigned p, unsigned o)
         unsigned address=0xE500+at;
         int dx=(int16_t)(word(address)-word(o+8));
         int dy=(int16_t)(word(address+2)-word(o+12));
-        if (!(status&0xDA) && dx>-64 && dx<64 && dy>-16 && dy<16) {
+        int range=six?256:64;
+        if (!(status&0xDA) && dx>-range && dx<range && dy>-16 && dy<16) {
             /* Native following ignores errors below 16 pixels. Keep offsets
              * just beyond that deadband so a rejoined actor can separate. */
-            unsigned gap=p==2?24:40;
+            unsigned gap=six?32+(p-1)*32:24+(p-2)*16;
             int target=word(address)+((status&1)?(int)gap:-(int)gap);
             if (target>=word(0xEEC8)+16 && target<=word(0xEECA)+288) {
                 record=address; record_x=word(record); putword(record,target);
@@ -243,7 +319,7 @@ static void spawn_extra(unsigned object, unsigned p)
 }
 static void reserve_extras(void)
 {
-    objects[2]=objects[3]=0;
+    memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
     memset(solid_flags,0,sizeof solid_flags); memset(solid_ids,0,sizeof solid_ids);
     /* P1 Tails uses his native body AND Obj05 tail mappings while glowing.
      * Decode ahead of gameplay, not at transformation or on a render thread. */
@@ -274,12 +350,15 @@ static void reserve_extras(void)
 }
 static void runtime_state(S2StateIO *io)
 {
-    unsigned header[10]={1,g_ram[0xF600],s2_party.roster.slots,
-        0,0,0,0,(unsigned)s2_party.amy_enabled,(unsigned)s2_party.s3k_enabled,
-        (unsigned)s2_party.save_menu_enabled};
-    for (unsigned p=0;p<4;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?4:kind(p);
+    unsigned header[3+S2_MAX_PLAYERS+5]={2,g_ram[0xF600],s2_party.roster.slots};
+    header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
+    header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
+    header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
+    header[6+S2_MAX_PLAYERS]=(unsigned)s2_party.mighty_enabled;
+    header[7+S2_MAX_PLAYERS]=(unsigned)s2_party.shadow_enabled;
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
-        unsigned saved[10];
+        unsigned saved[3+S2_MAX_PLAYERS+5];
         if (!io->data || io->size<sizeof saved) { io->ok=0; return; }
         memcpy(saved,io->data,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
@@ -333,7 +412,7 @@ int s2_runtime_state_load(const void *data,size_t size,int apply)
     if (!io.ok || io.pos!=size) return 0;
     /* Rebind ROM-derived art for a load in a fresh process. These immutable
      * caches are not saved, nor can a state enable an unverified donor. */
-    for (unsigned p=0;p<4;++p) {
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
         const S2Character *c=s2_character_find(s2_party.roster.character[p]);
         if (c && !c->available()) return 0;
         unsigned k=kind(p);
@@ -353,6 +432,7 @@ int s2_runtime_state_load(const void *data,size_t size,int apply)
 static uint32_t solid_single(uint32_t pc)
 {
     switch (pc) {
+    case 0xF872: return 0xF88C; /* Obj11's log-height collision, separate from generic platforms */
     case 0x19718: return 0x19736;
     case 0x19778: return 0x1978E;
     case 0x197D0: return 0x197E6;
@@ -365,7 +445,7 @@ static uint32_t solid_single(uint32_t pc)
 }
 static int player_object(unsigned at)
 {
-    for (unsigned p=0;p<4;++p) if (objects[p]==at) return 1;
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==at) return 1;
     return 0;
 }
 static void solid_begin(unsigned p, uint8_t saved[144])
@@ -385,35 +465,69 @@ static void solid_end(unsigned p, const uint8_t saved[144])
         g_ram[at+0x22]=(g_ram[at+0x22]&~0x50)|saved[n];
     }
 }
+static int extra_players(void)
+{
+    for (unsigned p=2;p<S2_MAX_PLAYERS;++p) if (objects[p]) return 1;
+    return 0;
+}
 static int collide_extras(uint32_t pc, uint32_t single)
 {
-    if (inside_solid || (!objects[2] && !objects[3])) return 0;
+    if (inside_solid || !extra_players()) return 0;
     M68KState input=g_cpu;
     inside_solid=1; recomp_call_addr(pc); inside_solid=0;
     M68KState result=g_cpu;
     /* Retain the original P1/P2 result registers: native spring/platform code
      * that reads them must not mistake an extra player for P1 or P2. */
-    for (unsigned p=2;p<4;++p) {
+    for (unsigned p=2;p<S2_MAX_PLAYERS;++p) {
         unsigned o=objects[p];
         if (!o || !g_ram[o] || g_ram[o+0x24]>=6) continue;
         uint8_t saved[144];
         solid_begin(p,saved);
         g_cpu=input; g_cpu.A[1]=0xFFFF0000u|o; g_cpu.D[6]=4;
+        unsigned platform=input.A[0]&0xFFFF;
+        uint8_t log=g_ram[platform+0x3B];
+        if (pc==0xF872) g_cpu.D[5]=0x3B;
         host_call(single);
+        if (pc==0xF872) g_ram[platform+0x3B]=log; /* native Sidekick's log index */
         solid_end(p,saved);
     }
     g_cpu=result; return 1;
 }
+static int bridge_extra_weight(uint32_t pc)
+{
+    unsigned o=g_cpu.A[0]&0xFFFF;
+    if (!extra_players() || o<0xB400 || o>=0xD000 || (o&63) ||
+        g_ram[o]!=0x11 || (g_ram[o+0x22]&0x18)) return 0;
+    /* Preserve the source P1/P2 bend whenever either stands. With only extra
+     * actors, their stored contacts supply the same envelope and log target.
+     * Native Obj11_Depress still computes every actual segment height. */
+    unsigned sum=0,count=0,n=(o-0xB000)/64;
+    int half=g_ram[o+0x28]*8+8;
+    for (unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+        if (!objects[p] || !(solid_flags[p-2][n]&0x10)) continue;
+        int dx=(int16_t)(word(objects[p]+8)-word(o+8))+half;
+        if (dx<0 || dx>=half*2-16) continue;
+        sum+=(unsigned)dx>>4; ++count;
+    }
+    if (!count) return 0;
+    unsigned target=sum/count;
+    if (g_ram[o+0x3F]<target) ++g_ram[o+0x3F];
+    else if (g_ram[o+0x3F]>target) --g_ram[o+0x3F];
+    if (g_ram[o+0x3E]<0x40) g_ram[o+0x3E]+=4;
+    native_helper(0xF9E8);
+    recomp_tail_call(pc==0xF77A?0xF7BC:0xF852);
+    return 1;
+}
 static int spring_extras(uint32_t pc)
 {
-    if (s_inside_spring || (!objects[2] && !objects[3])) return 0;
+    if (s_inside_spring || !extra_players()) return 0;
     M68KState input=g_cpu;
     unsigned spring=input.A[0]&0xFFFF;
     s_inside_spring=1; recomp_call_addr(pc); s_inside_spring=0;
     M68KState result=g_cpu;
     unsigned routine=g_ram[spring+0x24];
     if (g_ram[spring]!=0x41 || routine<2 || routine>10) return 1;
-    for (unsigned p=2;p<4;++p) {
+    for (unsigned p=2;p<S2_MAX_PLAYERS;++p) {
         unsigned o=objects[p]; if (!o || !g_ram[o] || g_ram[o+0x24]>=6) continue;
         uint8_t saved[144]; solid_begin(p,saved);
         g_cpu=input; g_cpu.A[1]=0xFFFF0000u|o; g_cpu.D[6]=4;
@@ -491,10 +605,19 @@ static int update_player(unsigned p, uint32_t entry)
         if (kind(0)==S2_CHAR_TAILS) memcpy(g_ram+0xFEC0,g_ram+0xF760,6);
         if (g_ram[object+0x2A]==0x81) g_ram[object+0x2A]=0;
     }
+    if (kind(p)==S2_CHAR_SHADOW && !p && g_ram[object+0x24]==2 &&
+        (g_ram[object+0x22]&2) && (g_ram[0xF604]&0x30)==0x30 && (g_ram[0xF605]&0x30)) {
+        if (g_ram[0xFE19]) native_helper(0x1ABF2);
+        else if (g_ram[0xFFB1]==7 && word(0xFE20)>=50 && g_ram[0xFE1E]) {
+            putword(0xF65C,0); s_transforming=1; native_helper(0x1AB38); s_transforming=0;
+        }
+    }
     if (imported() && g_ram[object+0x24]==2) {
         S2Motion m=motion(object); S2Contacts c=contacts(object);
+        shadow_contacts(object,&c);
         s2_character_before(&characters[p],&m,g_ram[0xF604],g_ram[0xF605],&c);
         store_motion(object,&m);
+        shadow_effects(p,object,&m);
         g_ram[0xF604]=g_ram[0xF602]=characters[p].native_held;
         g_ram[0xF605]=g_ram[0xF603]=characters[p].native_pressed;
         if (characters[p].move!=S2_MOVE_NATIVE) {
@@ -557,7 +680,7 @@ int s2_runtime_hook(uint32_t pc)
          * restores it after the native special-stage return. */
         active=inside_player=0; actor=-1;
         gvdp_set_unlimited_sprites(0);
-        objects[2]=objects[3]=0;
+        memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
         putword(0xFF70,0);
         return 0;
     }
@@ -569,7 +692,7 @@ int s2_runtime_hook(uint32_t pc)
         s2_roster_validate(&s2_party.roster);
         memset(previous_input,0,sizeof previous_input); memset(companion_cpu,0,sizeof companion_cpu);
         memset(displayed,0,sizeof displayed);
-        for (unsigned p=0;p<4;++p) {
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
             s2_character_reset(&characters[p],kind(p));
             const uint8_t defaults[]={6,0,0,12,0,128}; memcpy(physics[p],defaults,6);
         }
@@ -577,6 +700,7 @@ int s2_runtime_hook(uint32_t pc)
         return 1;
     }
     if (!level()) return 0;
+    if ((pc==0xF77A || pc==0xF810) && bridge_extra_weight(pc)) return 1;
     if (pc==0x213E && custom_super_palette()) {
         if (s_inside_palette) return 0;
         /* Native cycle owns timing AND releases transform control at $2168.
@@ -616,11 +740,27 @@ int s2_runtime_hook(uint32_t pc)
         putword(o+2,(native_id((unsigned)actor)==2?0x7A0:0x780)|(word(0xB002)&0x8000));
         return 0;
     }
+    if (pc==0x12A5C && !word(0xFFD8)) {
+        unsigned target=g_cpu.A[1]&0xFFFF, p=0;
+        while (p<S2_MAX_PLAYERS && objects[p]!=target) ++p;
+        if (p<S2_MAX_PLAYERS && kind(p)==S2_CHAR_SHADOW) {
+            /* S2 discards this reward while Super. Retain a real monitor's
+             * 20-second S-power for v3 Chaos Blast, without expiring Super's
+             * permanent invincibility or replacing its music/stars. */
+            characters[p].shadow_monitor_ticks=20*60;
+            fprintf(stderr,"[Shadow] P%u acquired S-monitor (%u ticks)\n",p+1,characters[p].shadow_monitor_ticks);
+            if (!p && g_ram[0xFE19]) {
+                unsigned counter=g_cpu.A[2]&0xFFFF;
+                putword(counter,word(counter)+1);
+                return 1;
+            }
+        }
+    }
     if ((pc==0x1296A || pc==0x129E0 || pc==0x12A2C) && !word(0xFFD8)) {
         if (s_reward) return 0;
         unsigned target=g_cpu.A[1]&0xFFFF, p=0;
-        while (p<4 && objects[p]!=target) ++p;
-        if (p==4 || !p) return 0;
+        while (p<S2_MAX_PLAYERS && objects[p]!=target) ++p;
+        if (p==S2_MAX_PLAYERS || !p) return 0;
         uint32_t parent=g_cpu.A[1]; uint8_t tails_physics[6], shield[64];
         memcpy(tails_physics,g_ram+0xFEC0,6); memcpy(shield,g_ram+0xD1C0,64);
         if (pc==0x1296A) g_cpu.A[1]=0xFFFFB000u; /* shared campaign ring/life pool */
@@ -650,7 +790,7 @@ int s2_runtime_hook(uint32_t pc)
     if (single) return collide_extras(pc,single);
     if (pc==0x18888) return spring_extras(pc);
     if (pc==0x189CA || pc==0x18AEE || pc==0x18CC6 || pc==0x18DB4 || pc==0x18EE6) {
-        for (unsigned p=0;p<4;++p) if (objects[p] && objects[p]==(g_cpu.A[1]&0xFFFF))
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p] && objects[p]==(g_cpu.A[1]&0xFFFF))
             characters[p].special=0;
         return 0;
     }
@@ -668,7 +808,7 @@ int s2_runtime_hook(uint32_t pc)
     }
     if (pc==0x19F50 || pc==0x1B8A4) {
         unsigned address=g_cpu.A[0]&0xFFFF;
-        for (unsigned p=0;p<4;++p) if (objects[p] && address==objects[p]) return update_player(p,pc);
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p] && address==objects[p]) return update_player(p,pc);
         return 0;
     }
     if (pc==0x1BAD4) return inside_player && actor>0 && !inside_companion_cpu;
@@ -688,6 +828,7 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1ABA6 || pc==0x1AB38) {
         if (!inside_player) return 0;
         if (actor>0 || word(0xFFD8)) return 1; /* never companions or VS */
+        if (pc==0x1AB38 && kind(0)==S2_CHAR_SHADOW && !s_transforming) return 1;
         if (pc==0x1AB38 && kind(0)!=S2_CHAR_SONIC) {
             if (s_transforming) return 0;
             if (g_ram[0xFE19] || g_ram[0xFFB1]!=7 || word(0xFE20)<50 || !g_ram[0xFE1E]) return 1;
@@ -714,7 +855,7 @@ int s2_runtime_hook(uint32_t pc)
         /* RunObjectDisplayOnly freezes the dynamic pool during P1 death.
          * Its submissions bypass update_player, but donor/extra frames must
          * still never enter native Sonic mappings or shared VRAM slots. */
-        for (unsigned p=0;p<4;++p) if (objects[p]==(g_cpu.A[0]&65535) &&
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==(g_cpu.A[0]&65535) &&
             (p>=2 || kind(p)>=S2_CHAR_AMY)) { displayed[p]=1; return 1; }
     }
     if (pc==0x164F4 && inside_player) {
@@ -722,7 +863,7 @@ int s2_runtime_hook(uint32_t pc)
             if (actor>0 && !word(0xFFD8) && word(0xF708)==2) return 1;
             displayed[actor]=actor==0 && kind(0)==S2_CHAR_TAILS && custom_super_palette()?2:1;
         }
-        if (actor>=2 || imported() || (actor==0 && displayed[0]==2)) return 1;
+        if (actor>=2 || kind((unsigned)actor)>=S2_CHAR_AMY || (actor==0 && displayed[0]==2)) return 1;
     }
     if (pc==0x3F73C && inside_player) {
         unsigned o=g_cpu.A[0]&0xFFFF, monitor=g_cpu.A[1]&0xFFFF;
@@ -739,6 +880,7 @@ int s2_runtime_hook(uint32_t pc)
             return 1;
         }
     }
+    if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;
     unsigned o=g_cpu.A[0]&0xFFFF;
     if ((pc==0x3F5A0 || pc==0x3F69C) && kind(actor)==S2_CHAR_AMY && characters[actor].animation==0x23 &&
@@ -754,6 +896,7 @@ int s2_runtime_hook(uint32_t pc)
         S2Motion m=motion(o); S2Contacts c=contacts(o);
         s2_character_after(&characters[actor],&m,&c);
         s2_character_animate(&characters[actor],&m,bank(actor)); store_motion(o,&m);
+        shadow_effects((unsigned)actor,o,&m);
         g_ram[o+1]=(g_ram[o+1]&~3)|characters[actor].render_flip|0x80;
         return 1;
     }
@@ -775,23 +918,24 @@ void s2_runtime_capture(void)
      * or observe displayed[] while an actor was being updated. */
     memset(published_sprites,0,sizeof published_sprites);
     if (!level()) return;
-    for (unsigned p=0;p<4;++p) {
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
         unsigned o=objects[p];
         if (!o || !g_ram[o] || (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2)) continue;
         PartySprite *s=&published_sprites[p];
         s->x=(int16_t)word(o+8); s->y=(int16_t)word(o+12); s->art=word(o+2);
         s->frame=g_ram[o+0x1A]; s->visible=displayed[p];
-        s->flip=kind(p)<S2_CHAR_AMY?g_ram[o+1]&3:characters[p].render_flip;
+        s->flip=kind(p)==S2_CHAR_AMY || kind(p)==S2_CHAR_KNUCKLES || kind(p)==S2_CHAR_SHADOW?characters[p].render_flip:g_ram[o+1]&3;
+        s->wet=!!(g_ram[o+0x22]&64);
     }
     if (displayed_tails && kind(0)==S2_CHAR_TAILS) {
-        PartySprite *s=&published_sprites[4];
+        PartySprite *s=&published_sprites[S2_MAX_PLAYERS];
         s->x=(int16_t)word(0xD008); s->y=(int16_t)word(0xD00C); s->art=word(0xD002);
         s->frame=g_ram[0xD01A]; s->visible=1; s->flip=g_ram[0xD001]&3;
     }
 }
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
-    static PartySprite frame_sprites[5];
+    static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
     static GVDP frame_vdp;
     static uint8_t frame_world[65536];
     static int frame_active,frame_vs,left,top,vs_left,vs_top;
@@ -820,13 +964,15 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         if (value>fade) fade=value;
     }
     if (!fade) return;
-    for (int index=4;index>=0;--index) {
-        unsigned p=index==4?0:(unsigned)index;
+    for (int index=S2_MAX_PLAYERS;index>=0;--index) {
+        unsigned p=index==S2_MAX_PLAYERS?0:(unsigned)index;
         const PartySprite *s=&frame_sprites[index];
         if (!s->visible) continue;
         const S2DonorBank *b=bank(p); unsigned frame=s->frame;
-        if (!b || frame>=b->count) continue;
-        const S2DonorFrame *f=&b->frames[frame];
+        int shadow=kind(p)==S2_CHAR_SHADOW;
+        if (kind(p)==S2_CHAR_MIGHTY) frame=s2_mighty_frame(frame);
+        const S2DonorFrame *f=b && frame<b->count?&b->frames[frame]:NULL;
+        if (!f) continue;
         int x=s->x-origin_x,y=s->y-origin_y;
         unsigned flip=s->flip;
         int fy=line-y-(flip&2?-f->y-f->height:f->y);
@@ -837,10 +983,15 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             int dx=x0+px; if (dx<0 || dx>=width) continue;
             unsigned color=f->pixels[fy*f->width+(flip&1?f->width-1-px:px)];
             if (!color || !s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) continue;
-            uint16_t shade=kind(p)<S2_CHAR_AMY?v->cram[color]:b->palette[color];
-            if (!p && !frame_vs) shade=s2_super_color(kind(p),color,shade,frame_world[0xF65F],
-                ((unsigned)frame_world[0xF65C]<<8)|frame_world[0xF65D],b);
-            uint32_t rgb=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
+            unsigned phase=!p && !frame_vs?frame_world[0xF65F]:0;
+            unsigned super_frame=((unsigned)frame_world[0xF65C]<<8)|frame_world[0xF65D];
+            uint32_t rgb;
+            if (shadow) rgb=genesis_dac_cram_to_argb(s2_shadow_color(b,color,s->wet,phase,super_frame),GENESIS_DAC_NORMAL);
+            else {
+                uint16_t shade=kind(p)<S2_CHAR_AMY?v->cram[color]:b->palette[color];
+                if (phase) shade=s2_super_color(kind(p),color,shade,phase,super_frame,b);
+                rgb=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
+            }
             if (fade<42) rgb=0xFF000000|((((rgb>>16)&255)*fade/42)<<16)|((((rgb>>8)&255)*fade/42)<<8)|((rgb&255)*fade/42);
             out[dx]=rgb;
         }
@@ -866,6 +1017,9 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
     RB(io,c->jump_adjustment); RB(io,c->wall_x);
     RB(io,c->animation); RB(io,c->animation_index); RB(io,c->animation_timer);
     RB(io,c->frame); RB(io,c->render_flip); RB(io,c->animation_changed);
+    RB(io,c->shadow_air_used); RB(io,c->shadow_target); RB(io,c->shadow_last_target); RB(io,c->shadow_target_age);
+    RB(io,c->shadow_chain); RB(io,c->shadow_chaos); RB(io,c->source_animation); RB(io,c->shadow_super);
+    RB(io,c->shadow_monitor_ticks);
 }
 static void rb_all(S2StateIO *io)
 {
@@ -873,11 +1027,11 @@ static void rb_all(S2StateIO *io)
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);
     RB(io,previous_input); RB(io,displayed); RB(io,companion_cpu);
-    for (unsigned p=0;p<4;++p) rb_character(io,&characters[p]);
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) rb_character(io,&characters[p]);
     RB(io,physics); RB(io,objects); RB(io,solid_flags); RB(io,solid_ids);
-    for (unsigned i=0;i<5;++i) {
+    for (unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
         PartySprite *ps=&published_sprites[i];
-        RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible);
+        RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible); RB(io,ps->wet);
     }
     RB(io,displayed_tails);
     int32_t g[6]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,s_transforming,s_combat};

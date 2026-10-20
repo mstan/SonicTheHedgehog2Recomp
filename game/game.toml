@@ -81,6 +81,18 @@ kind = "game_hook"
 addr = 0x12A2C # shield_monitor: independent extra-player shield objects
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x12A5C # invincible_monitor: Shadow's Super S-monitor / Chaos Blast prerequisite
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0xF77A # Obj11_EHZ: extra companions contribute native log-bridge sag
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0xF810 # Obj11_HPZ: same native bridge shape controller
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0xF872 # log bridge collision: run the native per-character path for all actors
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x4F64 # SpecialStage: always native Sonic + Tails, independent of roster
 kind = "game_hook"
 [[widescreen_site]]

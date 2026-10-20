@@ -204,11 +204,14 @@ $z = [IO.Compression.ZipFile]::OpenRead($zip)
 try {
   $names = @($z.Entries | ForEach-Object FullName)
 } finally { $z.Dispose() }
-foreach ($need in @("$target.exe", 'LICENSE', 'THIRD-PARTY-LICENSES.md', 'README.txt', 'assets/fonts/LatoLatin-Regular.ttf') + @($staged.Keys)) {
+foreach ($need in @("$target.exe", 'LICENSE', 'THIRD-PARTY-LICENSES.md', 'README.txt', 'assets/fonts/LatoLatin-Regular.ttf', 'assets/megamix/CREDITS.txt') + @($staged.Keys)) {
   if (-not ($names -contains $need)) { throw "zip is missing $need" }
 }
 $bad = @($names | Where-Object { $_.Contains('\') })
 if ($bad.Count) { throw "zip has non-portable entry names: $($bad -join ', ')" }
+if (@($names | Where-Object { $_ -match '^assets/shadow/' -or $_ -match 'cd-speed|fast-loading' }).Count) {
+  throw 'zip contains deprecated Shadow sheet assets or forbidden loading packages'
+}
 
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$hash  $([IO.Path]::GetFileName($zip))" | Out-File -LiteralPath "$zip.sha256" -Encoding ascii

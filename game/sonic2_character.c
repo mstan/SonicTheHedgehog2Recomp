@@ -1,6 +1,7 @@
 /* Behavior port references: docs/SONIC2_DONOR_PORT.md. All host-world
  * consequences are handled by the Sonic 2 adapter, not by these controllers. */
 #include "sonic2_character.h"
+#include "sonic2_shadow.h"
 #include <string.h>
 enum { UP=1, DOWN=2, LEFT=4, RIGHT=8, BC=0x30, A=0x40, JUMP=0x70 };
 enum { FACE=1, AIR=2, ROLL=4, ON_OBJECT=8, ROLLJUMP=16, PUSH=32, WATER=64 };
@@ -137,6 +138,7 @@ void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t
     s->held=s->native_held=held; s->pressed=s->native_pressed=pressed;
     s->before_air=!!(m->status&AIR); s->before_jumping=m->jumping;
     s->move=S2_MOVE_NATIVE; s->jump_adjustment=0;
+    if (s->kind==S2_CHAR_SHADOW) { s2_shadow_before(s,m,c); ++s->age; return; }
     if (m->hurt || m->control_locked) { s->special=0; return; }
     if (s->kind==S2_CHAR_AMY) amy_before(s,m);
     if (s->kind==S2_CHAR_KNUCKLES) knuckles_before(s,m,c);
@@ -144,6 +146,7 @@ void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t
 }
 void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
+    if (s->kind==S2_CHAR_SHADOW) { s2_shadow_after(s,m); return; }
     if (m->hurt) { s->special=0; return; }
     if (!s->before_air && (m->status&AIR) && m->jumping && s->jump_adjustment) {
         unsigned angle=(m->angle-0x40)&255;
@@ -195,6 +198,7 @@ int s2_character_attacking(const S2CharacterState *s, const S2Motion *m)
 void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *bank)
 {
     if (!bank || !bank->animation_count) return;
+    if (s->kind==S2_CHAR_SHADOW) { s2_shadow_animate(s,m,bank); return; }
     if (s->kind==S2_CHAR_KNUCKLES && s->special>=S2_SK_GLIDE && s->special!=S2_SK_FALL) {
         if (s->special==S2_SK_GLIDE) {
             static const uint8_t turn[]={0xC0,0xC1,0xC2,0xC3,0xC4,0xC3,0xC2,0xC1};

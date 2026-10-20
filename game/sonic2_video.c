@@ -5,6 +5,7 @@
  */
 #include "sonic2_video.h"
 #include "sonic2_runtime.h"
+#include "sonic2_party.h"
 #if GENESIS_HAS_RECOMP_NET
 #include "netplay/genesis_netplay.h"
 #endif
@@ -176,7 +177,7 @@ typedef struct {
     uint8_t sat[640];
     int scene; /* 1 level, 2 special, 0 menu */
     int camera_x, camera_y; /* coordinates used when capturing world sprites */
-    int views[4][2]; /* all players' origins, identical on every peer */
+    int views[S2_MAX_PLAYERS][2]; /* all players' origins, identical on every peer */
 } SceneFrame;
 static SceneFrame s_build, s_history[3], s_display_frame;
 static const SceneFrame *s_display;
@@ -294,9 +295,9 @@ static int active_x(int x)
 }
 static void campaign_cells(void)
 {
-    /* All four actors participate, regardless of which peer renders them. */
+    /* All actors participate, regardless of which peer renders them. */
     if (s_streaming_pressure) memset(s_active_cells,0,sizeof s_active_cells);
-    for (unsigned p=0;p<4;++p) {
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
         int x,y,lo,hi;
         if (!s2_runtime_player_position(p,&x,&y)) continue;
         player_camera(p,&x,&y);
@@ -381,7 +382,7 @@ static void spawn_scene(void)
             if(p->loaded || !scene_contains(p->x,lo,hi))continue;
             if(p->state && (g_ram[0xFC02+p->state]&128)){p->loaded=1;continue;}
             int d=abs((int)p->x-player);
-            if (s2_runtime_campaign_online()) for (unsigned n=1;n<4;++n) {
+            if (s2_runtime_campaign_online()) for (unsigned n=1;n<S2_MAX_PLAYERS;++n) {
                 int x,y;
                 if (s2_runtime_player_position(n,&x,&y) && abs((int)p->x-x)<d) d=abs((int)p->x-x);
             }
@@ -417,7 +418,7 @@ static void capture_objects(void)
     s_build.scene=gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
     int cam=ram16(0xEEF0),cy=ram16(0xEEF4);
     s_build.camera_x=cam;s_build.camera_y=cy;
-    for (unsigned p=0;p<4;++p) player_camera(p,&s_build.views[p][0],&s_build.views[p][1]);
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&s_build.views[p][0],&s_build.views[p][1]);
     int campaign=s2_runtime_campaign_online();
     int left=gameplay()?view_left(cam,s_requested_width):cam-(s_requested_width-320)/2;
     if(gameplay() && g_ram[0xF711]) {

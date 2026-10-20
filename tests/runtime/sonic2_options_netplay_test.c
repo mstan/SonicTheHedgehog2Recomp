@@ -13,6 +13,7 @@ int test_party_save(void) { ++saves; return save_ok; }
 void recomp_tail_call(uint32_t pc) { tail_pc = pc; }
 void s2_resources_load(const char *path) { (void)path; }
 int s2_resource_verified(unsigned i) { (void)i; return 1; }
+const S2DonorBank *s2_resource_shadow_bank(void) { static S2DonorBank b; return &b; }
 const S2SaveAssets *s2_resource_save_assets(void) { return NULL; }
 void s2_save_menu_load(const char *path) { (void)path; }
 void s2_runtime_load(void) {}
@@ -23,6 +24,8 @@ int s2_save_menu_overlay(int line, uint32_t *out, int width)
 static int available(void) { return 1; }
 static const S2Character knuckles = {"knuckles", "KNUCKLES", 1, available};
 static const S2Character amy = {"amy", "AMY", 1, available};
+static const S2Character shadow = {"shadow", "SHADOW EXP", 1, available};
+static const S2Character mighty = {"mighty", "MIGHTY", 1, available};
 
 static void press(unsigned port, unsigned value)
 {
@@ -79,6 +82,22 @@ int main(void)
     assert(s2_options_hook(0x909A) == 1 && saves == 1 && tail_pc == 0x9060);
     save_ok = 1;
     assert(s2_options_hook(0x909A) == 1 && saves == 2 && g_ram[0xF600] == 4);
+    assert(s2_character_register(&shadow) && s2_character_register(&mighty));
+    assert(s2_netplay_config_adopt("r=shadow,mighty,none,none m=0011")==0);
+    assert(s2_party.mighty_enabled && !strcmp(s2_party.roster.character[0],"shadow"));
+    assert(!strcmp(s2_party.roster.character[1],"mighty"));
+    char config[64]; s2_netplay_config_image(config,sizeof config);
+    assert(!strcmp(config,"r=shadow,mighty,none,none m=0011"));
+    assert(s2_netplay_config_adopt("r=absent,mighty m=000")==-1 && s2_party.mighty_enabled);
+    assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty m=1111")==0);
+    assert(s2_party.roster.slots==6 && !strcmp(s2_party.roster.character[5],"mighty"));
+    s2_netplay_config_image(config,sizeof config);
+    assert(!strcmp(config,"r=shadow,tails,sonic,amy,knuckles,mighty m=1111"));
+    assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty,sonic m=1111")==-1);
+    net_active=0;
+    s2_roster_slots(&s2_party.roster,6);
+    assert(s2_options_netplay_allowed());
+    assert(s2_roster_set(&s2_party.roster,4,"amy") && s2_roster_set(&s2_party.roster,5,"mighty"));
     puts("PASS online four-character Options, visible overlay, rollback replay, no online disk writes, offline save");
     return 0;
 }

@@ -9,6 +9,7 @@ typedef struct S2DonorLayout {
     unsigned frames, mappings, dplc, art, palette, mapping_stride;
     unsigned animations, animation_count;
     unsigned super_palette, super_frames; /* optional three-shade palette cycle */
+    unsigned super_animations, super_animation_count;
 } S2DonorLayout;
 typedef struct S2DonorFrame {
     int16_t x, y;
@@ -24,9 +25,15 @@ typedef struct S2DonorBank {
     unsigned animation_count;
     uint16_t animation_length[64];
     uint8_t animations[64][256];
+    unsigned super_animation_count;
+    uint16_t super_animation_length[64];
+    uint8_t super_animations[64][256];
+    uint16_t water_palette[16], cycle_palette[2][16][4];
 } S2DonorBank;
 extern const S2DonorLayout s2_amy_171_layout;
 extern const S2DonorLayout s2_sk_knuckles_layout;
+extern const S2DonorLayout s2_megamix_mighty_layout;
+extern const S2DonorLayout s2_megamix_shadow_layout;
 int s2_donor_decode(const uint8_t *rom, size_t size, const S2DonorLayout *layout,
                     S2DonorBank *out, char *error, size_t error_size);
 void s2_donor_free(S2DonorBank *bank);
