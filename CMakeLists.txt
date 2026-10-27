@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp VERSION 0.9.0 LANGUAGES C)
+project(SonicTheHedgehog2Recomp VERSION 0.9.1 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 # Build version = netplay lobby key + release package name. Derived from git on
@@ -33,7 +33,7 @@ message(STATUS "Sonic 2 version: ${SONIC2_GAME_VERSION}")
 file(WRITE "${CMAKE_BINARY_DIR}/sonic2_version.txt" "${SONIC2_GAME_VERSION}\n")
 
 # ---------------------------------------------------------------------------
-# Sonic the Hedgehog 2 native build — sibling to SonicTheHedgehogRecomp/.
+# Sonic the Hedgehog 2 native build â€” sibling to SonicTheHedgehogRecomp/.
 #
 # Shared framework code comes from RECOMP_ROOT. Game-specific adapters,
 # ROM layout, source annotations, donor decoders and tests belong to this repo.
@@ -128,7 +128,7 @@ endforeach()
 # ---------------------------------------------------------------------------
 # YM2612 FM = vendored ymfm (Aaron Giles, BSD-3) behind the stable ym2612_*
 # API (runner/audio/ym2612.h). Replaced clownmdemu's FM (AGPL) 2026-06-05 as
-# part of the AGPL-free runtime initiative — see segagenesisrecomp/LICENSING.md
+# part of the AGPL-free runtime initiative â€” see segagenesisrecomp/LICENSING.md
 # (teardown item #2). enable_language(CXX) because ymfm is C++.
 # ---------------------------------------------------------------------------
 enable_language(CXX)
@@ -173,7 +173,7 @@ set(SONIC2_SHARED_SOURCES
     "${RUNNER_ROOT}/audio.c"
     ${GEN_TRACE_SOURCES}
     "${RUNNER_ROOT}/glue.c"
-    "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) — glue.c depends on it
+    "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) â€” glue.c depends on it
     "${RUNNER_ROOT}/crash_report.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
@@ -215,12 +215,12 @@ set(SONIC2_SHARED_SOURCES
 
 if(SONIC_REVERSE_DEBUG)
     list(APPEND SONIC2_SHARED_SOURCES "${RUNNER_ROOT}/reverse_debug.c")
-    message(STATUS "SONIC_REVERSE_DEBUG=ON — Tier-1 reverse-debug instrumentation compiled in")
+    message(STATUS "SONIC_REVERSE_DEBUG=ON â€” Tier-1 reverse-debug instrumentation compiled in")
 else()
-    message(STATUS "SONIC_REVERSE_DEBUG=OFF — stripped native build (no rdb ring)")
+    message(STATUS "SONIC_REVERSE_DEBUG=OFF â€” stripped native build (no rdb ring)")
 endif()
 
-# Include paths. Nothing third-party here beyond ymfm/superzazu/clowncommon —
+# Include paths. Nothing third-party here beyond ymfm/superzazu/clowncommon â€”
 # that is the enforcement that no AGPL header can be compiled into a release
 # binary (clowncommon is ISC-permissive and vendored at
 # runner/external/clowncommon). The oracle keeps the full clownmdemu paths;
@@ -237,7 +237,7 @@ set(SONIC2_INCLUDES_NATIVE
 )
 
 # Clean-room own backend (VDP+bus+Z80 scheduler, superzazu Z80 core embedded
-# directly) — native target only; this is the AGPL-free Sonic 2 runtime.
+# directly) â€” native target only; this is the AGPL-free Sonic 2 runtime.
 # Oracle keeps clownmdemu (incl. its own clownz80) as ground truth.
 set(OWN_BACKEND_SOURCES
     "${RUNNER_ROOT}/video/genesis_vdp.c"
@@ -248,7 +248,7 @@ set(OWN_BACKEND_SOURCES
 # Clean-room 68000 interpreter + decoder + rom_parser. The _wt-cosim engine's
 # shared glue.c references m68k_interp_run_framed (the Tier-3 native floor)
 # unconditionally, so EVERY target built against this engine must link these
-# (AGPL-free — own interpreter + recompiler decoder). Sonic 2's original list
+# (AGPL-free â€” own interpreter + recompiler decoder). Sonic 2's original list
 # omitted them because it targeted an older engine.
 set(SONIC2_FLOOR_SOURCES
     "${RUNNER_ROOT}/m68k_interp.c"
@@ -292,7 +292,7 @@ function(_sonic2_finalize_target tgt includes)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Native target — recompiled 68K drives the game (stub_clown68000 absorbs
+# Native target â€” recompiled 68K drives the game (stub_clown68000 absorbs
 # the would-be interpreter calls).
 # ---------------------------------------------------------------------------
 
@@ -312,7 +312,7 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 
-# Shared recomp-ui (Dear ImGui) pre-boot launcher — native (shipped) target only
+# Shared recomp-ui (Dear ImGui) pre-boot launcher â€” native (shipped) target only
 # Defines RECOMP_LAUNCHER (un-gates the seam in
 # the runner's main.c), links system GL, stages assets/ next to the exe.
 # The dev-only oracle target remains launcher-free.
@@ -388,6 +388,6 @@ if(GENESIS_BUILD_COSIM)
     _sonic2_finalize_target(SonicTheHedgehog2Recomp_cosim SONIC2_INCLUDES_NATIVE)
     target_include_directories(SonicTheHedgehog2Recomp_cosim PRIVATE
         "${RECOMP_ROOT}/recompiler/src")   # m68k_decoder.h / rom_parser.h
-    message(STATUS "GENESIS_BUILD_COSIM=ON — Sonic 2 differential co-sim target enabled")
+    message(STATUS "GENESIS_BUILD_COSIM=ON â€” Sonic 2 differential co-sim target enabled")
 
 endif()
