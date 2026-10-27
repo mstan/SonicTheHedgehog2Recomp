@@ -18,6 +18,9 @@ void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);
 void cmd_send_response(const char *json){(void)json;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"line %d: %s\n",__LINE__,#c);exit(1);}}while(0)
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
+static unsigned native_fetches;
+static const uint32_t *fetch_native(void *ctx)
+{++native_fetches;return (const uint32_t *)ctx;}
 
 int main(void)
 {
@@ -83,6 +86,12 @@ int main(void)
     sonic2_video.scanline(&v,0,native,256,out,796);
     CHECK(out[0]==0xFFFF0000 && out[795]==0xFFFF0000);
     CHECK(!memcmp(out+270,native,sizeof native));
+    {
+        uint32_t expected[796];memcpy(expected,out,sizeof expected);
+        native_fetches=0;
+        sonic2_video.scanline_lazy(&v,0,256,out,796,fetch_native,native);
+        CHECK(native_fetches==1);CHECK(!memcmp(expected,out,sizeof expected));
+    }
     memset(v.vram+32,0,32);v.cram[1]=0xE0;
     sonic2_video.scanline(&v,1,native,256,out,796);
     CHECK(out[0]==0xFF00FF00 && out[795]==0xFF00FF00);
@@ -105,6 +114,13 @@ int main(void)
     publish_sprites();memcpy(v.vram+0xF800,g_ram+0xF800,640);
     sonic2_video.scanline(&v,0,native320,320,out,796);
     CHECK(out[16]==0xFFFF0000 && out[700]==0xFFFF0000);
+    {
+        uint32_t expected[796];
+        sonic2_video.scanline(&v,1,native320,320,expected,796);
+        native_fetches=0;
+        sonic2_video.scanline_lazy(&v,1,320,out,796,fetch_native,native320);
+        CHECK(native_fetches==0);CHECK(!memcmp(expected,out,sizeof expected));
+    }
     v.vram[0xF806]^=1;
     sonic2_video.scanline(&v,0,native320,320,out,796);
     CHECK(out[16]==0xFFFF0000 && out[700]==0xFFFF0000);
