@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp VERSION 0.9.2 LANGUAGES C)
+project(SonicTheHedgehog2Recomp VERSION 0.9.3 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 # Build version = netplay lobby key + release package name. Derived from git on
@@ -391,3 +391,9 @@ if(GENESIS_BUILD_COSIM)
     message(STATUS "GENESIS_BUILD_COSIM=ON â€” Sonic 2 differential co-sim target enabled")
 
 endif()
+
+# Replay reports are supported in production and every native package.
+add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/docs/PLAYER_FEEDBACK.md" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs/PLAYER_FEEDBACK.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/tools/replay_diagnostic.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/replay_diagnostic.py")

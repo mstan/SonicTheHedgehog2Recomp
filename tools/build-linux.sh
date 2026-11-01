@@ -210,6 +210,9 @@ EOF
 
 $LINUXDEPLOY --appdir "$APPDIR" --executable "$BIN" \
     --desktop-file "$WORK/$SLUG.desktop" --icon-file "$ICON"
+mkdir -p "$APPDIR/usr/bin/docs" "$APPDIR/usr/bin/tools"
+cp "$(dirname "$BIN")/docs/PLAYER_FEEDBACK.md" "$APPDIR/usr/bin/docs/"
+cp "$(dirname "$BIN")/tools/replay_diagnostic.py" "$APPDIR/usr/bin/tools/"
 
 # The ImGui pre-boot launcher loads fonts + images from assets/ next to the exe
 # (SDL_GetBasePath resolves to usr/bin inside the AppImage). recomp_ui.cmake's

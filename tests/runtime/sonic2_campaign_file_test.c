@@ -2,6 +2,7 @@
 #include "sonic2_party.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #ifdef _WIN32
@@ -15,6 +16,8 @@
 #include <unistd.h>
 #endif
 
+static int playback;
+int genesis_replay_playing(void) { return playback; }
 static int exists(const char *path) { struct stat st; return !stat(path,&st); }
 static void load(const char *settings)
 { s2_party_load(settings); s2_campaign_file_load(settings); }
@@ -50,6 +53,23 @@ int main(void)
     assert(exists("game/sonic2-campaign.srm") && !exists("sonic2-campaign.srm"));
     uint8_t original[S2_SAVE_BYTES],bytes[S2_SAVE_BYTES];
     read_bytes("game/sonic2-campaign.srm",original);
+    /* Restore roster/save startup state without writing the recorded source. */
+    size_t context_size=s2_feedback_context(NULL,0,0);
+    void *context=malloc(context_size);assert(context);
+    assert(s2_feedback_context(context,context_size,0)==context_size);
+    s2_roster_slots(&s2_party.roster,1);
+    playback=1;
+    assert(!s2_feedback_context(context,context_size-1,1));
+    assert(s2_feedback_context(context,context_size,1)==context_size);
+    assert(s2_party.roster.slots==2);
+    S2CampaignData replay_data=d;
+    assert(s2_campaign_advance(&replay_data.slots[0],1));
+    assert(s2_campaign_file_commit(&replay_data) && s->data.slots[0].stage==1);
+    read_bytes("game/sonic2-campaign.srm",bytes);
+    assert(!memcmp(bytes,original,sizeof bytes) && !exists("game/sonic2-campaign.srm.bak"));
+    assert(s2_feedback_context(context,context_size,1)==context_size);
+    assert(s->data.slots[0].stage==0);
+    playback=0;free(context);
     load("game/settings.ini");
     assert(!strcmp(s2_party.campaign_path,"sonic2-campaign.srm") && s->data.slots[0].state==1);
 

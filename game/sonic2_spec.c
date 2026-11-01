@@ -26,6 +26,7 @@
 #include "sonic2_party.h"
 #include "sonic2_mods.h"
 #include "sonic2_runtime.h"
+#include "sonic2_campaign_file.h"
 #include "sonic2_state_build.h"
 
 #include <stddef.h>
@@ -262,7 +263,15 @@ static int s2_instruction_hook(uint32_t pc)
     }
 }
 
+static size_t feedback_context(void *data,size_t size,int load)
+{
+    size_t result=s2_feedback_context(data,size,load);
+    if (result && load) s2_save_menu_restore_context();
+    return result;
+}
+
 const GameSpec g_game_spec = {
+    .feedback_context       = feedback_context,
     .video                  = &sonic2_video,
     .instruction_hook       = s2_instruction_hook,
     .logical_players        = S2_MAX_PLAYERS,

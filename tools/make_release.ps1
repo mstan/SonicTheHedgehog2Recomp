@@ -182,14 +182,14 @@ Write-Host "      staged: $($staged.Keys -join ', ')"
 # --- 4. package ---------------------------------------------------------------
 Write-Host '[4/4] package (compliance allowlist)'
 $zip = Join-Path $root "release\$target-windows-x64-v$Version.zip"
-if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip }
 $py = Get-Command py -ErrorAction SilentlyContinue
 $pyArgs = @()
 if ($py) { $pyArgs += '-3' } else { $py = Get-Command python -ErrorAction Stop }
 $pyArgs += @((Join-Path $engine 'tools\package_release.py'),
   '--exe', $exe,
   '--extra') + @($staged.Values) + @(
-  '--asset-dir', $assets,
+  '--asset-dir', $assets, (Join-Path $outDir 'docs'), (Join-Path $outDir 'tools'),
   '--license', (Join-Path $engine 'LICENSE.md'),
   '--notices', (Join-Path $engine 'THIRD-PARTY-LICENSES.md'),
   '--readme', (Join-Path $root 'release\README.txt'),

@@ -8,3 +8,4 @@ const S2CampaignStore *s2_campaign_file_store(void);
 const char *s2_campaign_file_error(void);
 int s2_campaign_file_select(const char *path);
 int s2_campaign_file_commit(const S2CampaignData *candidate);
+size_t s2_feedback_context(void *data,size_t size,int load);

@@ -3,6 +3,7 @@
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_campaign_file.h"
+#include "diagnostic_replay.h"
 #if RECOMP_LAUNCHER
 #include "recomp_launcher.h"
 #include <stdio.h>
@@ -130,6 +131,8 @@ static int resource_set(void *ctx, const char *p, const char *f, const char *r, 
     (void)ctx; int i = owner(p, f); error[0] = 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_resource_set_path && base->feature_resource_set_path(base->ctx, p, f, r, path);
     if (i==2 && r && !strcmp(r,"campaign-sram")) {
+        /* The boot attachment restores this save without opening its source. */
+        if (genesis_replay_playing()) return 1;
         if (s2_campaign_file_select(path)) return 1;
         COPY(error,s2_campaign_file_error()); return 0;
     }

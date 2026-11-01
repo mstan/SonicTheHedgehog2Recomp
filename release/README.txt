@@ -136,3 +136,11 @@ with or endorsed by SEGA. No game ROM is distributed.
 SOURCE
 ------
 https://github.com/mstan/SonicTheHedgehog2Recomp
+
+REPLAYABLE FEEDBACK
+-------------------
+Mods > Diagnostics > Replayable feedback is ON by default. After a bug, quit
+normally and send logs/*-feedback.replay with all .sav, .config.ini and .mods.txt
+sidecars and your description. Nothing uploads automatically. See
+docs/PLAYER_FEEDBACK.md. The bundled tools/replay_diagnostic.py uses the exact
+recorded executable, your own ROM and an isolated reproduction directory.
