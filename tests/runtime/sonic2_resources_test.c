@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 static int delegated;
-int genesis_replay_playing(void) { return 0; }
+static int playback;
+int genesis_replay_playing(void) { return playback; }
 static int count(void *ctx) { assert(ctx == &delegated); return 1; }
 static int enable(void *ctx, const char *p, const char *f, int on)
 { assert(ctx == &delegated && !strcmp(p,"base") && !strcmp(f,"wide") && on); ++delegated; return 1; }
@@ -35,6 +36,10 @@ int main(int argc, char **argv)
     assert(p->feature_get(p->ctx,4,&f) && f.enabled && !strcmp(f.id,"shadow"));
     assert(!p->feature_enable(p->ctx,"sonic2.megamix","mighty",1));
     assert(!p->set_enabled(p->ctx,"sonic2.megamix",1));
+    assert(!p->feature_enable(p->ctx,"sonic2.megamix","shadow",1));
+    playback=1;
+    assert(p->feature_enable(p->ctx,"sonic2.megamix","shadow",1));
+    playback=0;
     assert(!p->feature_enable(p->ctx,"sonic2.megamix","save-menu",1));
     assert(p->feature_resource_count(p->ctx,"sonic2.s3k","knuckles")==1);
     assert(p->feature_resource_count(p->ctx,"sonic2.s3k","save-menu")==2);
