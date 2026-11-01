@@ -21,6 +21,7 @@ s2_test(sonic2_campaign "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_campai
 s2_test(sonic2_save_draw "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_save_draw.c")
 s2_test(sonic2_campaign_file "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_campaign_store.c"
     "${S2_GAME}/sonic2_campaign_file.c" "${S2_GAME}/sonic2_party.c")
+target_include_directories(sonic2_campaign_file_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
 s2_test(sonic2_party "${S2_GAME}/sonic2_party.c")
 s2_test(sonic2_options_netplay "${S2_GAME}/sonic2_party.c")
 target_compile_definitions(sonic2_options_netplay_test PRIVATE GENESIS_HAS_RECOMP_NET=1)
@@ -59,5 +60,6 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/recomp-ui/src/recomp_launcher.h")
         "${S2_GAME}/sonic2_donor_assets.c" "${S2_GAME}/sonic2_mods.c" "${S2_SHA}")
     target_compile_definitions(sonic2_resources_test PRIVATE RECOMP_LAUNCHER=1)
     target_include_directories(sonic2_resources_test PRIVATE
-        "${CMAKE_SOURCE_DIR}/recomp-ui/src" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
+        "${CMAKE_SOURCE_DIR}/recomp-ui/src" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
+        "${RUNNER_ROOT}/external/superzazu")
 endif()
