@@ -56,9 +56,14 @@ int s2_save_menu_enabled(void)
 }
 void s2_save_menu_load(const char *settings)
 {
+    s2_campaign_file_load(settings);
+    s2_save_menu_restore_context();
+}
+void s2_save_menu_restore_context(void)
+{
     menu=menu_ready=exit_action=dirty=0; session=-1;
     memset(&view,0,sizeof view);
-    s2_campaign_file_load(settings); store=s2_campaign_file_store();
+    store=s2_campaign_file_store();
     view.data=store->data; view.read_only=store->read_only;
 }
 static unsigned emeralds(void)

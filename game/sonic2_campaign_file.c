@@ -1,5 +1,6 @@
 #include "sonic2_campaign_file.h"
 #include "sonic2_party.h"
+#include "diagnostic_replay.h"
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -118,6 +119,20 @@ int s2_campaign_file_select(const char *path)
 int s2_campaign_file_commit(const S2CampaignData *candidate)
 {
     error[0]=0;
+    if (genesis_replay_playing()) {
+        /* Keep the recorded logical path for quickstate identity, but never
+         * access that path during playback. Campaign writes are memory-only. */
+        if (!store.ready || store.read_only || !s2_campaign_valid(candidate) ||
+            store.sequence==UINT32_MAX) return fail("Campaign save is protected");
+        if (!store.exists || memcmp(candidate,&store.data,sizeof *candidate)) {
+            s2_campaign_encode(candidate,++store.sequence,store.original);
+            store.data=*candidate;store.exists=1;
+        }
+        store.error[0]=0;
+        if (!*s2_party.campaign_path) configured_path(store.path);
+        remember_path=0;
+        return 1;
+    }
     if (!s2_campaign_commit(&store,candidate)) return 0;
     if (!*s2_party.campaign_path) { configured_path(store.path); remember_path=1; }
     if (remember_path) {
@@ -125,4 +140,45 @@ int s2_campaign_file_commit(const S2CampaignData *candidate)
         remember_path=0;
     }
     return 1;
+}
+
+size_t s2_feedback_context(void *data,size_t size,int load)
+{
+    /* Exact-build opaque startup data; no pointers or incoming filenames are
+     * dereferenced. The store's source path is only a logical replay identity. */
+    typedef struct {
+        S2PartyConfig party;
+        S2CampaignStore campaign;
+        int remember;
+        char error[sizeof error];
+    } Context;
+    if (!data && !size && !load) return sizeof(Context);
+    if (!data || size!=sizeof(Context)) return 0;
+    Context *context=data;
+    if (!load) {
+        memset(context,0,size);
+        context->party=s2_party;context->campaign=store;
+        context->remember=remember_path;
+        memcpy(context->error,error,sizeof error);
+        return size;
+    }
+    if (!genesis_replay_playing() || context->party.roster.slots<1 ||
+        context->party.roster.slots>S2_MAX_PLAYERS ||
+        !memchr(context->campaign.path,0,sizeof store.path) ||
+        !memchr(context->campaign.error,0,sizeof store.error) ||
+        !memchr(context->error,0,sizeof error) ||
+        (context->campaign.ready && !s2_campaign_valid(&context->campaign.data))) return 0;
+    for (unsigned i=0;i<S2_MAX_PLAYERS;++i)
+        if (!memchr(context->party.roster.character[i],0,S2_CHARACTER_ID_SIZE)) return 0;
+    const char *paths[]={context->party.amy_path,context->party.s3k_path,
+                         context->party.mighty_path,context->party.campaign_path};
+    for (unsigned i=0;i<sizeof paths/sizeof *paths;++i)
+        if (!memchr(paths[i],0,1024)) return 0;
+    S2PartyConfig before=s2_party;
+    s2_party=context->party;
+    S2Roster roster=s2_party.roster;
+    if (s2_roster_validate(&roster)) {s2_party=before;return 0;}
+    store=context->campaign;remember_path=context->remember;
+    memcpy(error,context->error,sizeof error);
+    return size;
 }

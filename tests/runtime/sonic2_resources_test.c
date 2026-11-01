@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 static int delegated;
+int genesis_replay_playing(void) { return 0; }
 static int count(void *ctx) { assert(ctx == &delegated); return 1; }
 static int enable(void *ctx, const char *p, const char *f, int on)
 { assert(ctx == &delegated && !strcmp(p,"base") && !strcmp(f,"wide") && on); ++delegated; return 1; }
