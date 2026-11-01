@@ -69,7 +69,10 @@ static int enable(void *ctx, const char *p, const char *f, int on)
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_enable && base->feature_enable(base->ctx, p, f, on);
     /* Amy defaults ON even before private assets are staged; S3&K can only
      * become enabled with a verified owner image. Neither auto-picks a player. */
-    if (i && on && !ready(i)) {
+    /* Preserve an unconfigured default toggle during replay. It was inactive
+     * in the recorded session; a configured donor still has to verify through
+     * resource_set before the recorder's feature-enable command reaches us. */
+    if (i && on && !ready(i) && !(genesis_replay_playing() && !*path(i))) {
         COPY(error, i>=3?"Select and verify your Sonic Megamix v3 ROM first":"Select and verify your Sonic 3 & Knuckles ROM first"); return 0;
     }
     *flag(i) = on != 0; s2_roster_validate(&s2_party.roster); return 1;
