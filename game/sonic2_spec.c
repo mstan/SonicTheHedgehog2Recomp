@@ -257,6 +257,7 @@ static int s2_instruction_hook(uint32_t pc)
     case 0xF77A: case 0xF810: case 0xF872:
     case 0x18888: case 0x3F5A0:
     case 0x3F73C: case 0x3F69C:
+    case 0x12768:
     case 0x1296A: case 0x129E0: case 0x12A2C: case 0x12A5C:
         return s2_runtime_hook(pc);
     case 0x3CF6: case 0x8FCC: case 0x90E0: case 0x9186: case 0x91F8: case 0x909A:

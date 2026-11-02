@@ -85,6 +85,7 @@ void s2_runtime_load(void)
 {
     active=inside_player=0; actor=-1;
     gvdp_set_unlimited_sprites(0);
+    s2_video_prepare_knuckles_items();
     memset(published_sprites,0,sizeof published_sprites);
     memset(published_dust,0,sizeof published_dust);
     memset(dust_emit_age,0xFF,sizeof dust_emit_age);
@@ -236,6 +237,19 @@ const char *s2_runtime_state_unavailable_reason(void)
     return NULL;
 }
 static int level(void) { return active && ((g_ram[0xF600]&0x7F)==12); }
+int s2_runtime_knuckles_item(unsigned o)
+{
+    if (!level() || o<0xB000 || o>=0xD400) return 0;
+    unsigned id=g_ram[o];
+    /* Monitor contents are world objects: the primary character selects the
+     * lock-on game's monitor theme. Attached effects follow their own parent. */
+    if (id==0x26 || id==0x2E) return kind(0)==S2_CHAR_KNUCKLES && knuckles_available();
+    if (id!=0x38 && id!=0x35) return 0;
+    unsigned parent=word(o+0x3E);
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p)
+        if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES && knuckles_available()) return 1;
+    return 0;
+}
 static unsigned native_id(unsigned p)
 {
     const S2Character *c=s2_character_find(s2_party.roster.character[p]);
@@ -433,6 +447,7 @@ int s2_runtime_state_load(const void *data,size_t size,int apply)
         io.pos=0; io.mode=2; runtime_state(&io);
         inside_player=inside_solid=inside_companion_cpu=0; actor=-1;
         gvdp_set_unlimited_sprites(active);
+        s2_video_prepare_knuckles_items();
     }
     return io.ok;
 }
@@ -639,6 +654,18 @@ static int update_player(unsigned p, uint32_t entry)
         }
     }
     recomp_call_addr(entry);
+    if (p==1 && native_id(p)!=2) {
+        /* Native sidekick stars follow Tails' position ring, regardless of
+         * the sidekick's character ID. Sonic-based companions otherwise
+         * publish only the temporary Sonic ring, leaving the stars at (0,0). */
+        if (initializing) {
+            putword(0xEED6,0);
+            for (unsigned at=0;at<256;at+=4) {
+                putword(0xE600+at,word(object+8)); putword(0xE602+at,word(object+12));
+            }
+        }
+        native_helper(0x1BF38);
+    }
     if (!p && native_id(0)==2) {
         /* Native Tails writes his own position ring. As leader he must also
          * publish the Sonic history consumed by every companion's P2 AI. */
@@ -733,6 +760,14 @@ int s2_runtime_hook(uint32_t pc)
         return 1;
     }
     if (!level()) return 0;
+    if (pc==0x12768 && !word(0xFFD8) && s2_party.roster.slots>1 && objects[1] &&
+        g_ram[objects[1]] && (g_cpu.A[1]&65535u)==objects[1] &&
+        (kind(1)!=S2_CHAR_TAILS || human_companion(1))) {
+        /* Stock single-player Tails is always solid against a monitor, even
+         * while rolling. Party/human P2 must reach the same rolling hit path
+         * as P1; retain the stock CPU Tails contract and native VS path. */
+        recomp_tail_call(0x12756); return 1;
+    }
     if (pc==0x1DE4A || pc==0x1DE88) {
         unsigned parent=pc==0x1DE4A?word((g_cpu.A[0]&65535)+0x3E):g_cpu.A[2]&65535;
         for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES &&

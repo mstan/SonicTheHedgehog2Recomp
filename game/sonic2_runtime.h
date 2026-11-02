@@ -17,3 +17,6 @@ void s2_runtime_overlay(const struct GVDP *vdp, int line, uint32_t *out, int wid
 /* Rollback state (GameSpec rb_state_save/load, runner/rb_state.c "game"). */
 size_t s2_runtime_rb_save(void *dst, size_t cap);
 int s2_runtime_rb_load(const void *src, size_t len);
+
+/* Source-backed item artwork belongs to the actual shield/star parent. */
+int s2_runtime_knuckles_item(unsigned object);

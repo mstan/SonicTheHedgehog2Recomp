@@ -7,7 +7,8 @@ S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
 static int hud_available;
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
-static int online,local_player;
+static int online,local_player,item_owner;
+int s2_runtime_knuckles_item(unsigned o) { return item_owner && o==0xD180; }
 static int positions[4][2];
 int genesis_netplay_active(void){return online;}
 int genesis_netplay_local_player(void){return local_player;}
@@ -28,6 +29,30 @@ static const uint32_t *fetch_native(void *ctx)
 
 int main(void)
 {
+    /* Original item art is sprite-only; missing resources retain native VRAM.
+     * Piece tags are independent of owner-resource availability. */
+    unsigned pattern_bytes=0; s2_video_prepare_knuckles_items();
+    CHECK(!gvdp_sprite_patterns(0x80,&pattern_bytes) && !pattern_bytes);
+    CHECK(knuckles_item_tile(0x4BE) && knuckles_item_tile(0x4FF));
+    CHECK(knuckles_item_tile(0x6AC) && knuckles_item_tile(0x6B3));
+    CHECK(!knuckles_item_tile(0x4BD) && !knuckles_item_tile(0x500));
+    CHECK(!knuckles_item_tile(0x6AB) && !knuckles_item_tile(0x6B4));
+    hud_available=1; hud_art.shield_stars[0]=0x67; hud_art.monitor[0]=0x98;
+    s2_video_prepare_knuckles_items();
+    const uint8_t *patterns=gvdp_sprite_patterns(0x80,&pattern_bytes);
+    CHECK(patterns && pattern_bytes==65536);
+    CHECK(patterns[0x4BE*32]==0x67 && patterns[0x6AC*32]==0x98);
+    CHECK(!gvdp_sprite_patterns(0,&pattern_bytes));
+    unsigned sites[]={0x1684E,0x1688E,0x168E6,0x16938};
+    g_cpu.A[0]=0xFFFFD180; g_cpu.A[2]=0xFFFFF810; item_owner=1;
+    word(g_ram,0xF80C,0x84BE);
+    for(unsigned n=0;n<4;++n) {
+        g_ram[0xF80A]=15; CHECK(!s2_video_hook(sites[n]));
+        CHECK(g_ram[0xF80A]==0x8F && ram16(0xF80C)==0x84BE);
+    }
+    item_owner=0; g_ram[0xF80A]=15;s2_video_hook(0x1684E);CHECK(g_ram[0xF80A]==15);
+    item_owner=1;word(g_ram,0xF80C,0x8680);s2_video_hook(0x1684E);CHECK(g_ram[0xF80A]==15);
+    item_owner=0;hud_available=0;s2_video_prepare_knuckles_items();memset(g_ram,0,sizeof g_ram);
     GVDP hud={0}; uint32_t colour=0x12345678;
     s2_party.s3k_enabled=1; strcpy(s2_party.roster.character[0],"knuckles");
     CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour) && colour==0x12345678);

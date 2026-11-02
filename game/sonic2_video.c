@@ -321,6 +321,25 @@ static void scene_mode_changed(int was_enabled)
     /* Once adopted, the host loader also maintains a native-width window
      * on opt-out until the next level init, preserving existing object state. */
 }
+static int knuckles_item_tile(unsigned tile)
+{
+    return (tile>=0x4BE && tile<0x500) || (tile>=0x6AC && tile<0x6B4);
+}
+void s2_video_prepare_knuckles_items(void)
+{
+    static const S2KnucklesArt *cached;
+    static uint8_t patterns[65536];
+    const S2KnucklesArt *art=s2_resource_knuckles_art();
+    if (art && art!=cached) {
+        memset(patterns,0,sizeof patterns);
+        memcpy(patterns+0x4BE*32,art->shield_stars,sizeof art->shield_stars);
+        memcpy(patterns+0x6AC*32,art->monitor,sizeof art->monitor);
+    }
+    cached=art;
+    /* These original replacement tiles use only shared palette inks. Keep
+     * live CRAM so native fades and underwater palettes retain their timing. */
+    gvdp_set_sprite_patterns_bank(0,art?patterns:NULL,art?sizeof patterns:0,NULL);
+}
 static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
                         int x,int y,int anchor,int static_mapping)
 {
@@ -339,6 +358,7 @@ static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
         if(!s2_runtime_campaign_online() && (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         SceneSprite *q=&s_build.sprites[s_build.count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)size;q->hud=(uint8_t)anchor;
+        if ((flags&0x100) && knuckles_item_tile(attr&2047)) q->size|=0x80;
     }
 }
 
@@ -443,6 +463,7 @@ static void capture_objects(void)
         for(unsigned k=2;k<=bytes;k+=2) {
             unsigned o=ram16(queue+k);if(o<0xB000 || o>=0xD400 || !g_ram[o])continue;
             unsigned flags=g_ram[o+1],multi=flags&64,space=flags&12;
+            if (s2_runtime_knuckles_item(o)) flags|=0x100;
             int x,y,anchor=0;
             if(space || multi) {
                 x=(int16_t)(ram16(o+8)-cam);
@@ -485,6 +506,18 @@ static void publish_sprites(void)
 }
 int s2_video_hook(uint32_t pc)
 {
+    if (pc==0x16604) s2_video_prepare_knuckles_items();
+    if (pc==0x1684E || pc==0x1688E || pc==0x168E6 || pc==0x16938) {
+        /* REV01 DrawSprite's four DBF sites, after one complete SAT piece.
+         * Size bit7 is ignored by hardware and selects the existing private
+         * sprite bank. Mark independent of asset availability so guest state
+         * remains identical for peers with different presentation resources. */
+        unsigned next=g_cpu.A[2]&65535u,o=g_cpu.A[0]&65535u;
+        if (next>=0xF808 && next<=0xFA80 && !(next&7) &&
+            s2_runtime_knuckles_item(o) && knuckles_item_tile(ram16(next-4)&2047))
+            g_ram[next-6]|=0x80;
+        return 0;
+    }
     if(pc==0x17AA4 && !g_ram[0xF76C]) {
         s_placement_base=s_placement_count=0;s_loader_active=0;
         memset(s_active_cells,0,sizeof s_active_cells);s_streaming_pressure=0;
@@ -584,6 +617,13 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint32_t custom=0;
             int knux=s->hud==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):pattern_pixel(v,cell,ix,iy);
+            if (s->size&0x80) {
+                unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
+                unsigned at=(cell&2047)*32+(iy&7)*4+(ix&7)/2;
+                if (patterns && at<bytes) p=(ix&1)?patterns[at]&15:patterns[at]>>4;
+                p=(uint8_t)((cell>>9&48)|p); /* native palette, including water/fades */
+                if (!(p&15)) p=0;
+            }
             if(!p)continue;
             s_priority[x]|=2;
             if(s->hud || (s->attr&0x8000) || !(s_priority[x]&1))out[x]=knux?custom:palette[p];
