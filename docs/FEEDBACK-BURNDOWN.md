@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 18 validated fixes, 8 remaining**. One save-menu
+Current intake: **26 reported defect/action items; 21 validated resolutions (20 fixes and 1 current-HUD verification), 5 remaining**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -41,10 +41,10 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-18 | Delete-mode cancellation differs from S3&K. Start on an empty card or Delete, B anywhere, and choosing No at confirmation should leave deletion mode without starting/deleting a file. | **Validated fix**, not released. All five actual routes pass with disposable saves: empty, No, B at confirmation, Delete card and Yes. Unit cases also preserve read-only data and fail commits without a success sound. |
 | S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | **Validated fix**, not released. Live card-plane geometry fills the viewport; the serrated red edge follows its new boundary and text keeps its native glyph size/settled position. Real Sonic 16:9/32:9 and green Knuckles 32:9 intros pass; native images remain identical. Separate from S2-05. |
 | S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | **Validated fix**, not released. Card fills use the displayed plane cells without wrapping; revealed terrain/donor actors share the final widescreen origin. Text travel scales around its settled anchor so it exits before native deletion. Complete 320-frame card routes pass, with exact post-exit images and unchanged paired RAM/VRAM. |
-| S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | Open. User is unsure which differences are original limitations or reference-emulator presentation; do not assume Kega Fusion is a hardware oracle. |
+| S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | **Validated fix**, not released. Eight output rows216..223 (four displayed TV rows) form an opaque black gap. P1 HUD ends215; P2 viewport begins224 and its HUD at232 is preserved. The original larger P1 sprite mask is replaced by H-int and is not the permanent divider. EHZ/CNZ complete title/game routes pass. No reference-emulator flicker was invented. |
 | S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | Open. Validate CNZ and EHZ independently, including field ordering and the actual source-triggered event. |
-| S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | Open. Preserve the complete intended HUD; compare matching scenes/fields and distinguish rendering defects from original artifacts. |
-| S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | Open. Test both terrain and actors crossing its boundary, with intact neighbouring HUD rows. |
+| S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | **Validated current-HUD resolution**, not a newly repaired glyph claim. The unintended full-width divider strip is covered by S2-21/24. Current baseline and candidate both match all476 original opaque P1 life/name/count pixels in each of six EHZ and six CNZ samples; no clipping was reproduced. All pixels above216 and from224 onward remain identical. Original small flicker artifacts are not reintroduced. |
+| S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Validated fix**, not released. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Validated fixes and general audit**, not released. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | Open. Owner notes a possible forthcoming host-native optimization overhaul; coordinate and measure the exact 4:3 workload against it rather than duplicating shared work or assuming it fixes this report. Distinguish host frame pacing from actual guest-loop cadence and retain matched roster/input/host measurements. |
 
@@ -272,3 +272,35 @@ Competition source/ROM verification located DrawSprite2P piece DBFs at $16DEE/$1
   edge pattern. Ten focused production tests pass. The first candidate exposed
   the remaining logo-band width; the final change extends those edge pixels
   while preserving the actual logo and trademark.
+
+## Native competition divider qualification
+
+Executable SHA256 `af56a50c3ddb820767f5e88af01377b8c9d1d0f8466d8470633cfdbbaa46cc87`.
+Ten focused tests pass. `vs-divider-qa/results.json`:162 paired samples each in
+EHZ and CNZ,148 interlaced images per route,131 changed divider images per route.
+RAM/VRAM remain exact; every pixel outside rows216..223 remains exact, including
+P1 life rows200..215 and P2 timer rows232..247. The initial32-row candidate was
+rejected because it covered the lower HUD. Source inspection establishes that
+the larger P1 SAT mask retires at the H-int viewport switch, unlike a permanent
+screen divider. Final geometry preserves the actual lower-view origin224.
+
+`actor-results.json` adds six positioned EHZ observations with unchanged paired
+RAM/VRAM. P1 native pieces at y196/h32 and y212/h16, plus P2 pieces at y216/h16
+and y216/h32, intersect the divider; it stays completely black. The fixture
+positions actors and sets airborne state, and does not claim natural traversal
+or altered competition mechanics. `hud-results.json` independently checks the
+original static P1 life/name and native count tiles:476 opaque pixels per sample,
+2,856 per zone/build,11,424 total. Baseline already passes this artwork check;
+S2-23 is a verified current-behavior decision, not an invented new glyph fix.
+S2-22's separate wrong-region title flash remains open.
+
+S2-26 bounded baseline measurement (no optimization adopted):
+`party-cadence-qa/baseline-result.json` covers original two seats, six with extra
+Sonic/Knuckles, widescreen six, and native six with Knuckles/Shadow/Mighty donors.
+All760 sampled frame-to-frame intervals advance one level tick and one VBlank;
+all six actor objects are populated in the large-party cases. File-write timing
+proxies have about16.6ms medians and17.6..18.1ms 95th percentiles; these are not
+presentation timestamps or proof of an optimization win. Current short idle/
+movement samples do not reproduce the report, so do not raise guest timing
+budgets or duplicate the host-native overhaul speculatively. S2-26 stays open.
+Central issue is related to optimization campaign `beads-2wy8.1`, with its label.

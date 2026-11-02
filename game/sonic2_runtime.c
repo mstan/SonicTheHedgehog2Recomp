@@ -1161,13 +1161,14 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         }
     }
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
+    if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
     knuckles_hud(v,line,out,width,0);
     int origin_x=left,origin_y=top;
     if (frame_vs) {
         /* Native interlace pass is 448 rows. Each competitor's 224-row world
          * view contains both characters, with the stock central SAT mask. */
-        if (line>=216 && line<248) return;
+        if (line>=216 && line<224) return;
         if (line>=224) { origin_x=vs_left; origin_y=vs_top; }
     }
     unsigned fade=0;
