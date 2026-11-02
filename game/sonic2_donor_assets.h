@@ -34,6 +34,12 @@ typedef struct S2KnucklesArt {
     uint8_t life[12*32],shield_stars[66*32],monitor[8*32];
     uint16_t palette[16];
 } S2KnucklesArt;
+/* Immutable native competition HUD sources from the verified REV01 ROM. */
+typedef struct S2NativeHudArt {
+    uint8_t life[3][12*32]; /* Sonic, Miles, Tails */
+    uint8_t font[88*32], numbers[10*32];
+} S2NativeHudArt;
+int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out);
 /* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
 int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
 extern const S2DonorLayout s2_amy_171_layout;

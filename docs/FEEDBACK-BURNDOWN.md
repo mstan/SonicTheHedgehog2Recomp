@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 21 validated resolutions (20 fixes and 1 current-HUD verification), 5 remaining**. One save-menu
+Current intake: **26 reported defect/action items; 22 validated resolutions (21 fixes and 1 current-HUD verification), 4 remaining**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -24,7 +24,7 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-01 | Launcher sample-rate choice does not persist. Save the chosen rate, restore it on relaunch, and use it for the output device. | **Validated fix**, not released. 0.9.4 already saves on Play. Owner explicitly requested save-on-close too; shared engine `eb52f8c` adds that path. Actual widget clicks, Play/save/relaunch at 44100 Hz, close/save/relaunch at 48000 Hz, and actual device rates pass. Tracking `beads-3vb.32`. |
 | S2-02 | Save-select background moves when changing cards. Keep the background stationary while the cards/cursor scroll, including widescreen. | **Validated fix**, not released. Baseline background moves; candidate background stays pixel-identical while cards move at 320x224 and 796x224. |
 | S2-03 | Save-select appears over a blank native Options menu without correct fades. Fade the complete save screen in/out on entry, start, cancel and relevant return paths; no exposed underlying screen. | **Validated fix**, not released. Actual complete-frame entry, cancel and game-start fades at 320x224 and 796x224; original native palette timing retained, real title/game destinations reached, no dispatch misses. |
-| S2-04 | Native 2P competition HUD assumes Sonic/Tails. Show each actual competitor's identity, life artwork and applicable name colours. | Open. |
+| S2-04 | Native 2P competition HUD assumes Sonic/Tails. Show each actual competitor's identity, life artwork and applicable name colours. | **Validated fix**, not released. Both native viewports use the actual roster and independent life counts. Reversed Sonic/Tails, original Knuckles in either role, Shadow/Mighty and no-lock-on-art Knuckles fallback pass. Default Sonic/Tails and all paired RAM/VRAM stay unchanged; 5,804 original opaque glyph/colour pixels pass. See competition HUD qualification below. |
 | S2-05 | Knuckles has the blue Sonic title card. Use the original Knuckles-in-Sonic-2 green title-card treatment. | **Validated fix**, not released. Original two-tile ink-4 change plus the donor's original $080 green applied to those displayed plane-A cells. Actual 320/796-wide images are green, Sonic's card stays blue, matched intro RAM is byte-identical, and dispatch misses are empty. Native Sonic palette remains available to mixed parties. |
 | S2-06 | Knuckles visibly spawns as the title card slides away. Match the original entry/spawn presentation without a late pop-in. | **Validated fix**, not released. Reproduced a late host-only reveal: native Sonic is exposed with the card, Knuckles waited until frame170. Donor actors now use the actual card planes for occlusion and the stage camera before Level_started; feet/body reveal at165..169. All32 native A/B RAM/VRAM samples are identical, Sonic images unchanged, native/wide center matches. Native 2P retains its previous gate. |
 | S2-07 | Knuckles glide landing/ground slide lacks the original dust effect. Restore the source-backed dust at the real slide/landing trigger. | **Validated fix**, not released. Source cadence, original atlas and six-pixel offset restored. Real glide/slide A/B checks pass for P1/P2/P3/P6, native and widescreen; no sampled actor-motion change. Current-build P1/P6 save/load restores full WRAM and yields 16 identical continuation images/RAM samples. See dust qualification below. |
@@ -54,7 +54,7 @@ Imported at the owner's explicit request from
 `C:/temp/Codex/sonic-feedback-release-20261101/sonic2/docs/PLAYER_FEEDBACK_HANDOFF_20261101.md`.
 Its historical S2-01..04 identifiers are scoped to that handoff; they are
 retained below with an H prefix to avoid colliding with the screenshot intake.
-**Three delivered outcomes, two explicit deferrals, two queued enhancements.**
+**Three delivered outcomes, two explicit deferrals, one validated enhancement and one queued enhancement.**
 Do not count deferrals as fixes or repeat their bounded probes without new logs.
 
 | ID | Work | Imported status and acceptance / evidence |
@@ -352,3 +352,43 @@ session adoption. Final executable SHA256
 also requalifies disabled behavior and last-life death/retry/time/save-load.
 No remaining H-07 acceptance work is queued. H-06 remains the one imported
 queued enhancement; the five open reports in the original26 stay separate.
+
+
+Competition HUD qualification (S2-04, 2026-11-02): `competition-hud-qa`
+retains six real title-menu-to-native-competition cases, each at initial lives3
+and after the original HUD updater displays independently assigned P1=7/P2=12.
+The fixture changes counters to check their display; it does not claim an
+extra-life reward. All12 paired WRAM/VRAM observations match the frozen H-07
+baseline `1e515646a5550121b23990abfec2176367342360e50d7c8ef198be011312b467`.
+Changes are restricted to the replaced life HUD areas; default Sonic/Tails
+images remain exact. Correct IM2 ten-bit Y coordinates select each live SAT.
+A private VDP removes the old shapes before donor actors, then source-backed
+high-priority glyphs are drawn afterward; guest memory is never changed.
+
+Sonic/Tails use their original REV01 life art, including the Japanese Miles
+name selection. Knuckles uses the verified original lock-on face/name and
+orange/white palette when supplied. Without that optional resource, the
+existing verified S3&K gameplay head and a correctly coloured full name are
+used. Shadow/Mighty and the available Amy path use their verified gameplay
+heads and the original native menu font, with each player's native life digits.
+No Amy donor is available for an actual Amy visual check; the shared identity
+path is present, not claimed as asset-qualified. No ROM/art payload is added.
+
+The independent original-art oracle passes5,804 opaque glyph/colour pixels,
+including both life values and the fallback name. Actual cropped HUDs were
+visually reviewed; the final generic head crop retains its complete width.
+All11 focused tests pass. Complete native/reversed/original-Knuckles A/B build:
+`53cff0d168b1dbdbab5ffdf0e62601b7b98461f1c3a778fdcc714fc4736a55cd`.
+Final custom-name/head/fallback subset build:
+`acb43c6748839726b3ae5cbd68f1c07393cafc7d47dc834436f6f7708b650e7b`.
+Earlier candidates with premature ROM decode or incorrect raw-font origin were
+rejected and corrected; none is treated as accepted evidence.
+
+A bounded independent focus check recommends S2-22 next, before the larger
+S2-15 viewport work or H-06 presenter adapter. Stop further HUD matrix expansion
+now that its affected final paths pass. S2-12/S2-26 retain their existing
+unreproduced/rejected evidence and await a new occurrence or concrete hypothesis.
+Shared S3 presenter dependencies (30083ac/42fd35f/3dfcc2c/471d51f/bbe5fa9)
+are prepared on the isolated engine branch but are not yet adopted by the game
+pin or counted as a validated H-06 result. The engine remains at d08cc6b during
+matched S2-04 qualification.

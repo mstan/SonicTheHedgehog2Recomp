@@ -37,6 +37,8 @@ static S2CharacterState characters[S2_MAX_PLAYERS];
 static uint8_t physics[S2_MAX_PLAYERS][6];
 static unsigned objects[S2_MAX_PLAYERS]={0xB000,0xB040};
 static S2DonorBank native_banks[2];
+static S2NativeHudArt hud_art;
+static int hud_art_ready;
 /* The native status byte only has standing/pushing bits for two players.
  * Extra actors retain those two bits per solid on the host. The actual actor
  * objects have real, reserved native pool addresses, so monitor/platform
@@ -86,6 +88,7 @@ void s2_runtime_load(void)
     active=inside_player=0; actor=-1;
     gvdp_set_unlimited_sprites(0);
     s2_video_prepare_knuckles_items();
+    hud_art_ready=0;
     memset(published_sprites,0,sizeof published_sprites);
     memset(published_dust,0,sizeof published_dust);
     memset(dust_emit_age,0xFF,sizeof dust_emit_age);
@@ -339,6 +342,7 @@ static void spawn_extra(unsigned object, unsigned p)
 }
 static void reserve_extras(void)
 {
+    if (!hud_art_ready) hud_art_ready=s2_native_hud_art_decode(g_rom,0x100000,&hud_art);
     memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
     memset(solid_flags,0,sizeof solid_flags); memset(solid_ids,0,sizeof solid_ids);
     /* P1 Tails uses his native body AND Obj05 tail mappings while glowing.
@@ -1140,6 +1144,90 @@ static void knuckles_hud(const GVDP *v,int line,uint32_t *out,int width,int draw
         }
     }
 }
+static unsigned hud_ink(const uint8_t *tiles,unsigned tile,int x,int y)
+{
+    unsigned b=tiles[tile*32+(y&7)*4+(x&7)/2];
+    return x&1?b&15:b>>4;
+}
+static uint32_t hud_color(const GVDP *v,uint16_t shade)
+{
+    unsigned fade=0;
+    for (unsigned i=0;i<16;++i) {
+        unsigned w=v->cram[i],n=(w&14)+((w>>4)&14)+((w>>8)&14);
+        if (n>fade) fade=n;
+    }
+    uint32_t c=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
+    return 0xFF000000u|((((c>>16)&255)*fade/42)<<16)|
+        ((((c>>8)&255)*fade/42)<<8)|((c&255)*fade/42);
+}
+static void competition_hud(const GVDP *v,int line,uint32_t *out,int width,int draw)
+{
+    if (!word(0xFFD8) || !g_ram[0xF711] || !hud_art_ready) return;
+    unsigned p=line>=224,which=kind(p);
+    int y=line-(p?424:200),origin=(width-320)/2;
+    if (y<0 || y>=16 || which==(p?S2_CHAR_TAILS:S2_CHAR_SONIC)) return;
+    if (!draw) {
+        /* Remove only the old HUD sprites in a private VDP. The live H-int
+         * SAT is different for each viewport; no guest memory is changed. */
+        GVDP blank=*v; unsigned table=(v->reg[5]&127u)<<9,slot=0; int found=0;
+        for (unsigned n=0;n<80;++n) {
+            unsigned at=table+slot*8,attr=card_vram_word(v,at+4);
+            int sx=(card_vram_word(v,at+6)&511)-128;
+            int sy=(card_vram_word(v,at)&1023)-256;
+            if ((attr&0x8000) && (sx==16 || sx==32) && sy==(p?424:200)) {
+                blank.vram[at&65535]=blank.vram[(at+1)&65535]=0; found=1;
+            }
+            slot=v->vram[(at+3)&65535]&127; if (!slot) break;
+        }
+        if (found) {
+            uint8_t indices[GVDP_MAX_WIDTH]; int count=gvdp_render_scanline(&blank,line,indices);
+            for (int x=16;x<96 && x<count;++x) if (x+origin>=0 && x+origin<width) {
+                unsigned c=indices[x];
+                if (c<192) out[x+origin]=genesis_dac_cram_to_argb(v->cram[c%64],
+                    c<64?GENESIS_DAC_NORMAL:c<128?GENESIS_DAC_SHADOW:GENESIS_DAC_HIGHLIGHT);
+            }
+        }
+        return;
+    }
+    const S2KnucklesArt *knux=which==S2_CHAR_KNUCKLES?s2_resource_knuckles_art():NULL;
+    int original=which<2 || knux;
+    const uint8_t *tiles=knux?knux->life:hud_art.life[which==S2_CHAR_TAILS?(g_ram[0xFFF8]&128?2:1):0];
+    unsigned lives=g_ram[p?0xFEC6:0xFE12]; if (lives>99) lives=99;
+    for (int x=0;x<(original?48:80);++x) {
+        int dx=origin+16+x; if (dx<0 || dx>=width) continue;
+        unsigned ink=0; uint16_t shade=0;
+        if (original) {
+            unsigned tile=x<16?(x/8)*2+y/8:4+((x-16)/8)*2+y/8;
+            if (tile==9 || tile==11) {
+                unsigned digit=tile==9?lives/10:lives%10;
+                if (tile!=9 || lives>=10) ink=hud_ink(hud_art.numbers,digit,x,y);
+            } else ink=hud_ink(tiles,tile,x,y);
+            shade=knux?knux->palette[ink]:v->cram[(x<16?0:16)+ink];
+        } else if (x<16) {
+            const S2DonorBank *b=bank(p);
+            const S2DonorFrame *f=b && b->count>1?&b->frames[1]:NULL;
+            if (f && f->pixels && f->width && f->height) {
+                unsigned ch=f->height<24?f->height:24;
+                unsigned sx=x*f->width/16,sy=y*ch/16;
+                ink=f->pixels[sy*f->width+sx]; shade=b->palette[ink];
+            }
+        } else if (y<8) {
+            static const char *names[]={"SONIC","TAILS","AMY","KNUCKLES","SHADOW","MIGHTY"};
+            const char *name=names[which]; unsigned c=(x-16)/8;
+            if (c<strlen(name)) {
+                /* MenuScreen uploads the font at tile16: A30 is raw14. */
+                ink=hud_ink(hud_art.font,14+(unsigned)(name[c]-'A'),x,y);
+                shade=ink==1?0:which==S2_CHAR_KNUCKLES?(y<4?0x08E:0xEEE):0x0EE;
+            }
+        } else if (x<32) {
+            ink=hud_ink(hud_art.life[0],5+(unsigned)(x-16)/8*2,x,y); shade=v->cram[16+ink];
+        } else if (x>=32 && x<48) {
+            if (x>=40 || lives>=10) ink=hud_ink(hud_art.numbers,x<40?lives/10:lives%10,x,y);
+            shade=v->cram[16+ink];
+        }
+        if (ink) out[dx]=hud_color(v,shade);
+    }
+}
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
     static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
@@ -1179,6 +1267,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
     knuckles_hud(v,line,out,width,0);
+    competition_hud(v,line,out,width,0);
     int origin_x=left,origin_y=top;
     if (frame_vs) {
         /* Native interlace pass is 448 rows. Each competitor's 224-row world
@@ -1244,6 +1333,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         }
     }
     knuckles_hud(v,line,out,width,1);
+    competition_hud(v,line,out,width,1);
 }
 
 /* ---- rollback state (GameSpec rb_state_save/load) --------------------------
