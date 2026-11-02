@@ -24,6 +24,17 @@ static const uint32_t *fetch_native(void *ctx)
 
 int main(void)
 {
+    /* The title card hides donor actors using its actual displayed planes,
+     * then reveals them before the later Level_started flag. */
+    GVDP intro={0}; intro.reg[2]=0x30; intro.reg[4]=7; intro.reg[13]=0x3C;
+    memset(intro.vram+5*32,0x11,32); word(intro.vram,0xC000,0x8005);
+    CHECK(!s2_video_intro_pixel_visible(&intro,0,0,0));
+    CHECK(s2_video_intro_pixel_visible(&intro,0,0,1));
+    CHECK(s2_video_intro_pixel_visible(&intro,8,0,0));
+    word(intro.vram,0xF000,8); CHECK(s2_video_intro_pixel_visible(&intro,0,0,0));
+    word(intro.vram,0xF000,0); intro.vsram[0]=8;
+    CHECK(s2_video_intro_pixel_visible(&intro,0,0,0));
+    word(intro.vram,0xE000,0x8005); CHECK(!s2_video_intro_pixel_visible(&intro,0,0,0));
     CHECK(!sonic2_video.enabled());CHECK(!sonic2_video.width(2560,720,320,224));
     g_ram[0xF600]=12;g_ram[0xB000]=1;
     for(int n=0;n<16;++n)g_ram[0x8000+n]=1;
