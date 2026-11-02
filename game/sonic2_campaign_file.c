@@ -171,7 +171,7 @@ size_t s2_feedback_context(void *data,size_t size,int load)
     for (unsigned i=0;i<S2_MAX_PLAYERS;++i)
         if (!memchr(context->party.roster.character[i],0,S2_CHARACTER_ID_SIZE)) return 0;
     const char *paths[]={context->party.amy_path,context->party.s3k_path,
-                         context->party.mighty_path,context->party.campaign_path};
+                         context->party.mighty_path,context->party.kis2_path,context->party.campaign_path};
     for (unsigned i=0;i<sizeof paths/sizeof *paths;++i)
         if (!memchr(paths[i],0,1024)) return 0;
     S2PartyConfig before=s2_party;

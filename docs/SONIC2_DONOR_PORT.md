@@ -10,6 +10,7 @@ save rules, global patches and executable entry points must not run in the host.
 |---|---:|---|
 | Supplied Amy in Sonic 2 Rev 1.7.1 | 2,097,152 | `9c028944730128f6b9999fc74babf69694b0edab50e3f42cc6b60a185d0b1457` |
 | Stock S3&K combined | 4,194,304 | `fba0677fde9f76df93f3e98d6310d8af68b9847bde16e253d73cd4dd8134ed23` |
+| Original S&K + Sonic 2 lock-on combined | 3,407,872 | `3da827d319a60b6180e327c37e1fe5d448746c1644cce01ada1f2788d1e182f4` |
 
 Amy ZIP contains one `.bin`, no source. Public source search did not establish
 an exact Rev 1.7.1 tree. Do not substitute the different Superstars Amy or
@@ -135,3 +136,21 @@ No dispatch misses occurred. Local captures live in the consumer's
 `build-party-recovery/qa/knuckles-loop` directory. The owner accepted the
 relaunched build and requested a release. The fix landed on engine master
 at `837f93a` and consumer master at `f5dd907`.
+
+## Original Knuckles HUD artwork
+
+Knuckles uses the verified S3&K donor for gameplay. The optional original
+**Knuckles in Sonic 2 ROM** resource under that feature supplies the exact
+lock-on HUD artwork. Its extra 256 KiB section contains life-counter Nemesis
+data at $33AC46 (250 bytes), shield/stars at $33AD40 (524 bytes) and monitor
+patch at $33B15E (146 bytes). Original palette $60BEA lies in its shared S&K
+section. Bindings match sonicretro/s2disasm `c336fede00092017f48c9d7851e0d3728c4fae2b`.
+
+The HUD keeps native placement and live counter updates while using the
+original face/name pixels and palette-0 orange/white treatment. Native output
+removes the old glyph shape using a private VDP copy; the widescreen renderer
+substitutes the same art in its existing HUD pass. No guest palette, status,
+VRAM or other character HUD is changed. Native 2P identity remains separate
+work. The shield/star/monitor payloads are decoded for subsequent item fixes;
+their presentation is not implemented by this HUD change. Donor bytes stay
+private and must not enter source commits or release packages.

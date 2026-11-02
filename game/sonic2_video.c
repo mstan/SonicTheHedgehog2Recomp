@@ -6,6 +6,7 @@
 #include "sonic2_video.h"
 #include "sonic2_runtime.h"
 #include "sonic2_party.h"
+#include "sonic2_resources.h"
 #if GENESIS_HAS_RECOMP_NET
 #include "netplay/genesis_netplay.h"
 #endif
@@ -580,10 +581,12 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             int ix=(s->attr&0x800)?cw*8-1-i:i;
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/8))&2047u));
-            uint8_t p=pattern_pixel(v,cell,ix,iy);
+            uint32_t custom=0;
+            int knux=s->hud==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+            uint8_t p=knux?(custom!=0):pattern_pixel(v,cell,ix,iy);
             if(!p)continue;
             s_priority[x]|=2;
-            if(s->hud || (s->attr&0x8000) || !(s_priority[x]&1))out[x]=palette[p];
+            if(s->hud || (s->attr&0x8000) || !(s_priority[x]&1))out[x]=knux?custom:palette[p];
         }
     }
 }
@@ -861,6 +864,33 @@ int s2_video_intro_pixel_visible(const GVDP *v,int x,int line,int high)
         if ((attr&0x8000) && pattern_pixel(v,attr,px,py)) return 0;
     }
     return 1;
+}
+int s2_video_hud_origin(int width)
+{
+    if (!enabled()) return (width-320)/2;
+    return s_display && s_display->scene==1?0:-width;
+}
+int s2_video_knuckles_hud_pixel(const GVDP *v,unsigned attr,int x,int y,uint32_t *color)
+{
+    const S2KnucklesArt *a=s2_resource_knuckles_art(); unsigned tile=attr&2047;
+    if (!a || !s2_party.s3k_enabled || strcmp(s2_party.roster.character[0],"knuckles") ||
+        tile<0x7D4 || tile>=0x7E0) return 0;
+    x&=7; y&=7; if (attr&0x800) x^=7; if (attr&0x1000) y^=7;
+    /* First nine tiles are static face/name art; the native HUD updates its
+     * last three counter tiles. Preserve that live number, using KiS2's
+     * palette-0 name treatment instead of S2's yellow palette-1 name. */
+    const uint8_t *pixels=tile<0x7DD?a->life+(tile-0x7D4)*32:v->vram+tile*32;
+    unsigned byte=pixels[y*4+x/2],ink=x&1?byte&15:byte>>4;
+    *color=0; if (!ink) return 1;
+    uint32_t c=genesis_dac_cram_to_argb(a->palette[ink],GENESIS_DAC_NORMAL);
+    unsigned fade=0;
+    for (unsigned i=0;i<16;++i) {
+        unsigned w=v->cram[i],n=(w&14)+((w>>4)&14)+((w>>8)&14);
+        if (n>fade) fade=n;
+    }
+    if (fade<42) c=0xFF000000u|((((c>>16)&255)*fade/42)<<16)|
+        ((((c>>8)&255)*fade/42)<<8)|((c&255)*fade/42);
+    *color=c; return 1;
 }
 extern void s2_options_overlay(const GVDP *, int, uint32_t *, int);
 const GameVideo sonic2_video = { configure, enabled, width, scanline, s2_options_overlay, scanline_lazy };

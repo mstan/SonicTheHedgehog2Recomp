@@ -14,7 +14,7 @@ static int enable(void *ctx, const char *p, const char *f, int on)
 { assert(ctx == &delegated && !strcmp(p,"base") && !strcmp(f,"wide") && on); ++delegated; return 1; }
 int main(int argc, char **argv)
 {
-    assert(argc == 2 || argc == 4);
+    assert(argc == 2 || argc == 3 || argc == 4);
     s2_party_load(argv[1]); s2_resources_load(argv[1]);
     s2_campaign_file_load(argv[1]);
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
@@ -41,16 +41,30 @@ int main(int argc, char **argv)
     assert(p->feature_enable(p->ctx,"sonic2.megamix","shadow",1));
     playback=0;
     assert(!p->feature_enable(p->ctx,"sonic2.megamix","save-menu",1));
-    assert(p->feature_resource_count(p->ctx,"sonic2.s3k","knuckles")==1);
+    assert(p->feature_resource_count(p->ctx,"sonic2.s3k","knuckles")==2);
     assert(p->feature_resource_count(p->ctx,"sonic2.s3k","save-menu")==2);
     RecompLauncherCModResource resource;
     assert(p->feature_resource_get(p->ctx,"sonic2.s3k","save-menu",1,&resource));
     assert(!strcmp(resource.id,"campaign-sram") && !resource.required && !resource.path[0]);
-    assert(!p->feature_resource_get(p->ctx,"sonic2.s3k","knuckles",1,&resource));
+    assert(p->feature_resource_get(p->ctx,"sonic2.s3k","knuckles",1,&resource));
+    assert(!strcmp(resource.id,"original-knuckles-art") && !resource.required && !resource.verified);
+    assert(!p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles",resource.id,"missing-kis2.bin"));
+    assert(!s2_resource_knuckles_art() && !s2_party.kis2_path[0]);
     assert(!p->feature_resource_set_path(p->ctx,"sonic2.s3k","save-menu","campaign-sram","missing-campaign.srm"));
     assert(*p->last_error(p->ctx) && !s2_party.campaign_path[0]);
     assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","save-menu","campaign-sram",""));
-    if (argc==4) {
+    if (argc==3) {
+        assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles","original-knuckles-art",argv[2]));
+        const S2KnucklesArt *art=s2_resource_knuckles_art();
+        assert(art && art->palette[4]==0x080 && art->palette[6]==0xEEE);
+        S2KnucklesArt before=*art;
+        assert(!s2_resource_set(S2_RESOURCE_KIS2,"missing-kis2.bin"));
+        assert(!memcmp(&before,s2_resource_knuckles_art(),sizeof before));
+        assert(!strcmp(s2_party.kis2_path,argv[2]));
+        assert(p->feature_resource_get(p->ctx,"sonic2.s3k","knuckles",1,&resource) && resource.verified);
+        assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles",resource.id,""));
+        assert(!s2_resource_knuckles_art() && !s2_party.kis2_path[0]);
+    } else if (argc==4) {
         assert(s2_resource_set(S2_RESOURCE_AMY,argv[2]));
         assert(s2_resource_set(S2_RESOURCE_SK,argv[3]));
         assert(s2_resource_bank(S2_RESOURCE_AMY)->count==253);

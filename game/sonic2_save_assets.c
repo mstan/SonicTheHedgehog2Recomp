@@ -1,5 +1,6 @@
 #include "sonic2_save_assets.h"
 #include "sonic2_campaign.h"
+#include "sonic2_donor_assets.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -246,6 +247,18 @@ static int nemesis(const uint8_t *p,size_t size,uint8_t *out,size_t cap)
     return !b.bad && written==nibbles;
 }
 void s2_save_assets_free(S2SaveAssets **a) { if (a) { free(*a); *a=NULL; } }
+int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
+{
+    if (!r || !out || size!=0x340000) return 0;
+    S2KnucklesArt candidate={0};
+    /* Byte-matched original KiS2 c336fede: the 256 KiB add-on follows S&K
+     * and S2. Its artwork uses S&K's original KiS2 palette at $60BEA. */
+    if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
+        !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
+        !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor)) return 0;
+    for (unsigned i=0;i<16;++i) candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
+    *out=candidate; return 1;
+}
 int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *error,size_t cap)
 {
     const char *why="Invalid save-screen donor data";

@@ -972,6 +972,54 @@ static void green_title_card(const GVDP *v,int line,uint32_t *out,int width)
         if ((tile==0x5DA || tile==0x5DB) && !(attr&0x6000u) && out[dx]==old) out[dx]=color;
     }
 }
+static void knuckles_hud(const GVDP *v,int line,uint32_t *out,int width,int draw)
+{
+    if (!s2_resource_knuckles_art() || kind(0)!=S2_CHAR_KNUCKLES ||
+        !knuckles_available() || word(0xFFD8) || !level() || !g_ram[0xF711]) return;
+    int origin=s2_video_hud_origin(width);
+    if (origin<=-width) return;
+    /* The wide renderer substitutes art directly in its existing HUD pass.
+     * Native output needs the old shape removed before donor actors, then
+     * the original high-priority glyphs drawn after them. Render only a
+     * private VDP copy; guest VRAM/status/CRAM are never changed. */
+    if (!draw && sonic2_video.enabled()) return;
+    uint8_t erase[320]={0}; int any=0;
+    unsigned table=(v->reg[5]&127u)<<9,slot=0;
+    for (unsigned n=0;n<80;++n) {
+        unsigned at=table+slot*8,attr=card_vram_word(v,at+4),tile=attr&2047;
+        unsigned size=v->vram[(at+2)&65535]&15,cw=(size>>2)+1,ch=(size&3)+1;
+        int y=(int)(card_vram_word(v,at)&511)-128;
+        if ((attr&0x8000) && (tile==0x7D4 || tile==0x7D8) && line>=y && line<y+(int)ch*8) {
+            int x=(int)(card_vram_word(v,at+6)&511)-128,iy=line-y;
+            if (attr&0x1000) iy=(int)ch*8-1-iy;
+            for (unsigned px=0;px<cw*8;++px) {
+                int dx=x+(int)px,ix=attr&0x800?(int)cw*8-1-(int)px:(int)px;
+                unsigned cell=(attr&0xE000)|((tile+(unsigned)(ix/8*ch+iy/8))&2047);
+                if (dx<0 || dx>=320 || dx+origin<0 || dx+origin>=width) continue;
+                if (draw) {
+                    uint32_t color;
+                    if (s2_video_knuckles_hud_pixel(v,cell,ix,iy,&color) && color) out[dx+origin]=color;
+                } else {
+                    int fx=ix&7,fy=iy&7;
+                    if (cell&0x800) fx^=7; if (cell&0x1000) fy^=7;
+                    unsigned byte=v->vram[((cell&2047)*32+fy*4+fx/2)&65535];
+                    if ((fx&1?byte&15:byte>>4)) erase[dx]=1,any=1;
+                }
+            }
+        }
+        slot=v->vram[(at+3)&65535]&127; if (!slot) break;
+    }
+    if (any) {
+        GVDP blank=*v; uint8_t indices[GVDP_MAX_WIDTH];
+        memset(blank.vram+0x7D4*32,0,12*32);
+        int count=gvdp_render_scanline(&blank,line,indices);
+        for (int x=0;x<320 && x<count;++x) if (erase[x]) {
+            unsigned index=indices[x];
+            if (index<192) out[x+origin]=genesis_dac_cram_to_argb(v->cram[index%64],
+                index<64?GENESIS_DAC_NORMAL:index<128?GENESIS_DAC_SHADOW:GENESIS_DAC_HIGHLIGHT);
+        }
+    }
+}
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
     static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
@@ -1007,6 +1055,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     }
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
     if (!frame_active || !(v->reg[1]&64)) return;
+    knuckles_hud(v,line,out,width,0);
     int origin_x=left,origin_y=top;
     if (frame_vs) {
         /* Native interlace pass is 448 rows. Each competitor's 224-row world
@@ -1055,6 +1104,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             out[dx]=rgb;
         }
     }
+    knuckles_hud(v,line,out,width,1);
 }
 
 /* ---- rollback state (GameSpec rb_state_save/load) --------------------------
