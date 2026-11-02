@@ -95,7 +95,9 @@ int main(void)
     CHECK(sonic2_video.configure("fit"));
     CHECK(s2_video_main_cpu_divisor()==1);
     g_ram[0xF711]=1;CHECK(s2_video_main_cpu_divisor()==4);
-    g_ram[0xFFD9]=1;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xFFD9]=0;
+    g_ram[0xFFD9]=1;CHECK(s2_video_main_cpu_divisor()==4);
+    CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
+    CHECK(sonic2_video.configure("fit"));g_ram[0xFFD9]=0;
     g_ram[0xF600]=0x8C;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
     g_ram[0xF600]=16;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
     CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
@@ -295,6 +297,43 @@ int main(void)
     CHECK(s2_video_competition_divider(&v,223,out,320));
     CHECK(!s2_video_competition_divider(&v,224,out,320));
     word(g_ram,0xFFD8,0);CHECK(!s2_video_competition_divider(&v,216,out,320));
+    /* Cross-check the actual native VDP's IM2 cell shape. A block is a
+     * horizontal pair of8x16 cells; its second map pair is not another row. */
+    memset(g_ram,0,sizeof g_ram);memset(&v,0,sizeof v);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=7;v.reg[16]=1;
+    memset(v.vram+64,0x11,32);memset(v.vram+96,0x22,32);
+    for(unsigned at=0xC000;at<0xD000;at+=2)word(v.vram,at,1);
+    uint8_t indices[GVDP_MAX_WIDTH];
+    CHECK(gvdp_render_scanline(&v,0,indices)==320 && indices[100]==1);
+    CHECK(gvdp_render_scanline(&v,8,indices)==320 && indices[100]==2);
+    CHECK(pattern_pixel(&v,1,4,0)==1 && pattern_pixel(&v,1,4,8)==2);
+    g_ram[0x8000]=1;word(g_ram,0x80,1);
+    word(g_ram,0x9008,1);word(g_ram,0x900A,2);word(g_ram,0x900C,3);word(g_ram,0x900E,4);
+    CHECK(world_attr_2p(g_ram,0,0,0)==1 && world_attr_2p(g_ram,8,0,0)==2);
+    CHECK(world_attr_2p(g_ram,0,8,0)==1 && world_attr(g_ram,0,8,0)==3);
+    word(g_ram,0x80,0x401);CHECK(world_attr_2p(g_ram,0,0,0)==0x802);
+    word(g_ram,0x80,0x801);CHECK(world_attr_2p(g_ram,0,0,0)==0x1001);
+    CHECK(pattern_pixel(&v,0x1001,4,0)==2);
+    /* Adopt an existing native2P spring without duplicating it. Turning
+     * widescreen off retains host ownership, releases an out-of-range live
+     * object, and permits a clean respawn when its margin is visible again. */
+    memset(g_ram,0,sizeof g_ram);g_ram[0x8000+31]=1;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;word(g_ram,0xFFD8,1);
+    word(g_ram,0xEE00,512);word(g_ram,0xEE20,512);
+    word(g_rom,0xE6800,0x100);word(g_rom,0xE6900,300);word(g_rom,0xE6902,0x8000);
+    g_rom[0xE6904]=0x41;g_rom[0xE6905]=6;word(g_rom,0xE6906,0xFFFF);
+    s_placement_base=s_placement_count=0;
+    g_ram[0xB400]=0x41;g_ram[0xB401]=4;g_ram[0xB423]=1;g_ram[0xFC03]=128;
+    g_ram[0xB424]=2;g_ram[0xB438]=99;word(g_ram,0xB408,300);
+    CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
+    spawn_scene();CHECK(s_placements[0].slot==0xB400 && g_ram[0xB440]==0);
+    CHECK(sonic2_video.configure("off"));
+    word(g_ram,0xB408,600); /* A moving root can remain inside a view after its birth cell leaves. */
+    CHECK(s2_video_hook(0x17CCC));CHECK(g_ram[0xB400]==0x41 && (g_ram[0xFC03]&128));
+    word(g_ram,0xB408,300);CHECK(s2_video_hook(0x17CCC));
+    CHECK(s_loader_active && !g_ram[0xB400] && !(g_ram[0xFC03]&128));
+    CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
+    spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and Sonic/Tails ring gates PASS");
     return 0;
 }

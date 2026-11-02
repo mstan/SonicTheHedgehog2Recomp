@@ -1164,9 +1164,10 @@ static void competition_hud(const GVDP *v,int line,uint32_t *out,int width,int d
 {
     if (!word(0xFFD8) || !g_ram[0xF711] || !hud_art_ready) return;
     unsigned p=line>=224,which=kind(p);
-    int y=line-(p?424:200),origin=(width-320)/2;
+    int y=line-(p?424:200),origin=s2_video_competition_extended()?0:(width-320)/2;
     if (y<0 || y>=16 || which==(p?S2_CHAR_TAILS:S2_CHAR_SONIC)) return;
     if (!draw) {
+        if (s2_video_competition_extended()) return;
         /* Remove only the old HUD sprites in a private VDP. The live H-int
          * SAT is different for each viewport; no guest memory is changed. */
         GVDP blank=*v; unsigned table=(v->reg[5]&127u)<<9,slot=0; int found=0;
@@ -1259,8 +1260,13 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
         }
         if (frame_vs) {
-            left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
-            vs_left=word(0xEE80)-(width-320)/2; vs_top=(int16_t)word(0xEE84)-224;
+            if (s2_video_competition_extended()) {
+                s2_video_actor_origin(v,0,width,&left,&top);
+                s2_video_actor_origin(v,224,width,&vs_left,&vs_top);
+            } else {
+                left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
+                vs_left=word(0xEE80)-(width-320)/2; vs_top=(int16_t)word(0xEE84)-224;
+            }
         }
     }
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);

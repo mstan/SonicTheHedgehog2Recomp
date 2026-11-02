@@ -19,3 +19,5 @@ void s2_video_prepare_knuckles_items(void);
 int s2_video_intro_world_visible(void);
 
 int s2_video_competition_divider(const struct GVDP *v,int line,uint32_t *out,int width);
+
+int s2_video_competition_extended(void);

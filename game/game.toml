@@ -647,7 +647,8 @@ reg  = 5
 # edge — the EHZ2 boss "rapidly switching sides" while hovering off the right
 # edge, and any right-margin object ghosting at screen-left. Static widen is
 # safe: at 4:3 sprite x never reaches 512, so $3FF == $1FF behaviorally.
-# BuildSprites_2P piece writers ($16DE4+) untouched (widescreen off in 2P).
+# Native BuildSprites_2P retains its hardware SAT geometry. Expanded output
+# comes from the completed host scene; both native piece paths keep item tags.
 [[widescreen_site]]
 addr = 0x16844            # DrawSprite_Loop (no flip)
 kind = "mask10"
@@ -944,4 +945,18 @@ kind = "game_hook"
 
 [[widescreen_site]]
 addr = 0x40F22
+kind = "game_hook"
+
+# Expanded native competition uses source mappings and the existing host pool.
+[[widescreen_site]]
+addr = 0x17C50
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x17CCC
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x16B90
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x16B98
 kind = "game_hook"
