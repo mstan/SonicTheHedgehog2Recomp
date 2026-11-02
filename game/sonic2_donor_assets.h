@@ -30,6 +30,12 @@ typedef struct S2DonorBank {
     uint8_t super_animations[64][256];
     uint16_t water_palette[16], cycle_palette[2][16][4];
 } S2DonorBank;
+typedef struct S2KnucklesArt {
+    uint8_t life[12*32],shield_stars[66*32],monitor[8*32];
+    uint16_t palette[16];
+} S2KnucklesArt;
+/* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
+int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
 extern const S2DonorLayout s2_amy_171_layout;
 extern const S2DonorLayout s2_sk_knuckles_layout;
 extern const S2DonorLayout s2_megamix_mighty_layout;

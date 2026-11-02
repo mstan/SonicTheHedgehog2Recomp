@@ -69,6 +69,13 @@ int main(void)
     assert(!memcmp(bytes,original,sizeof bytes) && !exists("game/sonic2-campaign.srm.bak"));
     assert(s2_feedback_context(context,context_size,1)==context_size);
     assert(s->data.slots[0].stage==0);
+    /* Every resource path in replay startup data must be terminated before
+     * accepting it, including the optional original Knuckles artwork. */
+    char keep_path[sizeof s2_party.kis2_path]; memcpy(keep_path,s2_party.kis2_path,sizeof keep_path);
+    memset(s2_party.kis2_path,'x',sizeof s2_party.kis2_path);
+    assert(s2_feedback_context(context,context_size,0)==context_size);
+    memcpy(s2_party.kis2_path,keep_path,sizeof keep_path);
+    assert(!s2_feedback_context(context,context_size,1));
     playback=0;free(context);
     load("game/settings.ini");
     assert(!strcmp(s2_party.campaign_path,"sonic2-campaign.srm") && s->data.slots[0].state==1);

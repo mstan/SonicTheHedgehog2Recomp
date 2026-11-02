@@ -25,6 +25,7 @@ typedef struct S2PartyConfig {
     char amy_path[1024];
     char s3k_path[1024];
     char mighty_path[1024];
+    char kis2_path[1024]; /* optional original Knuckles HUD/item artwork */
     char campaign_path[1024]; /* empty until selected or first save; exe-relative */
 } S2PartyConfig;
 

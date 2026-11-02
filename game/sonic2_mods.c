@@ -100,13 +100,23 @@ static int set_option(void *ctx, const char *p, const char *f, const char *o, co
 { (void)ctx; return owner(p,NULL)<0 && base && base->feature_set_option && base->feature_set_option(base->ctx, p, f, o, v); }
 static int resource_count(void *ctx, const char *p, const char *f)
 {
-    (void)ctx; int i=owner(p,f); if (i>=0) return i==2?2:1;
+    (void)ctx; int i=owner(p,f); if (i>=0) return i==1 || i==2?2:1;
     return owner(p,NULL)<0 && base && base->feature_resource_count ? base->feature_resource_count(base->ctx, p, f) : 0;
 }
 static int resource_get(void *ctx, const char *p, const char *f, int n, RecompLauncherCModResource *out)
 {
     (void)ctx; int i = owner(p, f);
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_resource_get && base->feature_resource_get(base->ctx, p, f, n, out);
+    if (n==1 && i==1 && out) {
+        memset(out,0,sizeof *out); COPY(out->id,"original-knuckles-art");
+        COPY(out->label,"Knuckles in Sonic 2 ROM (optional)");
+        COPY(out->description,"Original lock-on artwork for Knuckles. Select the combined Sonic & Knuckles + Sonic 2 image.");
+        COPY(out->path,s2_party.kis2_path); COPY(out->file_patterns,"*.bin,*.md");
+        COPY(out->file_description,"Knuckles in Sonic 2 combined ROM");
+        out->verified=s2_resource_owner_verified(S2_RESOURCE_KIS2);
+        COPY(out->status,out->verified?"Original Knuckles artwork verified":s2_resource_error(S2_RESOURCE_KIS2));
+        return 1;
+    }
     if (n==1 && i==2 && out) {
         const S2CampaignStore *save=s2_campaign_file_store();
         memset(out,0,sizeof *out); COPY(out->id,"campaign-sram");
@@ -133,6 +143,11 @@ static int resource_set(void *ctx, const char *p, const char *f, const char *r, 
 {
     (void)ctx; int i = owner(p, f); error[0] = 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_resource_set_path && base->feature_resource_set_path(base->ctx, p, f, r, path);
+    if (i==1 && r && !strcmp(r,"original-knuckles-art")) {
+        int ok=s2_resource_set(S2_RESOURCE_KIS2,path);
+        if (!ok) COPY(error,s2_resource_error(S2_RESOURCE_KIS2));
+        return ok;
+    }
     if (i==2 && r && !strcmp(r,"campaign-sram")) {
         /* The boot attachment restores this save without opening its source. */
         if (genesis_replay_playing()) return 1;

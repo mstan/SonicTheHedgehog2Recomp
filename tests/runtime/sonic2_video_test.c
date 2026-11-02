@@ -3,6 +3,10 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
+S2PartyConfig s2_party;
+static S2KnucklesArt hud_art;
+static int hud_available;
+const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player;
 static int positions[4][2];
 int genesis_netplay_active(void){return online;}
@@ -24,6 +28,19 @@ static const uint32_t *fetch_native(void *ctx)
 
 int main(void)
 {
+    GVDP hud={0}; uint32_t colour=0x12345678;
+    s2_party.s3k_enabled=1; strcpy(s2_party.roster.character[0],"knuckles");
+    CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour) && colour==0x12345678);
+    hud_available=1; hud.cram[6]=0xEEE; hud_art.palette[3]=0x00E;
+    memset(hud_art.life+4*32,0x33,32);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour) && colour==0xFFFF0000);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0x87D4,0,0,&colour) && !colour);
+    memset(hud.vram+0x7DD*32,0x33,32); /* the native counter, not static donor digits */
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFFFF0000);
+    hud.cram[6]=0; CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF000000);
+    strcpy(s2_party.roster.character[0],"sonic");
+    CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour));
+    hud_available=0;
     /* The title card hides donor actors using its actual displayed planes,
      * then reveals them before the later Level_started flag. */
     GVDP intro={0}; intro.reg[2]=0x30; intro.reg[4]=7; intro.reg[13]=0x3C;

@@ -144,6 +144,7 @@ void s2_party_load(const char *settings_path)
         else if (!strcmp(line, "amy_path")) snprintf(s2_party.amy_path, sizeof s2_party.amy_path, "%s", value);
         else if (!strcmp(line, "s3k_path")) snprintf(s2_party.s3k_path, sizeof s2_party.s3k_path, "%s", value);
         else if (!strcmp(line, "mighty_path")) snprintf(s2_party.mighty_path, sizeof s2_party.mighty_path, "%s", value);
+        else if (!strcmp(line, "kis2_path")) snprintf(s2_party.kis2_path, sizeof s2_party.kis2_path, "%s", value);
         else if (!strcmp(line, "campaign_path")) snprintf(s2_party.campaign_path, sizeof s2_party.campaign_path, "%s", value);
         else for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) {
             char key[16]; snprintf(key, sizeof key, "player%u", i + 1);
@@ -165,6 +166,7 @@ int s2_party_save(void)
     fprintf(file, "save_menu_enabled=%d\n", s2_party.save_menu_enabled);
     fprintf(file, "mighty_enabled=%d\nmighty_path=%s\n", s2_party.mighty_enabled, s2_party.mighty_path);
     fprintf(file, "shadow_enabled=%d\n",s2_party.shadow_enabled);
+    fprintf(file, "kis2_path=%s\n",s2_party.kis2_path);
     fprintf(file, "campaign_path=%s\n", s2_party.campaign_path);
     int ok = !ferror(file);
     if (fclose(file)) ok = 0;

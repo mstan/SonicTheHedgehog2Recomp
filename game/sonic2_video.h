@@ -11,3 +11,5 @@ void s2_video_command(int id, const char *json);
 void s2_video_actor_origin(const struct GVDP *vdp, int line, int width, int *left, int *top);
 int s2_video_actor_pixel_visible(const struct GVDP *vdp, int wx, int wy, int high, const unsigned char *world);
 int s2_video_intro_pixel_visible(const struct GVDP *vdp,int native_x,int line,int high);
+int s2_video_knuckles_hud_pixel(const struct GVDP *vdp,unsigned attr,int x,int y,uint32_t *color);
+int s2_video_hud_origin(int width);
