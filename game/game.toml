@@ -901,3 +901,21 @@ kind = "game_hook"
 [[widescreen_site]]
 addr = 0x12768
 kind = "game_hook"
+
+# Native competition interlace sprite builders: complete SAT pieces.
+
+[[widescreen_site]]
+addr = 0x16DEE
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x16E40
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x16E9C
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x16F00
+kind = "game_hook"

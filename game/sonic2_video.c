@@ -507,15 +507,23 @@ static void publish_sprites(void)
 int s2_video_hook(uint32_t pc)
 {
     if (pc==0x16604) s2_video_prepare_knuckles_items();
-    if (pc==0x1684E || pc==0x1688E || pc==0x168E6 || pc==0x16938) {
-        /* REV01 DrawSprite's four DBF sites, after one complete SAT piece.
+    if (pc==0x1684E || pc==0x1688E || pc==0x168E6 || pc==0x16938 ||
+        pc==0x16DEE || pc==0x16E40 || pc==0x16E9C || pc==0x16F00) {
+        /* REV01 normal/interlace DrawSprite DBFs, after a complete SAT piece.
          * Size bit7 is ignored by hardware and selects the existing private
          * sprite bank. Mark independent of asset availability so guest state
          * remains identical for peers with different presentation resources. */
         unsigned next=g_cpu.A[2]&65535u,o=g_cpu.A[0]&65535u;
-        if (next>=0xF808 && next<=0xFA80 && !(next&7) &&
-            s2_runtime_knuckles_item(o) && knuckles_item_tile(ram16(next-4)&2047))
-            g_ram[next-6]|=0x80;
+        int competition=ram16(0xFFD8)!=0;
+        if (!(next&7) && ((next>=0xF808 && next<=0xFA80) ||
+            (competition && next>=0xDD08 && next<=0xDF80))) {
+            /* REV01 P2 builds at DD00; H-int uploads it over the same VRAM
+             * SAT halfway through the frame (LEA at $16A80). */
+            unsigned tile=ram16(next-4)&2047u;
+            /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
+            if (competition) tile*=2;
+            if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
+        }
         return 0;
     }
     if(pc==0x17AA4 && !g_ram[0xF76C]) {
