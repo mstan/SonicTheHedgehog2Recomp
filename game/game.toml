@@ -58,6 +58,12 @@ kind = "game_hook"
 addr = 0x157C4 # LoadTitleCard0: title art decoded, before RAM layout decoding
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x1DE4A # Obj08_CheckSkid: Knuckles' glide slide also emits native dust
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1DE88 # Obj08_SkidDust: source-backed six-pixel glide landing offset
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x3998 # TitleScreen: reset campaign session ownership
 kind = "game_hook"
 [[widescreen_site]]

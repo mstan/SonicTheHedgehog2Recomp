@@ -50,6 +50,9 @@ typedef struct {
 } PartySprite;
 /* Final sprite is native Obj05 (P1 Tails' separate tails). */
 static PartySprite published_sprites[S2_MAX_PLAYERS+1];
+enum { DUST_SLOTS=(0xD000-0xB400)/64 };
+static PartySprite published_dust[DUST_SLOTS];
+static unsigned dust_emit_age[S2_MAX_PLAYERS];
 static uint8_t displayed_tails;
 /* Reentrancy guards of the hooks below, hoisted from function-local statics
  * so the rollback snapshot can carry them: the game fiber can be suspended
@@ -83,6 +86,8 @@ void s2_runtime_load(void)
     active=inside_player=0; actor=-1;
     gvdp_set_unlimited_sprites(0);
     memset(published_sprites,0,sizeof published_sprites);
+    memset(published_dust,0,sizeof published_dust);
+    memset(dust_emit_age,0xFF,sizeof dust_emit_age);
     memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
     s2_donor_free(&native_banks[0]); s2_donor_free(&native_banks[1]);
     s2_character_register(&knuckles); s2_character_register(&amy);
@@ -351,7 +356,7 @@ static void reserve_extras(void)
 }
 static void runtime_state(S2StateIO *io)
 {
-    unsigned header[3+S2_MAX_PLAYERS+5]={2,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+5]={3,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
@@ -370,6 +375,7 @@ static void runtime_state(S2StateIO *io)
     S2_STATE(io,previous_input); S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
     S2_STATE(io,characters); S2_STATE(io,physics); S2_STATE(io,objects);
     S2_STATE(io,solid_flags); S2_STATE(io,solid_ids); S2_STATE(io,published_sprites);
+    S2_STATE(io,dust_emit_age); S2_STATE(io,published_dust);
     s2_save_menu_state(io); s2_video_state(io);
     size_t audio_size=audio_event_state_size();
     if (io->data) {
@@ -560,6 +566,7 @@ static int update_player(unsigned p, uint32_t entry)
     if (inside_player) return 0;
     int companion=p && !word(0xFFD8);
     int initializing=!g_ram[object+0x24];
+    unsigned previous_special=characters[p].special;
     displayed[p]=0;
     M68KState cpu=g_cpu;
     uint8_t inputs[12]; memcpy(inputs,g_ram+0xF600,sizeof inputs);
@@ -666,6 +673,18 @@ static int update_player(unsigned p, uint32_t entry)
         memcpy(g_ram+0xD100,original_dust,64);
         memcpy(g_ram+0xEEC8,boundaries,8);
     }
+    if (previous_special!=S2_SK_SLIDE && characters[p].special==S2_SK_SLIDE) dust_emit_age[p]=~0u;
+    if (p<2 && kind(p)==S2_CHAR_KNUCKLES && previous_special!=S2_SK_SLIDE &&
+        characters[p].special==S2_SK_SLIDE && g_ram[object+0x28]>=12) {
+        /* KiS2 Knuckles_BeginSlide: reuse Obj08's native skid emitter/art.
+         * Never take the drowning countdown's shared dust VRAM. */
+        unsigned dust=p?0xD140:0xD100;
+        if (g_ram[dust]==8 && g_ram[dust+0x24]==2) {
+            g_ram[dust+0x24]=6; g_ram[dust+0x1A]=0x15;
+            g_ram[dust+0x34]=0; /* Knuckles' height, including the native P2 role */
+            putword(dust+0x3E,object);
+        }
+    }
     putword(0xFF70,mode);
     g_cpu=cpu;
     return 1;
@@ -700,6 +719,8 @@ int s2_runtime_hook(uint32_t pc)
         active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_online());
         gvdp_set_unlimited_sprites(active);
         memset(published_sprites,0,sizeof published_sprites);
+        memset(published_dust,0,sizeof published_dust);
+        memset(dust_emit_age,0xFF,sizeof dust_emit_age);
         if (!active) return 0;
         s2_roster_validate(&s2_party.roster);
         memset(previous_input,0,sizeof previous_input); memset(companion_cpu,0,sizeof companion_cpu);
@@ -712,6 +733,22 @@ int s2_runtime_hook(uint32_t pc)
         return 1;
     }
     if (!level()) return 0;
+    if (pc==0x1DE4A || pc==0x1DE88) {
+        unsigned parent=pc==0x1DE4A?word((g_cpu.A[0]&65535)+0x3E):g_cpu.A[2]&65535;
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES &&
+            characters[p].special==S2_SK_SLIDE && !(g_ram[parent+0x22]&2)) {
+            if (pc==0x1DE4A) {
+                /* Original KiS2 CheckSkid also accepts slide state 3. */
+                g_cpu.A[2]=0xFFFF0000u|parent;
+                recomp_tail_call(0x1DE64); return 1;
+            }
+            /* Native ADDI.W #16,y(a1) follows. KiS2 uses six pixels for
+             * glide slides and retains sixteen for ordinary braking. */
+            unsigned child=g_cpu.A[1]&65535;
+            putword(child+12,word(child+12)-10); break;
+        }
+        return 0;
+    }
     if ((pc==0xF77A || pc==0xF810) && bridge_extra_weight(pc)) return 1;
     if (pc==0x213E && custom_super_palette()) {
         if (s_inside_palette) return 0;
@@ -864,6 +901,8 @@ int s2_runtime_hook(uint32_t pc)
         displayed_tails=1; return 1;
     }
     if (pc==0x164F4 && !inside_player) {
+        unsigned o=g_cpu.A[0]&65535;
+        if (g_ram[o]==8 && g_ram[o+0x2E]==0x47) return 1;
         /* RunObjectDisplayOnly freezes the dynamic pool during P1 death.
          * Its submissions bypass update_player, but donor/extra frames must
          * still never enter native Sonic mappings or shared VRAM slots. */
@@ -929,7 +968,38 @@ void s2_runtime_capture(void)
      * RAM per scanline could use one pose for a head and the next for its body,
      * or observe displayed[] while an actor was being updated. */
     memset(published_sprites,0,sizeof published_sprites);
+    memset(published_dust,0,sizeof published_dust);
     if (!level()) return;
+    /* Extra party roles have no fixed native dust object/VRAM strip. Create
+     * the same short-lived Obj08 children after the object tick, respecting
+     * its pool/air constraints. Native animation/deletion still own them.
+     * Their original 16-tile skid atlas is read privately below, so a Sonic
+     * companion's simultaneous spindash cannot overwrite these clouds. */
+    for (unsigned p=2;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p) {
+        unsigned o=objects[p];
+        if (!o || kind(p)!=S2_CHAR_KNUCKLES || characters[p].special!=S2_SK_SLIDE ||
+            (characters[p].age&3) || dust_emit_age[p]==characters[p].age ||
+            g_ram[o+0x24]!=2 || (g_ram[o+0x22]&2) || g_ram[o+0x28]<12) continue;
+        dust_emit_age[p]=characters[p].age;
+        for (unsigned at=0xB400;at<0xD000;at+=64) if (!g_ram[at]) {
+            int reserved=0;
+            for (unsigned j=2;j<S2_MAX_PLAYERS;++j) reserved|=objects[j]==at;
+            if (reserved) continue;
+            memset(g_ram+at,0,64); g_ram[at]=8; g_ram[at+1]=g_ram[0xD101];
+            putword(at+2,(word(0xD102)&0x7FFF)|(word(o+2)&0x8000));
+            memcpy(g_ram+at+4,g_ram+0xD104,4);
+            putword(at+8,word(o+8)); putword(at+12,word(o+12)+6);
+            g_ram[at+0x18]=1; g_ram[at+0x19]=4;
+            g_ram[at+0x1C]=3; g_ram[at+0x24]=2; g_ram[at+0x2E]=0x47;
+            putword(at+0x3E,o); break;
+        }
+    }
+    for (unsigned at=0xB400;at<0xD000;at+=64) if (g_ram[at]==8 && g_ram[at+0x2E]==0x47 &&
+        g_ram[at+0x1A]>=17 && g_ram[at+0x1A]<=20) {
+        PartySprite *s=&published_dust[(at-0xB400)/64];
+        s->x=(int16_t)word(at+8); s->y=(int16_t)word(at+12); s->art=word(at+2);
+        s->frame=g_ram[at+0x1A]; s->flip=g_ram[at+1]&3; s->visible=1;
+    }
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
         unsigned o=objects[p];
         if (!o || !g_ram[o] || (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2)) continue;
@@ -1023,12 +1093,14 @@ static void knuckles_hud(const GVDP *v,int line,uint32_t *out,int width,int draw
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
     static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
+    static PartySprite frame_dust[DUST_SLOTS];
     static GVDP frame_vdp;
     static uint8_t frame_world[65536];
     static int frame_active,frame_vs,left,top,vs_left,vs_top,frame_green_card;
     if (!line) {
         frame_active=level() && (g_ram[0xF711] || !word(0xFFD8));
         memcpy(frame_sprites,published_sprites,sizeof frame_sprites);
+        memcpy(frame_dust,published_dust,sizeof frame_dust);
         frame_vdp=*v; memcpy(frame_world,g_ram,sizeof frame_world);
         frame_vs=word(0xFFD8);
         frame_green_card=0;
@@ -1104,6 +1176,22 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             out[dx]=rgb;
         }
     }
+    for (unsigned n=0;n<DUST_SLOTS;++n) {
+        const PartySprite *s=&frame_dust[n]; if (!s->visible) continue;
+        int row=line-(s->y-origin_y-8); if (row<0 || row>=16) continue;
+        int fy=s->flip&2?15-row:row;
+        for (int px=0;px<16;++px) {
+            int dx=s->x-origin_x-8+px; if (dx<0 || dx>=width) continue;
+            int fx=s->flip&1?15-px:px;
+            /* REV01 Obj08 frames17..20: one 2x2 piece at(-8,-8), tiles
+             * 0/4/8/12. DPLC21=$F0BA loads this exact static 16-tile atlas. */
+            unsigned tile=(s->frame-17)*4+(fx/8)*2+fy/8;
+            unsigned byte=g_rom[0x7373C+tile*32+(fy&7)*4+(fx&7)/2];
+            unsigned ink=fx&1?byte&15:byte>>4;
+            if (ink && s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world))
+                out[dx]=genesis_dac_cram_to_argb(v->cram[((s->art>>9)&48)+ink],GENESIS_DAC_NORMAL);
+        }
+    }
     knuckles_hud(v,line,out,width,1);
 }
 
@@ -1136,10 +1224,15 @@ static void rb_all(S2StateIO *io)
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);
     RB(io,previous_input); RB(io,displayed); RB(io,companion_cpu);
+    RB(io,dust_emit_age);
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) rb_character(io,&characters[p]);
     RB(io,physics); RB(io,objects); RB(io,solid_flags); RB(io,solid_ids);
     for (unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
         PartySprite *ps=&published_sprites[i];
+        RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible); RB(io,ps->wet);
+    }
+    for (unsigned i=0;i<DUST_SLOTS;++i) {
+        PartySprite *ps=&published_dust[i];
         RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible); RB(io,ps->wet);
     }
     RB(io,displayed_tails);

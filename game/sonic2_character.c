@@ -177,7 +177,7 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
         }
     } else if (s->kind==S2_CHAR_KNUCKLES) {
         if (s->special==S2_SK_GLIDE) {
-            if (!(m->status&AIR)) { s->special=S2_SK_SLIDE; s->frame=0xCC; }
+            if (!(m->status&AIR)) { s->special=S2_SK_SLIDE; s->frame=0xCC; s->age=0; }
             else if (c->wall<=0 && absword(m->vx)<0x20) {
                 s->special=S2_SK_CLIMB; s->wall_x=m->x; s->age=0;
                 m->vx=m->vy=m->inertia=0; s->frame=0xB7;
