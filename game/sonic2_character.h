@@ -10,6 +10,7 @@ typedef struct S2Motion {
     int32_t x, y; /* 16.16 positions; velocities and inertia are 8.8 */
     int16_t vx, vy, inertia;
     uint8_t status, angle, radius_x, radius_y, animation, frame, jumping;
+    uint8_t flip_angle; /* native spring/corkscrew tumble, independent of floor angle */
     uint8_t hurt, boosted, control_locked;
     uint16_t rings, physics_top;
     uint8_t super, speed_shoes, invincible_monitor, physics_override, blast;

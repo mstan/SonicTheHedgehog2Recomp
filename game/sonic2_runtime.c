@@ -122,6 +122,7 @@ static S2Motion motion(unsigned o)
     m.vx=(int16_t)word(o+0x10); m.vy=(int16_t)word(o+0x12); m.inertia=(int16_t)word(o+0x14);
     m.status=g_ram[o+0x22]; m.angle=g_ram[o+0x26]; m.radius_y=g_ram[o+0x16]; m.radius_x=g_ram[o+0x17];
     m.animation=g_ram[o+0x1C]; m.frame=g_ram[o+0x1A]; m.jumping=g_ram[o+0x3C];
+    m.flip_angle=g_ram[o+0x27];
     m.hurt=g_ram[o+0x24]>=4; m.boosted=word(o+0x34)!=0 || (o==0xB000 && g_ram[0xFE19]);
     m.control_locked=!!(g_ram[o+0x2A]&1);
     m.rings=word(ring_address()); m.super=actor==0 && !word(0xFFD8) && g_ram[0xFE19];
@@ -673,6 +674,17 @@ int s2_runtime_hook(uint32_t pc)
 {
     /* Online too: the party runtime reads only sealed inputs and every piece
      * of its state is in the rollback snapshot (s2_runtime_rb_save). */
+    if (pc==0x157C4) {
+        /* Original KiS2 LoadTitleCard0 fills two background tiles with ink 4.
+         * sonicretro/s2disasm c336fede, ArtTile_ArtNem_TitleCard+$5A.
+         * Keep the native card mappings/palette, and the stock attract demos.
+         * This runs after NemDec and before the caller loads the letters. */
+        if ((g_ram[0xF600]&0x7F)==12 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
+            glue_poke32(0xC00004,0x7B400002u); /* VRAM write $BB40 */
+            for (unsigned i=0;i<16;++i) glue_poke32(0xC00000,0x44444444u);
+        }
+        return 0;
+    }
     if (pc==0x4F64) {
         /* Special stages ALWAYS use stock Sonic + Tails, even for a solo
          * campaign roster. Native controllers, art, shadows and CPU follow
@@ -933,23 +945,62 @@ void s2_runtime_capture(void)
         s->frame=g_ram[0xD01A]; s->visible=1; s->flip=g_ram[0xD001]&3;
     }
 }
+static unsigned card_vram_word(const GVDP *v,unsigned a)
+{ return (v->vram[a&65535u]<<8)|v->vram[(a+1)&65535u]; }
+static void green_title_card(const GVDP *v,int line,uint32_t *out,int width)
+{
+    /* KiS2 ink 4 is green ($080), while the mixed-party host must keep
+     * Sonic's blue palette available. Recolour only the original card's two
+     * solid plane-A tiles; retain overlying text and red edges. */
+    uint32_t old=genesis_dac_cram_to_argb(v->cram[4],GENESIS_DAC_NORMAL);
+    const S2DonorBank *knux=s2_resource_bank(S2_RESOURCE_SK);
+    if (!knux || !(old&255)) return;
+    uint32_t color=genesis_dac_cram_to_argb(knux->palette[5],GENESIS_DAC_NORMAL);
+    unsigned gain=old&255;
+    color=0xFF000000u|((((color>>16)&255)*gain/255)<<16)|
+        ((((color>>8)&255)*gain/255)<<8)|((color&255)*gain/255);
+    static const unsigned cells[]={32,64,32,128};
+    unsigned cols=cells[v->reg[16]&3],rows=cells[(v->reg[16]>>4)&3];
+    unsigned table=(v->reg[2]&0x38u)<<10;
+    int mode=v->reg[11]&3,scroll_row=mode==0?0:mode==2?line&~7:line;
+    int hs=(int16_t)card_vram_word(v,((v->reg[13]&63u)<<10)+scroll_row*4);
+    unsigned y=(line+v->vsram[0])&(rows*8-1);
+    int center=(width-320)/2;
+    for (int dx=center;dx<center+320;++dx) if (dx>=0 && dx<width) {
+        unsigned x=(dx-center-hs)&(cols*8-1);
+        unsigned attr=card_vram_word(v,table+((y/8)*cols+x/8)*2),tile=attr&2047u;
+        if ((tile==0x5DA || tile==0x5DB) && !(attr&0x6000u) && out[dx]==old) out[dx]=color;
+    }
+}
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
     static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
     static GVDP frame_vdp;
     static uint8_t frame_world[65536];
-    static int frame_active,frame_vs,left,top,vs_left,vs_top;
+    static int frame_active,frame_vs,left,top,vs_left,vs_top,frame_green_card;
     if (!line) {
         frame_active=level() && g_ram[0xF711];
         memcpy(frame_sprites,published_sprites,sizeof frame_sprites);
         frame_vdp=*v; memcpy(frame_world,g_ram,sizeof frame_world);
         frame_vs=word(0xFFD8);
+        frame_green_card=0;
+        if (!frame_vs && (g_ram[0xF600]&127)==12 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available() &&
+            frame_vdp.vram[0xBB40]==0x44 && frame_vdp.vram[0xBB7F]==0x44) {
+            /* The actual fill is plane A, not a sprite. Follow its displayed
+             * tilemap through the exit, after producer objects can be gone. */
+            unsigned table=(frame_vdp.reg[2]&0x38u)<<10;
+            for (unsigned cell=0;cell<64*32;++cell) {
+                unsigned attr=card_vram_word(&frame_vdp,table+cell*2),tile=attr&2047u;
+                if ((tile==0x5DA || tile==0x5DB) && !(attr&0x6000u)) { frame_green_card=1; break; }
+            }
+        }
         s2_video_actor_origin(&frame_vdp,0,width,&left,&top);
         if (frame_vs) {
             left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
             vs_left=word(0xEE80)-(width-320)/2; vs_top=(int16_t)word(0xEE84)-224;
         }
     }
+    if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
     if (!frame_active || !(v->reg[1]&64)) return;
     int origin_x=left,origin_y=top;
     if (frame_vs) {
