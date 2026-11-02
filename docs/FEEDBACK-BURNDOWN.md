@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 23 validated resolutions (22 fixes and 1 current-HUD verification), 1 partially resolved and 2 explicitly deferred**. One save-menu
+Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 audits mixed pairs, S2-28 repairs a newly confirmed shared-history defect, and S2-29 records the unported Shadow sparkle treatment. One save-menu
 question is answered below. Open reports require checking against the current source/build; do not assume
 the reporter used the latest version.
 
@@ -42,11 +42,15 @@ the reporter used the latest version.
 | S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | **Released in v0.9.7**. Live card-plane geometry fills the viewport; the serrated red edge follows its new boundary and text keeps its native glyph size/settled position. Real Sonic 16:9/32:9 and green Knuckles 32:9 intros pass; native images remain identical. Separate from S2-05. |
 | S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | **Released in v0.9.7**. Card fills use the displayed plane cells without wrapping; revealed terrain/donor actors share the final widescreen origin. Text travel scales around its settled anchor so it exits before native deletion. Complete 320-frame card routes pass, with exact post-exit images and unchanged paired RAM/VRAM. |
 | S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | **Released in v0.9.7**. Eight output rows216..223 (four displayed TV rows) form an opaque black gap. P1 HUD ends215; P2 viewport begins224 and its HUD at232 is preserved. The original larger P1 sprite mask is replaced by H-int and is not the permanent divider. EHZ/CNZ complete title/game routes pass. No reference-emulator flicker was invented. |
-| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | **Partial repair released in v0.9.7; reference comparison remains open.** Fixed dropped masked IRQ4 requests in shared engine024db9b: the erroneous full-P2 flash is gone in both zones. Final native source transient appears on EHZ P1 and at the CNZ seam, differing from the reported emulator's zone pattern. No artificial flicker relocation is added. Both-zone rollback, current save/load and diagnostic replay pass; see qualification below. |
+| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | **IRQ repair released in v0.9.7; exact hardware fidelity unverified.** Reporter now questions Kega as the reference and considers the separator leak the only confirmed rendering defect. Do not treat absent/emulator-specific flicker as a required change.  Fixed dropped masked IRQ4 requests in shared engine024db9b: the erroneous full-P2 flash is gone in both zones. Final native source transient appears on EHZ P1 and at the CNZ seam, differing from the reported emulator's zone pattern. No artificial flicker relocation is added. Both-zone rollback, current save/load and diagnostic replay pass; see qualification below. |
 | S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | **Validated current-HUD resolution (v0.9.7)**, not a newly repaired glyph claim. The unintended full-width divider strip is covered by S2-21/24. Current baseline and candidate both match all476 original opaque P1 life/name/count pixels in each of six EHZ and six CNZ samples; no clipping was reproduced. All pixels above216 and from224 onward remain identical. Original small flicker artifacts are not reintroduced. |
 | S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Released in v0.9.7**. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Released in v0.9.7; general audit complete**. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied. Existing four-profile normal-aspect/party samples did not reproduce unstable guest cadence; no optimization is claimed. Reopen with new reproducing evidence and coordinate the owner's host-native overhaul. Not counted resolved. |
+
+| S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for available donors**, 45 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. Amy's 12 cells remain unverified. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
+| S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Fixed and runtime-qualified; patch release pending.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
+| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Open, source treatment unverified.** Current source and captured SAT/pixels use native S2 star art/palette for Shadow; this is separate from Knuckles colour leakage. Megamix extended effects were outside the accepted character port. No invented purple palette is substituted. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
 
@@ -630,3 +634,47 @@ inputs, relevant frozen controls and bounded raw evidence are retained for the
 residual reports. Generated build scratch can be removed after that follow-up.
 Disposable package extraction/reproduction copies and the superseded scalar
 ZIP are cleaned after retaining their verification logs and identities.
+
+
+## Post-release character-matrix intake (2026-11-02)
+
+The reporter requests mixed-character checks across VS, local co-op and solo
+with AI, especially Knuckles' grey items and Shadow's purple invincibility
+sparkles. They intend to clarify the desired mixed-party policy later; do not
+invent a new monitor-theme policy in advance. Current implementation separates
+P1-selected world-monitor artwork from parent-owned shields/stars.
+
+They now question the earlier Kega comparison, and identify the separator
+leaking actors/terrain as the confirmed issue. Preserve the independently
+qualified divider and masked-IRQ repair. Exact field/flicker fidelity remains
+unverified until an identified Sonic 2 REV01 ROM on an NTSC-U North American
+Genesis can be compared. No confirmed hardware tester is available in this
+session; no one was contacted. Request console/ROM identity, capture-chain and
+field-handling details rather than accepting a video's title alone.
+
+Both reporter links are now supplied. YouTube's oEmbed metadata identifies
+[VfFZUNzXx4M](https://youtu.be/VfFZUNzXx4M) as **Sonic 2 Competition VS Mode |
+Hardware Recording**, by FramePlay, and
+[D81W5nkUqt4](https://youtu.be/D81W5nkUqt4) as **Sonic the Hedgehog 2 two player
+race 60fps**, by arronmunroe. This verifies the titles/authors only: actual
+frames, hardware provenance, ROM revision/region and field handling have not
+been verified. A re-encoded 30/60-fps clip
+is not sufficient by itself to distinguish native field quirks from capture
+processing. This is a sampling/reference limitation, not evidence of a new
+recomp defect.
+
+S2-27 uses existing native fixtures and released executable SHA256
+`f6c69c38b443373deb9208e216d4f1a6a32d76bfe23e24b116b86717bf2b965d`.
+The bounded matrix covers 14 eligible ordered pairs involving Knuckles/Shadow
+among Sonic, Tails, Knuckles, Shadow and Mighty, plus a Sonic/Tails control,
+across VS/co-op/AI (45 native-aspect cells). Wide coverage samples both
+Knuckles/Shadow directions and the control in all three modes (9 cells).
+Four Amy-related ordered pairs across three modes are unverified without a
+verified Amy donor. P1/P2 cannot select duplicate identities by design.
+
+Gameplay/input checks precede the graphics fixture. The latter freezes actor
+movement, seeds source shield/star objects and parent pointers, and checks
+rendering/ownership only. This explicitly bypasses obtaining power-ups and
+must not be reported as natural acquisition. Real Knuckles pickup coverage
+from S2-09/11 is retained separately. Raw evidence:
+`G:/Temp/Codex/sonic2-owner-feedback-20261101/mixed-effects-matrix-qa`.
