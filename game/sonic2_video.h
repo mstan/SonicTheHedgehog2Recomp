@@ -10,3 +10,4 @@ int s2_video_hook(uint32_t pc);
 void s2_video_command(int id, const char *json);
 void s2_video_actor_origin(const struct GVDP *vdp, int line, int width, int *left, int *top);
 int s2_video_actor_pixel_visible(const struct GVDP *vdp, int wx, int wy, int high, const unsigned char *world);
+int s2_video_intro_pixel_visible(const struct GVDP *vdp,int native_x,int line,int high);

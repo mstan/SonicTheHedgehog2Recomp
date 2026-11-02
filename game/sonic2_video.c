@@ -845,5 +845,22 @@ int s2_video_actor_pixel_visible(const GVDP *v, int wx, int wy, int high, const 
     uint16_t attr=world_attr(world,wx,wy,0);
     return !(attr&0x8000) || !pattern_pixel(v,attr,wx,wy);
 }
+int s2_video_intro_pixel_visible(const GVDP *v,int x,int line,int high)
+{
+    if (high) return 1;
+    /* Before Level_started the foreground is still the sliding title-card
+     * plane. Its displayed high-priority pixels hide actors, while the newly
+     * revealed stage must already show the native DisplaySprite submission. */
+    int mode=v->reg[11]&3,row=mode==0?0:mode==2?line&~7:line;
+    unsigned scroll=(v->reg[13]&63u)<<10;
+    for (unsigned plane=0;plane<2;++plane) {
+        int px=x-(int16_t)vram16(v,scroll+row*4+plane*2);
+        int py=line+v->vsram[plane];
+        unsigned base=plane?(v->reg[4]&7u)<<13:(v->reg[2]&56u)<<10;
+        uint16_t attr=plane_attr(v,base,px,py);
+        if ((attr&0x8000) && pattern_pixel(v,attr,px,py)) return 0;
+    }
+    return 1;
+}
 extern void s2_options_overlay(const GVDP *, int, uint32_t *, int);
 const GameVideo sonic2_video = { configure, enabled, width, scanline, s2_options_overlay, scanline_lazy };

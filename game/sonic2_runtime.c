@@ -979,7 +979,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     static uint8_t frame_world[65536];
     static int frame_active,frame_vs,left,top,vs_left,vs_top,frame_green_card;
     if (!line) {
-        frame_active=level() && g_ram[0xF711];
+        frame_active=level() && (g_ram[0xF711] || !word(0xFFD8));
         memcpy(frame_sprites,published_sprites,sizeof frame_sprites);
         frame_vdp=*v; memcpy(frame_world,g_ram,sizeof frame_world);
         frame_vs=word(0xFFD8);
@@ -995,6 +995,11 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             }
         }
         s2_video_actor_origin(&frame_vdp,0,width,&left,&top);
+        if (!frame_world[0xF711]) {
+            /* Title-card scroll belongs to the card, not the actor camera.
+             * Native actors are submitted before Level_started becomes true. */
+            left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
+        }
         if (frame_vs) {
             left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
             vs_left=word(0xEE80)-(width-320)/2; vs_top=(int16_t)word(0xEE84)-224;
@@ -1033,7 +1038,10 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         for (unsigned px=0;px<f->width;++px) {
             int dx=x0+px; if (dx<0 || dx>=width) continue;
             unsigned color=f->pixels[fy*f->width+(flip&1?f->width-1-px:px)];
-            if (!color || !s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) continue;
+            if (!color) continue;
+            if (!frame_world[0xF711]) {
+                if (!s2_video_intro_pixel_visible(&frame_vdp,dx-(width-320)/2,line,s->art&0x8000)) continue;
+            } else if (!s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) continue;
             unsigned phase=!p && !frame_vs?frame_world[0xF65F]:0;
             unsigned super_frame=((unsigned)frame_world[0xF65C]<<8)|frame_world[0xF65D];
             uint32_t rgb;
