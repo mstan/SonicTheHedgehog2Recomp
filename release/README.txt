@@ -43,7 +43,8 @@ completion, lives and continues at campaign checkpoints. Completed files can
 replay all 20 acts, including Metropolis Act 3. Numbered zone cards show images
 decoded from your Sonic 2 ROM; CLEAR starts with TV static. Menu movement has
 Sonic 3-style feedback played through Sonic 2's native sound driver.
-The portrait is always Sonic & Tails; Options controls the actual characters.
+Portraits show the current Options roster; campaign progress is independent
+of the selected characters.
 
 The Campaign SRAM picker is under this mod. Select an existing Sonic 2 campaign
 save anywhere to load and update that exact file. With no selection, the first
@@ -97,7 +98,23 @@ Native rendering remains the default. Adaptive follows the window beyond
 The mod gives gameplay extra CPU headroom while retaining normal VBlank,
 audio and physics tick rates. Special-stage scenery expands; its half-pipe
 projection remains centered. Extreme widths remain limited by host rendering
-cost and the original dynamic-object pool. Native 2P competition is unchanged.
+cost and the original dynamic-object pool. Native 2P competition extends both
+viewports, with independent cameras, roster-aware HUDs and an opaque divider.
+
+HIGH REFRESH RATE AND PRACTICE
+-----------------------------
+Mods > Presentation > High refresh rate offers 120 Hz, 144 Hz and Display
+refresh. Off by default. Camera and actors interpolate between normal ticks;
+this adds one tick of visual latency. Controls, game speed and audio keep
+their original cadence. Widescreen can remain disabled.
+
+Interpolation currently supports regular Sonic/Tails play with up to two
+party slots. Donor characters, larger parties, transitions, menus, special
+stages and split-screen retain ordinary completed images.
+
+Mods > Practice has separate Infinite lives and Infinite time options, both
+off by default. Lives remain after death/retry; the stage timer stops at 9:59.
+Drowning, death animations and round countdowns retain their normal rules.
 
 CONTROLS
 --------

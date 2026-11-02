@@ -28,6 +28,60 @@ static unsigned native_fetches;
 static const uint32_t *fetch_native(void *ctx)
 {++native_fetches;return (const uint32_t *)ctx;}
 
+static void native_interpolation_test(void)
+{
+    static GVDP v;
+    static uint32_t ordinary[2][320*224],fraction[320*224];
+    static uint8_t original_ram[65536];
+    CHECK(sonic2_video.configure("off"));online=0;s_loader_active=0;
+    memset(g_ram,0,sizeof g_ram);memset(g_rom,0,sizeof g_rom);
+    memset(&s2_party,0,sizeof s2_party);s2_party.roster.slots=2;
+    strcpy(s2_party.roster.character[0],"sonic");strcpy(s2_party.roster.character[1],"tails");
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0x8003]=1;
+    g_ram[0xB000]=1;g_ram[0xB001]=4;g_ram[0xB024]=2;
+    word(g_ram,0xB002,0x8004);write32(0xB004,0x100);word(g_ram,0xB00C,40);
+    word(g_ram,0xAC00,2);word(g_ram,0xAC02,0xB000);word(g_ram,0xE808,65535);
+    word(g_rom,0x100,2);word(g_rom,0x102,1);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
+    v.reg[12]=1;v.reg[13]=0x3C;v.reg[16]=1;v.cram[1]=0xE;
+    memset(v.vram+4*32,0x11,32);
+    presentation_configure(1);
+    S2StateIO size={0};s2_video_rb_state(&size);
+    uint8_t *before=(uint8_t*)malloc(size.pos),*after=(uint8_t*)malloc(size.pos);
+    CHECK(before && after);
+    S2StateIO state={0};state.data=before;state.size=size.pos;state.ok=1;
+    s2_video_rb_state(&state);CHECK(state.ok);
+    for(unsigned frame=0;frame<2;++frame) {
+        word(g_ram,0xFE04,frame+1);word(g_ram,0xB008,20+frame*4);
+        word(g_ram,0xF800,168);word(g_ram,0xF804,0x8004);word(g_ram,0xF806,148+frame*4);
+        memcpy(v.vram+0xF800,g_ram+0xF800,640);
+        memcpy(original_ram,g_ram,sizeof g_ram);M68KState cpu=g_cpu;
+        CHECK(!s2_video_hook(0x16604));CHECK(!s2_video_hook(0x16712));
+        CHECK(!memcmp(original_ram,g_ram,sizeof g_ram) && !memcmp(&cpu,&g_cpu,sizeof cpu));
+        CHECK(!sonic2_video.enabled() && s2_video_main_cpu_divisor()==1);
+        for(int y=0;y<224;++y) {
+            uint8_t indices[GVDP_MAX_WIDTH];CHECK(gvdp_render_scanline(&v,y,indices)==320);
+            for(int x=0;x<320;++x)ordinary[frame][y*320+x]=
+                genesis_dac_cram_to_argb(v.cram[indices[x]&63],GENESIS_DAC_NORMAL);
+            presentation_capture(&v,y,ordinary[frame]+y*320,320,320,NULL);
+        }
+    }
+    CHECK(ordinary[0][40*320+20]==0xFFFF0000 && ordinary[1][40*320+24]==0xFFFF0000);
+    CHECK(interpolate(0,fraction,320,224) && !memcmp(fraction,ordinary[0],sizeof fraction));
+    CHECK(interpolate(1,fraction,320,224) && !memcmp(fraction,ordinary[1],sizeof fraction));
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000 && fraction[40*320+21]==0xFF000000);
+    CHECK(!memcmp(original_ram,g_ram,sizeof g_ram));
+    state.pos=0;state.data=after;s2_video_rb_state(&state);
+    CHECK(state.ok && !memcmp(before,after,size.pos));
+    /* New source identities and teleports repeat an ordinary picture. */
+    s_present[s_present_front].keys[0]^=1;CHECK(!interpolate(.5,fraction,320,224));
+    s_present[s_present_front].keys[0]^=1;
+    s_present[s_present_front].render.frame_fg_x+=512;CHECK(!interpolate(.5,fraction,320,224));
+    presentation_configure(0);CHECK(!interpolate(.5,fraction,320,224));
+    free(before);free(after);
+}
+
 int main(void)
 {
     /* Original item art is sprite-only; missing resources retain native VRAM.
@@ -334,6 +388,7 @@ int main(void)
     CHECK(s_loader_active && !g_ram[0xB400] && !(g_ram[0xFC03]&128));
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
-    puts("Sonic 2 video defaults, terrain, spawn/cull cells and Sonic/Tails ring gates PASS");
+    native_interpolation_test();
+    puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }
