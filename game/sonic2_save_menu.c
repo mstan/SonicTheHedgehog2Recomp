@@ -12,6 +12,7 @@
 
 static const S2CampaignStore *store;
 static S2SaveView view;
+static uint32_t menu_portrait[S2_SAVE_PORTRAIT_WIDTH*S2_SAVE_PORTRAIT_HEIGHT];
 static int menu,menu_ready,exit_action,session=-1,dirty;
 static unsigned replay_stage; /* S2_CAMPAIGN_STAGES is the unpicked CLEAR card. */
 void s2_save_menu_state(S2StateIO *io)
@@ -111,6 +112,29 @@ static void begin_menu(void)
     view.read_only=store->read_only;
     view.selection=1; view.scroll=0; view.frame=0; view.erase=view.confirm=0;
     view.cursor=144; view.delete_x=968; view.delete_frame=0;
+    view.portrait=NULL;
+    unsigned count=0; const char *ids[6];
+    for (unsigned p=0;p<s2_party.roster.slots && p<6;++p)
+        if (strcmp(s2_party.roster.character[p],"none")) ids[count++]=s2_party.roster.character[p];
+    /* Preserve the original pair composition for its exact roster. Other
+     * parties use original solo portraits or verified standing gameplay art.
+     * This cache is presentation-only; campaign slot bytes never store a roster. */
+    if (count && !(count==2 && !strcmp(ids[0],"sonic") && !strcmp(ids[1],"tails"))) {
+        S2SavePortrait portraits[6]={{0}};
+        for (unsigned p=0;p<count;++p) {
+            const char *id=ids[p];
+            const S2DonorBank *bank=NULL;
+            portraits[p].menu_frame=!strcmp(id,"tails")?6:!strcmp(id,"knuckles")?7:5;
+            if (!strcmp(id,"amy")) bank=s2_resource_bank(S2_RESOURCE_AMY);
+            if (!strcmp(id,"mighty")) bank=s2_resource_bank(S2_RESOURCE_MEGAMIX);
+            if (!strcmp(id,"shadow")) bank=s2_resource_shadow_bank();
+            if (bank && bank->count>1 && bank->frames[1].pixels) {
+                portraits[p].image=&bank->frames[1]; portraits[p].palette=bank->palette;
+            }
+        }
+        s2_save_portraits(s2_resource_save_assets(),portraits,count,menu_portrait);
+        view.portrait=menu_portrait;
+    }
     replay_stage=S2_CAMPAIGN_STAGES;
     if (!store->ready) view.notice="SAVE FILE INVALID   USE NO SAVE";
     else if (store->read_only) view.notice="SAVE FILE PROTECTED   NO SAVE OK";

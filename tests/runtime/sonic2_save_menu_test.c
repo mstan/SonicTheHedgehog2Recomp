@@ -6,6 +6,9 @@ uint8_t g_ram[65536],g_rom[0x400000];
 S2PartyConfig s2_party;
 static S2CampaignStore fixture;
 static S2SaveAssets assets;
+static S2DonorBank portrait_banks[S2_RESOURCE_COUNT+1];
+static S2SavePortrait composed[6];
+static unsigned composed_count;
 static unsigned sound_writes,commits;
 static int commit_fails;
 void glue_poke8(uint32_t a,uint8_t v)   /* the host write (was m68k_write8) */
@@ -28,6 +31,10 @@ int s2_campaign_file_commit(const S2CampaignData *data)
 int s2_resources_prepare_stage_images(const unsigned char *r,unsigned n)
 { (void)r; (void)n; return 1; }
 const S2SaveAssets *s2_resource_save_assets(void) { return &assets; }
+const S2DonorBank *s2_resource_bank(unsigned i) { assert(i<S2_RESOURCE_COUNT); return &portrait_banks[i]; }
+const S2DonorBank *s2_resource_shadow_bank(void) { return &portrait_banks[S2_RESOURCE_COUNT]; }
+void s2_save_portraits(const S2SaveAssets *a,const S2SavePortrait *p,unsigned n,uint32_t *o)
+{ (void)a; (void)o; assert(n<=6); composed_count=n; memcpy(composed,p,n*sizeof *p); }
 void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int l,uint32_t *o,int w)
 { (void)a; (void)v; (void)l; for(int x=0;x<w;++x)o[x]=0xFFEEAA66; }
 void s2_save_draw_notice(const S2SaveAssets *a,const char *m,int l,uint32_t *o,int w)
@@ -121,6 +128,24 @@ int main(void)
         assert(!menu && !menu_ready);
         assert(!s2_save_menu_overlay(0,line,398));
     }
+    /* Menu entry reads the current Options roster, including Amy's bank,
+     * and omits unoccupied seats without recording characters in a save. */
+    static uint8_t pixel=1;
+    for (unsigned i=0;i<S2_RESOURCE_COUNT+1;++i) {
+        portrait_banks[i].count=2; portrait_banks[i].frames[1].pixels=&pixel;
+    }
+    const char *ids[]={"sonic","tails","knuckles","amy","mighty","shadow"};
+    s2_party.roster.slots=6;
+    for (unsigned i=0;i<6;++i) strcpy(s2_party.roster.character[i],ids[i]);
+    begin_menu(); assert(composed_count==6 && view.portrait==menu_portrait);
+    assert(composed[0].menu_frame==5 && composed[1].menu_frame==6 && composed[2].menu_frame==7);
+    assert(composed[3].image==&portrait_banks[S2_RESOURCE_AMY].frames[1]);
+    assert(composed[4].image==&portrait_banks[S2_RESOURCE_MEGAMIX].frames[1]);
+    assert(composed[5].image==&portrait_banks[S2_RESOURCE_COUNT].frames[1]);
+    strcpy(s2_party.roster.character[1],"none"); begin_menu(); assert(composed_count==5);
+    assert(composed[1].menu_frame==7);
+    s2_party.roster.slots=2; strcpy(s2_party.roster.character[1],"tails");
+    begin_menu(); assert(!view.portrait); /* exact original pair art */
     puts("PASS save-menu movement sounds, wrap, bounds, opposite/idle/sliding inputs and disabled mod");
     return 0;
 }
