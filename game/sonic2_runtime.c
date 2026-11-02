@@ -370,15 +370,17 @@ static void reserve_extras(void)
 }
 static void runtime_state(S2StateIO *io)
 {
-    unsigned header[3+S2_MAX_PLAYERS+5]={3,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+7]={4,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
     header[6+S2_MAX_PLAYERS]=(unsigned)s2_party.mighty_enabled;
     header[7+S2_MAX_PLAYERS]=(unsigned)s2_party.shadow_enabled;
+    header[8+S2_MAX_PLAYERS]=(unsigned)s2_party.infinite_lives;
+    header[9+S2_MAX_PLAYERS]=(unsigned)s2_party.infinite_time;
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
-        unsigned saved[3+S2_MAX_PLAYERS+5];
+        unsigned saved[3+S2_MAX_PLAYERS+7];
         if (!io->data || io->size<sizeof saved) { io->ok=0; return; }
         memcpy(saved,io->data,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
@@ -718,6 +720,19 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    /* REV01 native decrement/clock compares. Leave the original instruction,
+     * flags, death/retry and HUD paths in charge; no patched ROM bytes. */
+    if (pc==0x1B248 || pc==0x1CCA6) {
+        unsigned at=pc==0x1B248?0xFE12:0xFEC6;
+        if (s2_party.infinite_lives && g_ram[at] && g_ram[at]<255) ++g_ram[at];
+        return 0;
+    }
+    if (pc==0x40DEA || pc==0x40F22 || pc==0x40F62 || pc==0x40F9A) {
+        unsigned at=pc==0x40F9A?0xFED2:0xFE22;
+        if (s2_party.infinite_time && !g_ram[at] && g_ram[at+1]==9 &&
+            g_ram[at+2]==59 && g_ram[at+3]==59) g_ram[at+3]=58;
+        return 0;
+    }
     /* Online too: the party runtime reads only sealed inputs and every piece
      * of its state is in the rollback snapshot (s2_runtime_rb_save). */
     if (pc==0x157C4) {

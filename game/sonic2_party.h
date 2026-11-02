@@ -17,6 +17,8 @@ typedef struct S2Roster {
 
 typedef struct S2PartyConfig {
     S2Roster roster;
+    int infinite_lives; /* opt-in native practice options */
+    int infinite_time;
     int amy_enabled;
     int s3k_enabled;
     int save_menu_enabled; /* independent default-OFF S3&K feature */

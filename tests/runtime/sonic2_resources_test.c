@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 static int delegated;
-static int playback;
+static int playback, online;
+int genesis_netplay_active(void) { return online; }
 int genesis_replay_playing(void) { return playback; }
 static int count(void *ctx) { assert(ctx == &delegated); return 1; }
 static int enable(void *ctx, const char *p, const char *f, int on)
@@ -20,7 +21,18 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==4 && p->feature_count(p->ctx)==6);
+    assert(p->package_count(p->ctx)==5 && p->feature_count(p->ctx)==8);
+    assert(!s2_party.infinite_lives && !s2_party.infinite_time);
+    assert(p->feature_get(p->ctx,5,&(RecompLauncherCModFeature){0}));
+    assert(p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",1));
+    assert(s2_party.infinite_lives && !s2_party.infinite_time);
+    assert(p->feature_resource_count(p->ctx,"sonic2.practice","infinite-lives")==0);
+    assert(p->set_enabled(p->ctx,"sonic2.practice",1) && s2_party.infinite_time);
+    assert(p->set_enabled(p->ctx,"sonic2.practice",0) && !s2_party.infinite_lives && !s2_party.infinite_time);
+    online=1;
+    assert(!p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",1) && !s2_party.infinite_lives);
+    assert(p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",0));
+    online=0;
     assert(p->feature_enable(p->ctx,"base","wide",1) && delegated==1);
     assert(!p->feature_enable(p->ctx,"sonic2.s3k","knuckles",1));
     assert(!s2_party.s3k_enabled && *p->last_error(p->ctx));

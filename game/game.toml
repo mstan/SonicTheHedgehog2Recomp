@@ -919,3 +919,29 @@ kind = "game_hook"
 [[widescreen_site]]
 addr = 0x16F00
 kind = "game_hook"
+
+# Opt-in native practice options: original life decrement and time-limit compares.
+
+[[widescreen_site]]
+addr = 0x1B248
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x1CCA6
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x40DEA
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x40F62
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x40F9A
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x40F22
+kind = "game_hook"
