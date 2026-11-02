@@ -594,6 +594,13 @@ static int update_player(unsigned p, uint32_t entry)
     uint16_t mode=word(0xFF70), bias=word(0xEED8);
     uint16_t record_index=word(0xEED2);
     uint8_t history[512]; memcpy(history,g_ram+0xE400,sizeof history);
+    /* Native main-player Tails also records into the sidekick's E600 ring.
+     * Keep that transient write private: P1 publishes E500 below, while the
+     * actual P2 must retain its own ring/index rather than alternate owners. */
+    int preserve_sidekick_history=!p && native_id(p)==2 && objects[1] &&
+        s2_party.roster.slots>1 && strcmp(s2_party.roster.character[1],"none");
+    uint8_t sidekick_history[256];uint16_t sidekick_index=word(0xEED6);
+    if(preserve_sidekick_history)memcpy(sidekick_history,g_ram+0xE600,sizeof sidekick_history);
     uint16_t logical2=word(0xF66A);
     uint8_t locked=g_ram[0xF7CC];
     uint8_t super=g_ram[0xFE19];
@@ -684,6 +691,10 @@ static int update_player(unsigned p, uint32_t entry)
             putword(0xEED2,0);
         }
         native_helper(0x1A15C);
+        if(preserve_sidekick_history) {
+            memcpy(g_ram+0xE600,sidekick_history,sizeof sidekick_history);
+            putword(0xEED6,sidekick_index);
+        }
     }
     if (imported()) {
         if (injected_control) g_ram[object+0x2A]&=~1;
@@ -724,6 +735,19 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if(pc==0x1DAAC && level()) {
+        /* Obj35 has already checked the parent's invincibility flag. Its
+         * original Player_mode==2 shortcut selects E600 for every star when
+         * Tails leads. Select by actual party role instead, without changing
+         * Player_mode or bypassing the native animation/deletion code. */
+        unsigned parent=word((g_cpu.A[0]&65535u)+0x3E);
+        for(unsigned p=0;p<2;++p)if(objects[p] && objects[p]==parent) {
+            g_cpu.A[5]=p?0xFFFFEED6u:0xFFFFEED2u;
+            g_cpu.A[6]=p?0xFFFFE600u:0xFFFFE500u;
+            break;
+        }
+        return 0;
+    }
     /* REV01 native decrement/clock compares. Leave the original instruction,
      * flags, death/retry and HUD paths in charge; no patched ROM bytes. */
     if (pc==0x1B248 || pc==0x1CCA6) {

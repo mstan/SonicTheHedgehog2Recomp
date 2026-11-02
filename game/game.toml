@@ -898,6 +898,11 @@ kind = "game_hook"
 addr = 0x16938
 kind = "game_hook"
 
+# Obj35: choose position history by actual actor role after native guards.
+[[widescreen_site]]
+addr = 0x1DAAC
+kind = "game_hook"
+
 # Local party/human P2 rolling monitor collision.
 [[widescreen_site]]
 addr = 0x12768
