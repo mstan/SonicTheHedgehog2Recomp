@@ -878,3 +878,26 @@ extra = [
 #             at runtime. This site fires every frame during title-
 #             screen art decompression; an empty dispatch_misses.toml
 #             after a multi-second run confirms coverage.
+
+# REV01 DrawSprite: piece-complete sites for source-backed private item art.
+
+[[widescreen_site]]
+addr = 0x1684E
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x1688E
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x168E6
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x16938
+kind = "game_hook"
+
+# Local party/human P2 rolling monitor collision.
+[[widescreen_site]]
+addr = 0x12768
+kind = "game_hook"

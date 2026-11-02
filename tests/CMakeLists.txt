@@ -29,7 +29,7 @@ target_include_directories(sonic2_options_netplay_test PRIVATE "${RUNNER_ROOT}/e
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/party-fixtures")
 set_tests_properties(sonic2_party PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/party-fixtures")
 s2_test(sonic2_donor "${S2_GAME}/sonic2_donor_assets.c")
-s2_test(sonic2_video)
+s2_test(sonic2_video "${RUNNER_ROOT}/video/genesis_vdp.c")
 target_compile_definitions(sonic2_video_test PRIVATE GENESIS_HAS_RECOMP_NET=1)
 target_include_directories(sonic2_video_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
 s2_test(sonic2_save_menu "${S2_GAME}/sonic2_campaign.c")
