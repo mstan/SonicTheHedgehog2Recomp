@@ -52,6 +52,16 @@ int main(void)
     }
     item_owner=0; g_ram[0xF80A]=15;s2_video_hook(0x1684E);CHECK(g_ram[0xF80A]==15);
     item_owner=1;word(g_ram,0xF80C,0x8680);s2_video_hook(0x1684E);CHECK(g_ram[0xF80A]==15);
+    unsigned competition_sites[]={0x16DEE,0x16E40,0x16E9C,0x16F00};
+    word(g_ram,0xFFD8,1);word(g_ram,0xF80C,0x825F);
+    for(unsigned n=0;n<4;++n) {
+        g_ram[0xF80A]=13;CHECK(!s2_video_hook(competition_sites[n]));CHECK(g_ram[0xF80A]==0x8D);
+    }
+    word(g_ram,0xF80C,0x8356);g_ram[0xF80A]=4;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==0x84);
+    word(g_ram,0xF80C,0x8340);g_ram[0xF80A]=4;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==4);
+    g_cpu.A[2]=0xFFFFDD10;word(g_ram,0xDD0C,0x825F);g_ram[0xDD0A]=13;
+    s2_video_hook(0x16DEE);CHECK(g_ram[0xDD0A]==0x8D);
+    word(g_ram,0xFFD8,0);g_ram[0xDD0A]=13;s2_video_hook(0x1684E);CHECK(g_ram[0xDD0A]==13);
     item_owner=0;hud_available=0;s2_video_prepare_knuckles_items();memset(g_ram,0,sizeof g_ram);
     GVDP hud={0}; uint32_t colour=0x12345678;
     s2_party.s3k_enabled=1; strcpy(s2_party.roster.character[0],"knuckles");
