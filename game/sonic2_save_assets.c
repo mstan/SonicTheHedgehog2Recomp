@@ -247,6 +247,19 @@ static int nemesis(const uint8_t *p,size_t size,uint8_t *out,size_t cap)
     return !b.bad && written==nibbles;
 }
 void s2_save_assets_free(S2SaveAssets **a) { if (a) { free(*a); *a=NULL; } }
+int s2_native_hud_art_decode(const uint8_t *r,size_t size,S2NativeHudArt *out)
+{
+    if (!r || !out || size!=0x100000) return 0;
+    S2NativeHudArt a={0};
+    static const unsigned at[]={0x79346,0x7B946,0x7C20C};
+    for (unsigned i=0;i<3;++i)
+        if ((be16(r+at[i])&0x7FFF)!=12 ||
+            !nemesis(r+at[i],size-at[i],a.life[i],sizeof a.life[i])) return 0;
+    if (be16(r+0x7C43A)!=88 ||
+        !nemesis(r+0x7C43A,size-0x7C43A,a.font,sizeof a.font)) return 0;
+    memcpy(a.numbers,r+0x4164C,sizeof a.numbers);
+    *out=a; return 1;
+}
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {
     if (!r || !out || size!=0x340000) return 0;
