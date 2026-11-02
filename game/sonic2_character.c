@@ -221,6 +221,19 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
     s->render_flip=!!(m->status&FACE);
     int speed=absword(m->inertia);
     if (delay==0xFF) {
+        if (s->kind==S2_CHAR_KNUCKLES && m->flip_angle) {
+            /* Animate_Knuckles $17DC8 delegates walking-with-flip to
+             * Anim_Tumble $127C0. S2's subtype-1 vertical spring deliberately
+             * selects Walk and advances flip_angle; it is not a walk pose.
+             * The original source uses twelve $31..$3C poses, with byte-wrap
+             * before the 22-angle division and XY mirroring when facing left. */
+            unsigned angle=(uint8_t)((m->status&FACE)?0x8F-m->flip_angle:m->flip_angle+0x0B);
+            s->frame=(uint8_t)(0x31+angle/0x16);
+            s->render_flip=(m->status&FACE)?3:0;
+            s->animation_timer=0;
+            m->frame=s->frame;
+            return;
+        }
         unsigned angle=m->angle;
         if (!(angle&0x80) && angle) --angle;
         if (!(m->status&FACE)) angle=(uint8_t)~angle;

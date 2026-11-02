@@ -52,6 +52,12 @@ discovery_files = [
 # ---------------------------------------------------------------------------
 # Opt-in custom renderer sites: canonical REV01 s2_canonical.lst.
 [[widescreen_site]]
+addr = 0x246A # Pal_FadeToBlack: retain the outgoing save-menu composition until black
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x157C4 # LoadTitleCard0: title art decoded, before RAM layout decoding
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x3998 # TitleScreen: reset campaign session ownership
 kind = "game_hook"
 [[widescreen_site]]

@@ -117,7 +117,9 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
     if (!a || !v || line<0 || line>=224 || width<=0) return;
     int left=(width-320)/2;
     for (int x=0;x<width;++x) {
-        int bx=(x-left+v->scroll)%320; if (bx<0) bx+=320;
+        /* The donor's background plane is fixed; only the card plane follows
+         * the selector camera. Tile it across the complete output width. */
+        int bx=(x-left)%320; if (bx<0) bx+=320;
         unsigned tile=a->background[(line/8)*40+bx/8];
         unsigned ink=pixel(a,tile,bx%8,line%8);
         out[x]=color(a,tile,ink,1);

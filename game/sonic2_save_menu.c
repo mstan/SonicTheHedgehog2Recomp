@@ -174,20 +174,20 @@ static void controls(void)
         view.delete_x=approach(view.delete_x,968); view.delete_frame=0;
     }
     if (press&16) {
-        if (view.confirm) view.confirm=0;
-        else if (view.erase) view.erase=0;
+        if (view.confirm || view.erase) view.confirm=view.erase=0;
         else { exit_action=1; g_ram[0xF605]|=128; }
         return;
     }
     if (view.cursor!=target) return;
     if (view.confirm) {
         /* Match the original YES/NO sign, retaining A/C/Start and B aliases. */
-        if (press&8) { view.confirm=0; return; }
+        if (press&8) { view.confirm=view.erase=0; return; }
         if (!(press&(4|0xE0))) return;
         S2CampaignData candidate=view.data;
         s2_campaign_delete(&candidate,view.selection-1);
         if (!s2_campaign_file_commit(&candidate)) { view.notice="DELETE FAILED   CHECK SAVE PATH"; return; }
         view.data=candidate; dirty=0; view.erase=view.confirm=0; view.notice=NULL;
+        navigation_sound(0xC5); /* S2 TallyEnd: successful deletion only. */
         return;
     }
     if (!view.confirm && (press&12)) {
@@ -195,7 +195,7 @@ static void controls(void)
         if ((press&12)==4 && view.selection>(view.erase?1u:0u)) --view.selection;
         if ((press&12)==8 && view.selection<9) ++view.selection;
         if (old!=view.selection) {
-            navigation_sound(0xC0);
+            navigation_sound(view.erase?0xD8:0xC0);
             if (view.selection>=1 && view.selection<=8) replay_stage=S2_CAMPAIGN_STAGES;
         }
         return;
@@ -210,10 +210,17 @@ static void controls(void)
         }
     }
     if (!(press&0xE0)) return;
-    if (view.selection==9) { view.erase=!view.erase; view.confirm=0; return; }
+    if (view.selection==9) {
+        view.erase=!view.erase; view.confirm=0;
+        if (view.erase) navigation_sound(0xA1);
+        return;
+    }
     if (view.erase) {
-        if (!view.selection || store->read_only || !view.data.slots[view.selection-1].state) return;
-        view.confirm=1;
+        /* Original loc_D7EA exits on an empty file; the confirmation's NO
+         * and B routes also finish delete mode, retaining the selected card. */
+        if (!view.selection || !view.data.slots[view.selection-1].state) { view.erase=view.confirm=0; return; }
+        if (store->read_only) return;
+        view.confirm=1; navigation_sound(0xA1);
         return;
     }
     if (!view.selection) { session=-1; exit_action=2; g_ram[0xF605]|=128; return; }
@@ -233,6 +240,16 @@ static void controls(void)
 int s2_save_menu_hook(uint32_t pc)
 {
     if (!s2_save_menu_enabled()) return 0;
+    /* Keep the outgoing composition over the native menu until the next
+     * mode has completed its own fade. The nested call uses state 3 so its
+     * entry hook cannot recurse. No extra fade or black-frame wait is added. */
+    if (menu==2 && pc==0x246A) { /* Pal_FadeToBlack, REV01 */
+        menu=3;
+        recomp_call_addr(pc);
+        menu=menu_ready=exit_action=0;
+        return 1;
+    }
+    if (menu>=2) return 0;
     switch (pc) {
     case 0x3998: /* TitleScreen: end previous campaign session, including game over. */
         flush(); session=-1; menu=menu_ready=0; return 0;
@@ -258,11 +275,14 @@ int s2_save_menu_hook(uint32_t pc)
     default: break;
     }
     if (!menu || g_ram[0xF600]!=0x24) return 0;
+    /* MenuScreen has already faded the title to black. Own every pixel before
+     * its first initialization VBlank and throughout Pal_FadeFromBlack. */
+    if (pc==0x8FCC) { menu_ready=1; return 0; }
     if (pc==0x90E0) { controls(); return 1; }
     if (pc==0x9186 || pc==0x91F8) return 1;
     if (pc==0x909A) {
-        if (exit_action==2) launch();
-        else if (exit_action==1) { menu=menu_ready=0; g_ram[0xF600]=4; }
+        if (exit_action==2) { launch(); menu=2; menu_ready=1; }
+        else if (exit_action==1) { menu=2; g_ram[0xF600]=4; }
         else recomp_tail_call(0x9060);
         return 1;
     }
@@ -271,7 +291,7 @@ int s2_save_menu_hook(uint32_t pc)
 int s2_save_menu_overlay(int line,uint32_t *out,int width)
 {
     if (!s2_save_menu_enabled()) return 0;
-    if (!menu || !menu_ready || g_ram[0xF600]!=0x24) {
+    if (!menu || !menu_ready || (menu==1 && g_ram[0xF600]!=0x24)) {
         /* A quickload dirties the checkpoint without attempting a disk write.
          * Only a failed flush sets a notice; pending progress is not failure. */
         if (dirty && view.notice && session>=0) s2_save_draw_notice(s2_resource_save_assets(),"CAMPAIGN SAVE FAILED",line,out,width);
@@ -283,5 +303,26 @@ int s2_save_menu_overlay(int line,uint32_t *out,int width)
         display.data.slots[view.selection-1].state==S2_SAVE_COMPLETE)
         display.replay_selected=s2_campaign_select_stage(&display.data.slots[view.selection-1],replay_stage);
     s2_save_draw_line(s2_resource_save_assets(),&display,line,out,width);
+    /* The host composition includes donor art, native stage thumbnails and
+     * text. Fade all of it with the native menu's palette envelope, including
+     * the extended margins. REV01 Normal/Target_palette are $FB00/$FB80.
+     * Use their total channel intensity so independently coloured thumbnail
+     * pixels participate too, without altering guest palettes or timing. */
+    unsigned current=0,target=0;
+    for (unsigned i=0;i<64;++i) {
+        unsigned c=word(0xFB00+i*2),t=word(0xFB80+i*2);
+        current+=(c&14)+((c>>4)&14)+((c>>8)&14);
+        target+=(t&14)+((t>>4)&14)+((t>>8)&14);
+    }
+    if (!current || current<target) for (int x=0;x<width;++x) {
+        uint32_t c=out[x];
+        unsigned r=0,g=0,b=0;
+        if (target) {
+            r=((c>>16)&255)*current/target;
+            g=((c>>8)&255)*current/target;
+            b=(c&255)*current/target;
+        }
+        out[x]=0xFF000000u|(r<<16)|(g<<8)|b;
+    }
     return 1;
 }

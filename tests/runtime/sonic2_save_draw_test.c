@@ -8,6 +8,25 @@ int main(void)
 {
     S2SaveAssets *assets=calloc(1,sizeof *assets);
     assert(assets);
+    /* Moving through every card must not drag the uncovered background,
+     * including either margin of an adaptive widescreen canvas. */
+    for (unsigned tile=1;tile<=40;++tile) {
+        memset(assets->tiles+tile*32,(tile&1)?0x11:0x22,32);
+        for (unsigned row=0;row<28;++row) assets->background[row*40+tile-1]=(uint16_t)tile;
+    }
+    assets->palette[1]=0x00E; assets->palette[2]=0x0E0;
+    for (int width=320;width<=896;width+=288) {
+        uint32_t still[896],moving[896];
+        S2SaveView background={0};
+        /* Row 0 is uncovered by cards and sprites at every scroll position. */
+        s2_save_draw_line(assets,&background,0,still,width);
+        for (int scroll=0;scroll<=704;scroll+=8) {
+            background.scroll=scroll;
+            s2_save_draw_line(assets,&background,0,moving,width);
+            assert(!memcmp(still,moving,(size_t)width*sizeof *still));
+        }
+    }
+    memset(assets,0,sizeof *assets);
     /* Synthetic donor font and counter art; no ROM required. */
     assets->palette[17]=0x00E;
     for (unsigned glyph=16;glyph<56;++glyph)

@@ -88,6 +88,21 @@ int main(void)
     assert(m.frame==8 && s.render_flip==2 && s.animation_index==1);
     m.angle=0x60; m.inertia=0x700; s2_character_animate(&s,&m,&bank);
     assert(m.frame==0x2E && s.animation_index==1);
+    /* Native spring subtype 1 switches to Walk plus a tumble angle. These
+     * explicit poses follow Animate_Knuckles -> Anim_Tumble, including byte
+     * wrap at the end of a turn; held gait timing cannot freeze that pose. */
+    static const uint8_t tumble[][3]={
+        {1,0x31,0x37},{0x16,0x32,0x36},{0x40,0x34,0x34},
+        {0x80,0x37,0x31},{0xC0,0x3A,0x3A},{0xE0,0x3B,0x38},{0xF5,0x31,0x38}
+    };
+    for (unsigned i=0;i<sizeof tumble/sizeof *tumble;++i) for (unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+        m.animation=0; m.status=(uint8_t)(2|face); m.flip_angle=tumble[i][0];
+        s.animation_timer=10;
+        s2_character_animate(&s,&m,&bank);
+        assert(m.frame==tumble[i][1+face] && s.render_flip==(face?3:0));
+        assert(!s.animation_timer);
+    }
     puts("Source-derived Amy/Knuckles action transitions and animation control codes passed");
     return 0;
 }
