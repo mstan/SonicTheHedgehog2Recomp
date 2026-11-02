@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 14 validated fixes, 12 remaining**. One save-menu
+Current intake: **26 reported defect/action items; 15 validated fixes, 11 remaining**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -34,7 +34,7 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-11 | Knuckles invincibility monitor/sparkles use Sonic 2 art. Use the original Knuckles-in-Sonic-2 grey monitor/sparkles. | **Validated fix**, not released. Original grey invincibility monitor/stars follow the actual Knuckles parent; Tails stays blue. Native/wide/mixed P2 and both competition viewports pass original-pixel/cold-state checks. Real party monitor landing and stale P2 star-history defects found during qualification are repaired. |
 | S2-12 | Widescreen Knuckles sometimes jitters in midair while gliding. Reproduce and remove jitter without changing glide physics. | Open. |
 | S2-13 | Sega logo animation is not extended for widescreen. Extend its intended scene consistently through the margins. | Open. |
-| S2-14 | Options background is not extended for widescreen. Fill the extended area with the correct background across navigation/fades. | Open. |
+| S2-14 | Options background is not extended for widescreen. Fill the extended area with the correct background across navigation/fades. | **Validated fix**, not released. Repeat the populated 40-column background instead of the unused portion of the 64-column plane. Real entry/navigation/exit routes at 320/398/796 pixels: all 426 paired RAM/VRAM samples identical; all 142 native images identical; only Options widescreen images change. 43,200/106,880 checked margin pixels match the native pattern. |
 | S2-15 | Native 2P competition is not extended for widescreen. Extend both viewports, camera/object coverage and HUD appropriately while preserving competition mechanics. | Open. |
 | S2-16 | Save cards always show Sonic & Tails. Update portraits from the characters currently chosen in Options; keep campaign saves roster-independent. | **Validated fix**, not released. Current Options roster supplies original Sonic/Tails/Knuckles solo portraits and verified Amy/Shadow/Mighty gameplay art. Nine runtime cases cover five distinct available characters, native/wide six-seat parties, the original pair and empty seats; campaign bytes stay unchanged. Focused tests cover Amy bank selection, all six identities, bounded layout and unchanged progress. No separate card selector was added. |
 | S2-17 | Delete-mode UI sounds are missing: entering delete mode, scrolling, choosing a file and successful deletion. Match the source-backed events, including silence for ignored actions. | **Validated fix**, not released. Focused event/ignored-action/failing-commit tests and actual native generated-audio A/B pass. Source-backed event order uses native S2 cues: Checkpoint $A1 for enter/confirm, BonusBumper $D8 for delete navigation, TallyEnd $C5 after successful disk commit. S3&K uses Starpost/SmallBumpers/Perfect; this preserves the established S2-native sound policy rather than claiming identical timbres. |
@@ -228,3 +228,20 @@ Task-only owner-ROM fixture: one3.25 MiB copy at `G:/Temp/Codex/sonic2-owner-fee
 Native competition item-art qualification: `two-player-art-qa/results.json`, executable SHA256 `f1af4ecfc99c7f0b63409e193c721c74e6bd4a4b7b385a368a71c1c6026d0d45`. Both split viewports match612 changed shield/icon pixels (306 each) and234 changed star/icon pixels (117 each) from the independently decoded original payload. Knuckles has8 grey shield pieces and16 grey star pieces across the two views; Tails retains8/16 native blue pieces. Both original grey floating icons appear in both views. Warm images and same-build cold restores are exact. This is a **graphics-state fixture**, with native powerup conditions seeded; it does not claim competition pickup/random-item mechanics. Real native single-player/party acquisitions were independently qualified above.
 
 Competition source/ROM verification located DrawSprite2P piece DBFs at $16DEE/$16E40/$16E9C/$16F00 and the second SAT buffer at $DD00 (LEA at $16A80). The initial candidate only tagged the top viewport; the final code tags both $F800 and $DD00 buffers and accounts for8x16 cells. The lower buffer is uploaded over the same VRAM SAT by H-int, so the pixel oracle reads that viewport's captured RAM SAT rather than assuming the final VRAM dump contains both lists. Ten focused CTests pass, including all eight ordinary/interlace piece sites, 2P tile addressing, both buffers and exclusion of the 2P buffer outside competition. S2-09 and S2-11 are now counted complete and unreleased; S2-04/15/21..24 remain open on their own acceptance criteria.
+
+## 2026-11-02 continuation decisions
+
+- S2-14 accepted on built executable SHA256
+  `ea8ed3af90ad41e1a506c42a9fe3ad425bb8ee4db49f110dde0010c93669b517`.
+  Ten focused production tests pass. `wide-scenes-qa/options-result.json`
+  retains 142 samples per aspect, exact identities and original/candidate routes.
+  No guest code, VRAM, physics or normal-aspect pixels changed.
+- S2-12 experiment rejected: binding actors to the existing completed-SAT
+  history produced identical pixels, RAM and VRAM in all 128 native and 128
+  widescreen samples. Restored the candidate rather than retain unused machinery.
+  The one-pixel reversal also occurs in native camera tracking; that observation
+  alone does not resolve the reported widescreen glide defect. Existing captures
+  remain under `glide-jitter-scroll-qa`; `candidate-result.json` records rejection.
+- Bounded independent focus check reaffirmed honest counts, rejected further
+  comparison machinery/glide sampling without a new hypothesis, and directed
+  one runnable title-card coverage/exit candidate using existing scene routes.

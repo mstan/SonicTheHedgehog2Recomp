@@ -786,6 +786,11 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
     for(int x=0;x<width;++x) {
         int nx=x-origin,wx=level?nx+camera:nx-hs_a;
         int reference_bx=nx-hs_b,bx=bg_base+x;
+        /* MenuScreen loads only 40 columns of its 64-column plane. Repeat
+         * the populated composition instead of exposing the unused cells. */
+        if (!level && g_ram[0xF600]==0x24 && base_b==0xE000) {
+            bx%=320; if (bx<0) bx+=320;
+        }
         if(!fg.remaining) {
             uint16_t attr=level?world_attr(s_world_frame,wx,wy,0):plane_attr(v,base_a,nx-hs_a,line+(v->vsram[0]&1023));
             gtile_row_begin(&fg,v->vram,attr,level?wx:nx-hs_a,level?wy:line+(v->vsram[0]&1023));
