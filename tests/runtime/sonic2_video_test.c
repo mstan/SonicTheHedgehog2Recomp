@@ -286,6 +286,15 @@ int main(void)
     CHECK(card_fill(0xA5DC) && card_fill(0x85D8) && !card_fill(0xA5DA));
     sonic2_video.scanline(&v,0,native320,320,out,320);
     CHECK(!s_frame_card && !memcmp(out,native320,sizeof native320));
+    /* The divider hides both hardware planes and all actor types; retain
+     * the HUD's final row215 and the lower viewport's first row224. */
+    word(g_ram,0xFFD8,1);v.reg[12]=6;g_ram[0xF600]=0x8C;
+    CHECK(!s2_video_competition_divider(&v,215,out,796));
+    CHECK(s2_video_competition_divider(&v,216,out,796));
+    for(unsigned x=0;x<796;++x) CHECK(out[x]==0xFF000000);
+    CHECK(s2_video_competition_divider(&v,223,out,320));
+    CHECK(!s2_video_competition_divider(&v,224,out,320));
+    word(g_ram,0xFFD8,0);CHECK(!s2_video_competition_divider(&v,216,out,320));
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and Sonic/Tails ring gates PASS");
     return 0;
 }
