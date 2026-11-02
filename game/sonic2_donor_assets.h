@@ -40,6 +40,8 @@ typedef struct S2NativeHudArt {
     uint8_t font[88*32], numbers[10*32];
 } S2NativeHudArt;
 int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out);
+/* REV01's native 34-tile star atlas, retaining S2 animation/geometry. */
+int s2_native_stars_decode(const uint8_t *rom,size_t size,uint8_t out[34*32]);
 /* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
 int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
 extern const S2DonorLayout s2_amy_171_layout;

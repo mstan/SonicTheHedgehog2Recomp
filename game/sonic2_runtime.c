@@ -253,6 +253,15 @@ int s2_runtime_knuckles_item(unsigned o)
         if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES && knuckles_available()) return 1;
     return 0;
 }
+int s2_runtime_shadow_star(unsigned o)
+{
+    if (!level() || o<0xB000 || o>=0xD400 || g_ram[o]!=0x35 ||
+        !s2_party.shadow_enabled || !s2_resource_shadow_bank()) return 0;
+    unsigned parent=word(o+0x3E);
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p)
+        if (objects[p]==parent && kind(p)==S2_CHAR_SHADOW) return 1;
+    return 0;
+}
 static unsigned native_id(unsigned p)
 {
     const S2Character *c=s2_character_find(s2_party.roster.character[p]);

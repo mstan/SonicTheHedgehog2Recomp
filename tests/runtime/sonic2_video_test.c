@@ -6,10 +6,16 @@ M68KState g_cpu;
 S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
 const S2DonorBank *s2_resource_bank(unsigned id) { (void)id;return NULL; }
+const S2DonorBank *s2_resource_shadow_bank(void) { return NULL; }
+int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
+{ (void)r;(void)size;(void)out;return 0; }
+uint16_t s2_shadow_color(const S2DonorBank *b,unsigned i,int wet,unsigned phase,unsigned frame)
+{ (void)b;(void)i;(void)wet;(void)phase;(void)frame;return 0; }
 static int hud_available;
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
 int s2_runtime_knuckles_item(unsigned o) { return item_owner && o==0xD180; }
+int s2_runtime_shadow_star(unsigned o) { (void)o;return 0; }
 static int positions[4][2];
 int genesis_netplay_active(void){return online;}
 int genesis_netplay_local_player(void){return local_player;}

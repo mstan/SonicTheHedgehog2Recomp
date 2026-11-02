@@ -260,6 +260,11 @@ int s2_native_hud_art_decode(const uint8_t *r,size_t size,S2NativeHudArt *out)
     memcpy(a.numbers,r+0x4164C,sizeof a.numbers);
     *out=a; return 1;
 }
+int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
+{
+    return r && out && size==0x100000 && (be16(r+0x71F14)&0x7FFF)==34 &&
+        nemesis(r+0x71F14,231,out,34*32);
+}
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {
     if (!r || !out || size!=0x340000) return 0;
