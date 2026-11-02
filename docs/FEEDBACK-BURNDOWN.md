@@ -54,7 +54,7 @@ Imported at the owner's explicit request from
 `C:/temp/Codex/sonic-feedback-release-20261101/sonic2/docs/PLAYER_FEEDBACK_HANDOFF_20261101.md`.
 Its historical S2-01..04 identifiers are scoped to that handoff; they are
 retained below with an H prefix to avoid colliding with the screenshot intake.
-**Three delivered outcomes, two explicit deferrals, one validated enhancement and one queued enhancement.**
+**Three delivered outcomes, two explicit deferrals, two validated enhancements awaiting final release integration.**
 Do not count deferrals as fixes or repeat their bounded probes without new logs.
 
 | ID | Work | Imported status and acceptance / evidence |
@@ -64,7 +64,7 @@ Do not count deferrals as fixes or repeat their bounded probes without new logs.
 | H-03 | Sonic & Tails cannot drown in CPZ2 (handoff S2-01). | Deferred by owner for this pass, not reproduced. Sonic air 29→0, drowning/death, lives 3→2 and retry with air 30 passed. Tails' independent drowning remains unqualified. Reopen only with new occurrence/diagnostics. |
 | H-04 | Sonic sprite flicker on spring jumps (handoff S2-03). | Deferred by owner for this pass, not reproduced. Real EHZ1 spring launch retained Sonic in all 120 consecutive native/16:9 frames; exact occurrence/other springs remain unverified. Reopen only with new diagnostics. This is separate from Knuckles glide jitter S2-12. |
 | H-05 | Default-on replayable diagnostics across all S2 variants. | Released and verified in v0.9.4; retain as an ongoing release contract. Native, six-seat party, fresh campaign and existing campaign recordings replayed all 6,351 executions without SRAM writes. Saved opt-outs remain respected; reports retain every sidecar. No new Linux release was claimed. |
-| H-06 | Above-60-FPS native Sonic 2 presentation. | Queued; no native S2 adapter implemented. Reuse the S3 session's shared presenter/API. Independent presentation deadlines must support rates such as 144 Hz without rounding to 120; guest/input/audio/canonical state stay at their normal cadence. Interpolation history is presentation-only, separate from widescreen activation/culling. Qualify the native adapter before release. |
+| H-06 | Above-60-FPS native Sonic 2 presentation. | **Validated native adapter; release integration in progress.** Opt-in120/144/display presentation interpolates regular Sonic/Tails camera/actors with native or wide aspect. Two/three submissions per game tick at144, unchanged guest/input/audio/canonical state, source-identity fallback, current save/load, diagnostic replay and rollback pass. Donor parties, transitions and split-screen retain ordinary completed images. See high-refresh qualification below. |
 | H-07 | Infinite lives and infinite time in native Sonic 2. | **Validated enhancement**, not released. Separate default-off Practice features preserve life count after native death/retry and cap the stage clock at9:59. Real Sonic/Tails/Knuckles, last-life retry, current save/load, both native competition timers/P2 respawn, launcher Play/relaunch and diagnostic playback pass. Ordinary disabled behavior matches the pre-feature WRAM baseline. Round countdowns and drowning retain their separate rules. |
 
 Published handoff baseline: game/tag `8c121ca`, engine `8424dbb`,
@@ -486,3 +486,80 @@ VRAM/world/palette/scene snapshots and restore the ordinary drawing context.
 Native vs widened activation stays separate; unsupported scenes retain their
 ordinary images. S2-22 remains partially resolved with its existing reference
 fidelity caveat, and S2-12/S2-26 remain explicitly deferred by the owner.
+
+
+High-refresh qualification (H-06, 2026-11-02): game `cf2807b` reuses the
+shared presenter API instead of adding another pacing loop. Native-aspect
+read-only scene capture has separate histories/identities and never changes
+the serialized scene, guest sprite flags, loader ownership, requested width
+or CPU divisor. Fractional draws use owned VRAM, world, per-row palettes/scroll
+and sprite records. Unsupported scenes, changing sprite identities/poses and
+teleports retain the ordinary completed image. Configuration/reset/load discard
+presentation history. This remains default-off and adds one tick of visual
+latency. Regular Sonic/Tails parties of up to two slots are supported; donor
+parties, transitions, menus, special stages and split-screen retain ordinary
+completed images. No broader interpolation coverage is claimed.
+
+`high-refresh-qa` contains six matched native/32:9 runs (frozen S15 baseline,
+new rate-off, new144). Each of four baseline comparisons retains all1,600
+execution hashes/input records,64 full WRAM/VRAM/ordinary-PNG pairs, and the
+complete23,884,844-byte WAV identically. Native144 produces3,839 submissions,
+876 interpolated, with237 ticks showing distinct fractional pictures;32:9
+produces3,838/685 and277 such ticks. Both include hundreds of three-submission
+ticks, rather than rounding144 to120. These are SDL submission/owned-image
+checks, not a physical-monitor certification. Both fractional samples were
+visually inspected. A native paused save/load restores the exact picture and
+objects; fresh playback matches all1,500 executions including SAVE/LOAD;87
+eight-tick rollback checks pass. All15 focused game/shared tests pass, including
+actual native VDP sprite interpolation endpoints/midpoint and canonical-state
+isolation. Qualified executable SHA256:
+`3fbf71ebea6ca38a2d8318bd6b475a84724751571bd6872b3234d5b351937696`.
+
+Actual hidden launcher clicks found144 displayed but0 saved on normal close.
+Engine `83ebcbf` preserves shared Mods edits while importing controller bindings;
+the regression test covers rate, audio filter bypass, widescreen, diagnostics
+and the saved binding together. Actual select144/close/relaunch now passes
+(`high-refresh-qa/launcher`), with all15 tests on executable
+`87e9bed702038610a242a0dd78de4f5bfd02c3f60fc6fdac159e3c0008a64b9`.
+Tracking `beads-3vb.34`. An initial replay test stopped at its frame limit before
+reading the recording's terminal marker; the corrected higher-limit playback
+passes. That early stop is not a divergence or a passing replay result.
+
+Before release, current remote master `25291b5`/v0.9.6 was discovered to contain
+the newer qualified engine optimization work. Game merge `836da28` and engine
+merge `678989b` preserve that released base, the IRQ4 repair and presenter/API.
+This integration is prepared, not yet release-qualified. Reuse the existing
+native IPO/fresh-normal-PGO workflow and target representative runtime checks;
+do not silently replace the current release with its older engine base.
+
+S2-22 bounded original-program comparison: `vs-divider-qa/interp-ehz` and
+`interp-cnz` explicitly enable and assert `GENESIS_FORCE_INTERP=1`. The same
+REV01 ROM/menu routes execute loading and interrupts directly through the ROM
+interpreter. Both show a brief P1 transient (EHZ frames126/128, CNZ130/132);
+this also differs from the reporter's zone-specific Kega pattern. Native EHZ
+has the same39,085-pixel P1 transient two sampled frames earlier; native CNZ
+has its previously documented seam transient. This establishes a remaining
+source-scheduling/reference-fidelity difference, not exact emulation parity.
+The erroneous whole-P2 flash stays repaired. Exact Kega ROM revision, region
+and field/deinterlacing setup are unavailable; do not invent or relocate
+flicker to match those screenshots. The residual remains explicitly partial,
+separate from the two owner-deferred intermittent reports.
+
+
+Current-base integration gate (2026-11-02): engine `678989b` plus fixture-only
+compatibility repairs (committed `ec523d5`) passes all20 focused tests, including
+audio worker/original parity, native row ownership, packed/indexed pixels and
+HD-state pointer restoration. Fixtures now supply the new IRQ service stub and
+keep paired audio-output symbols separate from the frozen reference. No frozen
+oracle body was edited. The merged executable
+`b8b79330db002177ea1a3878f697510cb8a60ffb34478031008dfd1e2e5c0865`
+passes four matched native/32:9 off/144 runtime cases: all64 WRAM/VRAM/ordinary
+PNG samples and the full WAV per case match the pre-merge qualified build.
+Within each aspect, all1,600 execution/input records match at off and144.
+Native144 emits3,840 pictures,876 interpolated; wide144 emits3,839,678
+interpolated. Distinct fractional-motion counts remain237/277. Results:
+`high-refresh-qa/integration-equivalence-results.json` and
+`integration-run-results.json`. This accepts current-base integration; fresh
+normal PGO and the final package remain the next gates. The bounded focus
+review recommends stopping additional presenter/flicker experiments and moving
+directly through these delivery gates.
