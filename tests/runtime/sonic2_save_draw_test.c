@@ -82,6 +82,38 @@ int main(void)
     filled.data.slots[0].emeralds=0; s2_save_draw_line(assets,&filled,100,unpicked,320);
     filled.data.slots[0].emeralds=0x7F; s2_save_draw_line(assets,&filled,100,picked,320);
     for (unsigned e=0;e<7;++e) assert(unpicked[116+e*8]!=picked[116+e*8]);
+    /* Every member of a six-seat party remains identifiable within the card
+     * window. Composition must not touch neighbouring cards or save bytes. */
+    S2SavePortrait party[6]={{0}};
+    S2DonorFrame frames[6]; uint8_t ink[20*32]; memset(ink,1,sizeof ink);
+    uint16_t palettes[6][16]={{0}};
+    static const uint16_t colours[]={0x00E,0x0E0,0xE00,0x0EE,0xE0E,0xEE0};
+    for (unsigned p=0;p<6;++p) {
+        frames[p]=(S2DonorFrame){0,0,20,32,ink}; palettes[p][1]=colours[p];
+        party[p].image=&frames[p]; party[p].palette=palettes[p];
+    }
+    struct { uint32_t before,pixels[80*48],after; } composite;
+    composite.before=0x12345678; composite.after=0x87654321;
+    s2_save_portraits(assets,party,6,composite.pixels);
+    assert(composite.before==0x12345678 && composite.after==0x87654321);
+    for (unsigned p=0;p<6;++p) {
+        unsigned hits=0;
+        for (unsigned i=0;i<80*48;++i)
+            hits+=composite.pixels[i]==(0xFF000000u|((colours[p]&14)*255/14<<16)|
+                 (((colours[p]>>4)&14)*255/14<<8)|(((colours[p]>>8)&14)*255/14));
+        assert(hits>0);
+    }
+    memset(assets,0,sizeof *assets); memset(&filled,0,sizeof filled);
+    filled.portrait=composite.pixels; S2CampaignData progress=filled.data;
+    for (int width=320;width<=796;width+=476) for (int y=0;y<224;++y) {
+        uint32_t row[796]; s2_save_draw_line(assets,&filled,y,row,width);
+        if (y==112) {
+            int center=(width-320)/2+144;
+            assert(row[center]!=0xFF000000);
+            assert(row[center-41]==0xFF000000 && row[center+40]==0xFF000000);
+        }
+    }
+    assert(!memcmp(&progress,&filled.data,sizeof progress));
     free(assets);
     puts("PASS numbered zone cards, CLEAR/static, counters, seven emeralds and no character arrows");
     return 0;

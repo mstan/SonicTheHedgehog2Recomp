@@ -28,7 +28,7 @@ Choose **1 PLAYER** on the title screen for eight save files, **No Save**, and
 lives/continues at campaign checkpoints. Completed files use Up/Down to choose
 any of the 20 acts (including Metropolis Act 3), cycling through CLEAR and
 Emerald Hill through Death Egg, and
-keep newly earned Emeralds. Portraits always show Sonic & Tails; actual
+keep newly earned Emeralds. Portraits show the current Options roster; actual
 characters come from Options. Left/Right selects a card, A/C/Start opens it,
 and B returns. Delete uses Robotnik's Yes/No sign: Left confirms, Right or B
 cancels; A/C/Start also confirms.

@@ -34,7 +34,7 @@ explicit matching engine override, Release, trace/reverse-debug off.
   two-player VS keep their existing routes. B returns to title.
 - Left/right selects No Save, one of eight cards, or Delete. Delete enters
   erase mode; choose a card and confirm; B cancels. No Save never writes a slot.
-- Every card always depicts Sonic AND Tails. Characters come only from current
+- Every card depicts the current Options roster. Characters come only from current
   Options. Up/down cannot change characters.
 - Owner selected persistence of zone/act, seven Chaos Emerald identities, and
   completion only. Loading starts with native fresh lives (3), zero continues,

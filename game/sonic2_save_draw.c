@@ -51,6 +51,57 @@ static void sprite(const S2SaveAssets *a,const S2SaveView *v,unsigned frame,
         }
     }
 }
+void s2_save_portraits(const S2SaveAssets *a,const S2SavePortrait *portraits,
+                      unsigned count,uint32_t *out)
+{
+    memset(out,0,S2_SAVE_PORTRAIT_WIDTH*S2_SAVE_PORTRAIT_HEIGHT*sizeof *out);
+    if (!a || !portraits || !count || count>6) return;
+    unsigned cols=count>3?3:count,rows=(count+cols-1)/cols;
+    for (unsigned p=0;p<count;++p) {
+        uint32_t native[64*64]={0};
+        const S2DonorFrame *f=portraits[p].image;
+        unsigned w,h; int sx=0,sy=0;
+        if (f) {
+            if (!f->pixels || !f->width || !f->height || !portraits[p].palette) continue;
+            w=f->width; h=f->height;
+        } else {
+            S2SaveView v={0}; v.frame=1;
+            for (int y=0;y<64;++y) sprite(a,&v,portraits[p].menu_frame,32,56,y,native+y*64,64);
+            int right=0,bottom=0; sx=sy=64;
+            for (int y=0;y<64;++y) for (int x=0;x<64;++x) if (native[y*64+x]) {
+                if (x<sx) sx=x; if (y<sy) sy=y;
+                if (x+1>right) right=x+1; if (y+1>bottom) bottom=y+1;
+            }
+            if (sx==64) continue;
+            w=(unsigned)(right-sx); h=(unsigned)(bottom-sy);
+        }
+        unsigned cellw=80/cols,cellh=48/rows,ow=w,oh=h;
+        if (ow>cellw) { ow=cellw; oh=h*ow/w; }
+        if (oh>cellh) { oh=cellh; ow=w*oh/h; }
+        if (!ow || !oh) continue;
+        unsigned x0=(p%cols)*cellw+(cellw-ow)/2,y0=(p/cols)*cellh+(cellh-oh)/2;
+        for (unsigned y=0;y<oh;++y) for (unsigned x=0;x<ow;++x) {
+            unsigned ix=x*w/ow,iy=y*h/oh;
+            uint32_t c;
+            if (f) {
+                unsigned ink=f->pixels[iy*w+ix];
+                c=ink?genesis_dac_cram_to_argb(portraits[p].palette[ink],GENESIS_DAC_NORMAL):0;
+            } else c=native[(sy+iy)*64+sx+ix];
+            if (c) out[(y0+y)*80+x0+x]=c;
+        }
+    }
+}
+static void portrait(const S2SaveAssets *a,const S2SaveView *v,int x,int y,
+                     int line,uint32_t *out,int width)
+{
+    if (!v->portrait) { sprite(a,v,4,x,y,line,out,width); return; }
+    int row=line-y+48;
+    if (row<0 || row>=48) return;
+    for (int px=0;px<80;++px) {
+        int dx=x-40+px; uint32_t c=v->portrait[row*80+px];
+        if (c && dx>=0 && dx<width) out[dx]=c;
+    }
+}
 static unsigned glyph(char c)
 {
     if (c>='A' && c<='Z') return 30+c-'A';
@@ -130,14 +181,14 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
         }
     }
     int base=left-v->scroll;
-    sprite(a,v,4,base+48,72,line,out,width); /* fixed Sonic AND Tails, even No Save */
+    portrait(a,v,base+48,72,line,out,width);
     /* sub_D9F4 destinations C06/CEC use a 128-tile (256-byte) stride:
      * row 12 = y96, immediately below the small No Save/Delete cards. */
     centered(a,base+48,96,"NO SAVE",line,out,width);
     for (unsigned i=0;i<S2_SAVE_SLOTS;++i) {
         int x=base+144+104*(int)i;
         const S2CampaignSlot *slot=&v->data.slots[i];
-        sprite(a,v,4,x,136,line,out,width);
+        portrait(a,v,x,136,line,out,width);
         for (unsigned e=0;e<7;++e) if (slot->emeralds&(1u<<e)) sprite(a,v,16+e,x,136,line,out,width);
         char label[20];
         if (slot->state && slot->stage<S2_CAMPAIGN_STAGES) {
