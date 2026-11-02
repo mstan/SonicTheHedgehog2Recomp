@@ -79,7 +79,7 @@ Development candidate SHA256:
 BATCHED renderer, PGO off for this qualification. All 22 focused tests pass.
 Current-build Tails/Knuckles save/load restores the exact picture and object
 RAM; fresh diagnostic playback matches all 1,500 executions; 87 depth-8
-rollback checks pass. This is a qualified source fix, not yet a release hash.
+rollback checks pass. This identifies the development qualification; the final release is recorded below.
 
 ## Explicit remaining limits
 
@@ -118,3 +118,18 @@ six captures matched uncapped capture byte-for-byte; no FPS gain is claimed.
 The first candidate isolated the rings but omitted routing the new native
 hook through sonic2_spec.c; it was rejected. Its retained captures are under
 `mixed-effects-matrix-candidate-qa`, not accepted release evidence.
+
+
+## Final release qualification
+
+[Sonic 2 v0.9.8](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.8)
+delivers S2-28 from tag `cd218d1` with fresh BATCHED/IPO/PGO. Final executable
+SHA256 `bbea899235008b6495e1f25b6d78846e2e27c1be8fdd32e3e579846f1aa23dd1`.
+The six affected cells, two controls and 16 isolated-owner observations repeat
+on this exact executable. Final state picture/object restore, 1,500-execution
+playback and 87 rollback checks pass. Extracted-package launcher and bundled
+helper replay also pass; the runtime confirms BATCHED. Final evidence is in
+`mixed-effects-release-098-qa`, `mixed-history-release-098-qa` and
+`package-check-profile-098` beneath the same task root. The 54-cell audit's
+unaffected baseline observations are reused; no second exhaustive matrix or
+full-campaign claim is made. All explicit remaining limits above still apply.

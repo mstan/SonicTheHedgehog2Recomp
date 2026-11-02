@@ -49,7 +49,7 @@ the reporter used the latest version.
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied. Existing four-profile normal-aspect/party samples did not reproduce unstable guest cadence; no optimization is claimed. Reopen with new reproducing evidence and coordinate the owner's host-native overhaul. Not counted resolved. |
 
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for available donors**, 45 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. Amy's 12 cells remain unverified. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
-| S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Fixed and runtime-qualified; patch release pending.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
+| S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Open, source treatment unverified.** Current source and captured SAT/pixels use native S2 star art/palette for Shadow; this is separate from Knuckles colour leakage. Megamix extended effects were outside the accepted character port. No invented purple palette is substituted. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -678,3 +678,46 @@ rendering/ownership only. This explicitly bypasses obtaining power-ups and
 must not be reported as natural acquisition. Real Knuckles pickup coverage
 from S2-09/11 is retained separately. Raw evidence:
 `G:/Temp/Codex/sonic2-owner-feedback-20261101/mixed-effects-matrix-qa`.
+
+
+## Mixed-party patch delivered: v0.9.8 (2026-11-02)
+
+Published [v0.9.8](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.8)
+from game/tag `cd218d1`, retaining engine `ec523d5` and UI `761f76e`.
+S2-28 is delivered. S2-27's available-donor audit is complete with its explicit
+Amy/overlapping-visibility limits; S2-29 remains open. Original intake stays
+23/26 resolved, S2-12/26 owner-deferred and S2-22 hardware-unverified. Imported
+H-03/04 likewise remain deferred. These limits are not counted as fixes.
+
+Final BATCHED/IPO/fresh-PGO executable SHA256:
+`bbea899235008b6495e1f25b6d78846e2e27c1be8fdd32e3e579846f1aa23dd1`.
+Fresh normal PGO completed 1,700 frames in 131.219 seconds, merged before USE;
+97.5% of functions have profile data, zero invalid/new callsites. The PGD hash
+is `367b68d3cdc8bf9b8b7080c5832bf181d6f9e82ab5042c2a191fe8f3b07c2bfd`.
+This is not a performance-gain claim. No source code changed after qualification.
+
+The exact final executable repeats all six history cases, two reverse/control
+cases and sixteen isolated-owner AI art observations. Every ring has 64 entries
+of its sole owner, all star centers match their parent, ordinary sampled motion
+is unchanged. Two combined AI nearest-X colour checks remain unsuitable when
+actors overlap; corresponding isolated-owner observations pass. Save/load
+restores the exact picture and object RAM, playback matches 1,500 executions,
+and 87 depth-8 rollback checks pass. All 22 focused source tests passed.
+
+Current ZIP: `SonicTheHedgehog2Recomp-windows-x64-v0.9.8.zip`, 8,018,146 bytes;
+SHA256 `f1280dbe260cc41181201c80ff7b65d36a022303813d49d2907bc39796b08fe5`.
+GitHub asset digest matches and latest release is non-draft v0.9.8. Actual ZIP
+allowlist/dependency closure, extracted hidden launcher on a minimal system
+PATH and the bundled helper's complete 1,500-execution Tails/Knuckles replay
+pass. Packaged runtime reports BATCHED. ROM/donor art, settings/saves and
+forbidden loading mods are absent. Owner native saves/settings are untouched.
+
+Evidence: `mixed-effects-release-098-qa/{matrix,history}-results.json`,
+`mixed-history-release-098-qa/state-results.json`,
+`package-check-profile-098/package-results.json`, `package-replay-098.log`,
+`package-replay-098.runtime.log`, and `pgo-098-training/results.json` under the
+existing task root. Retain bounded raw baseline/candidate/release evidence and
+build/profile data for open reports. Disposable extracted/reproduction copies
+are removed after preserving logs; the delivery folder retains only v0.9.8's
+archive/checksum. The historical v0.9.7 section above describes that superseded
+release; its frozen baseline executable is retained outside delivery folders.
