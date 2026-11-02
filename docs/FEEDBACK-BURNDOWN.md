@@ -42,7 +42,7 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | **Validated fix**, not released. Live card-plane geometry fills the viewport; the serrated red edge follows its new boundary and text keeps its native glyph size/settled position. Real Sonic 16:9/32:9 and green Knuckles 32:9 intros pass; native images remain identical. Separate from S2-05. |
 | S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | **Validated fix**, not released. Card fills use the displayed plane cells without wrapping; revealed terrain/donor actors share the final widescreen origin. Text travel scales around its settled anchor so it exits before native deletion. Complete 320-frame card routes pass, with exact post-exit images and unchanged paired RAM/VRAM. |
 | S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | **Validated fix**, not released. Eight output rows216..223 (four displayed TV rows) form an opaque black gap. P1 HUD ends215; P2 viewport begins224 and its HUD at232 is preserved. The original larger P1 sprite mask is replaced by H-int and is not the permanent divider. EHZ/CNZ complete title/game routes pass. No reference-emulator flicker was invented. |
-| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | Open. Validate CNZ and EHZ independently, including field ordering and the actual source-triggered event. |
+| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | **Partial validated repair; reference comparison remains open.** Fixed dropped masked IRQ4 requests in shared engine024db9b: the erroneous full-P2 flash is gone in both zones. Final native source transient appears on EHZ P1 and at the CNZ seam, differing from the reported emulator's zone pattern. No artificial flicker relocation is added. Both-zone rollback, current save/load and diagnostic replay pass; see qualification below. |
 | S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | **Validated current-HUD resolution**, not a newly repaired glyph claim. The unintended full-width divider strip is covered by S2-21/24. Current baseline and candidate both match all476 original opaque P1 life/name/count pixels in each of six EHZ and six CNZ samples; no clipping was reproduced. All pixels above216 and from224 onward remain identical. Original small flicker artifacts are not reintroduced. |
 | S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Validated fix**, not released. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Validated fixes and general audit**, not released. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
@@ -394,3 +394,41 @@ pin or counted as a validated H-06 result. The engine remains at d08cc6b during
 matched S2-04 qualification.
 
 Owner clarification (2026-11-02): "if recordings don't reproduce it (or if I didn't provide any), defer" applies to S2-12 and S2-26. No further sampling or speculative changes are queued for those two reports. The original26 now contain22 validated resolutions,2 explicit deferrals and2 active reports (S2-15/S2-22); H-06 remains a separately imported queued enhancement.
+
+
+Masked H-int repair (partial S2-22, 2026-11-02): engine `024db9b` on
+`fix/sonic2-competition-hint-20261102`, tracked separately as `beads-3vb.33`,
+is now adopted by the game dependency pin. It retains masked IRQ4 until the
+CPU accepts it, coalesces repeated requests and preserves V-int priority/IE1.
+The pending latch participates in the existing file, rollback and state-hash
+ownership; the older raw own-backend file container is rejected as GROWNS2
+rather than misread under the new GROWNS3 layout. No donor or guest data changes.
+The pending/acknowledgement/enable behavior was cross-checked against the
+[Genesis Plus GX VDP implementation](https://raw.githubusercontent.com/ekeeke/Genesis-Plus-GX/master/core/vdp_ctrl.c);
+this repair is independently authored and copies no code from that source.
+
+`vs-divider-qa/trace-{ehz,cnz}` localizes the bug. During level-loading interrupt
+masking, EHZ's split-plane switch happens at output row432 instead of216; the
+sampled CNZ frame loses the switch entirely. The accepted candidate services the
+pending event as soon as permitted. The EHZ wrong-P2 change drops36,525?0 pixels;
+CNZ drops41,686?229 pixels restricted to115x2 rows immediately below the divider.
+The source-driven residual transient is on EHZ P1 and at the CNZ seam. This
+**does not establish the reporter's opposite zone-specific Kega reference**;
+S2-22 therefore remains partially resolved, not counted as another completed
+report. The small independent focus check explicitly preserves that caveat.
+
+`flash-result.json` and `final-results.json` in the same evidence directory
+retain actual observations. Final native EHZ/CNZ real-menu routes pass71/72
+separate eight-tick rollback checks with zero divergences. A separate CNZ
+file-state run restores an identical paused picture; fresh diagnostic playback
+including SAVE/LOAD matches all1,271 recorded executions. All11 focused tests
+pass. Qualified executable SHA256
+`99824ef4ec2c9012f876ae7d086baec133c82369495df5b6b232fff0ad375c91`.
+Its compiled engine label is d08cc6b-dirty; the exact qualified source changes
+are committed as024db9b. The temporary raster trace was removed before this
+final build. An earlier fixture mixed external file operations into the
+rollback-only probe and was rejected; another copied profile disabled replay
+recording and was corrected. Neither is a passing validation claim.
+
+S2-15 now proceeds from this stable corrected dependency. H-06 presenter work
+remains separate and unadopted; no more artificial flash adjustments are queued.
