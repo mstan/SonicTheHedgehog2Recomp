@@ -567,54 +567,66 @@ directly through these delivery gates.
 
 ## Delivered release: v0.9.7 (2026-11-02)
 
-Published [Sonic the Hedgehog2 v0.9.7](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.7),
+Published [Sonic the Hedgehog 2 v0.9.7](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.7),
 normal/latest Windows x64 release, from game `f4cc96f`, engine `ec523d5`, UI
 `761f76e`. All currently addressable fixes and both imported enhancements are
-delivered. Counts remain23/26 original reports resolved, two owner-deferred
+delivered. Counts remain **23/26 original reports resolved**, two owner-deferred
 (S2-12/26), and one partially repaired reference-fidelity difference (S2-22).
 No additional presenter or artificial-flicker work is queued for this release.
-The issue remains open to retain these three residual reports; they are not
-counted as fixes. Reopen implementation with new reproducing/reference evidence.
+The Beads issue remains open for these three residual reports; none is counted
+as fixed. Resume implementation with new reproducing/reference evidence.
 
-Fresh normal PGO consumes the completed1,700-frame Sonic/Tails training run.
-The optional instrumented competition run exceeded its180-second tool limit
-and was excluded; it is not a completed training or correctness result. The
-ordinary integrated competition route passes all10 exact WRAM/VRAM/PNG pairs.
-The valid8,381,816-byte PGC merges with zero overflow drops. Normal USE reports
-zero invalid/new callsites and profile data for12,692/13,014 functions (97.5%).
-The100% instruction figure refers only to training-observed dynamic instructions,
-not unseen gameplay. PG0188 searches for additional PGCs beside the immutable
-SHA-named owned PGD; the actual training data was already explicitly merged.
-PGD SHA256 `4ce8dd7df07a144f1d7dc685ded87442f1b803bacc7a213044fb0249614316e4`.
+The final configuration explicitly retains the released engine defaults:
+**BATCHED** VDP, faithful FM batching, fast rollback digest, qualified workers,
+native IPO and freshly trained normal PGO. An inherited SCALAR cache setting
+was discovered after the initial publication. That preliminary archive was
+returned to draft and replaced only after the corrected build passed the
+runtime/package gates. Its old archive/executable hashes (`1efa2818...` /
+`feb98f4a...`) are **superseded**, not current delivery identities. The source
+tag was not changed. The corrected packaged runtime itself reports BATCHED.
+
+Fresh normal PGO uses one completed 1,700-frame Sonic/Tails training run
+(128.187 seconds under instrumentation), with zero overflow drops. The earlier
+optional SCALAR competition training exceeded its 180-second tool limit and
+was excluded. It is not a completed training or correctness result. Normal USE
+reports zero invalid/new callsites and profile data for 12,692/13,014 functions
+(97.5%). The 100% instruction figure refers only to training-observed dynamic
+instructions, not unseen gameplay. PG0188 searches for additional PGCs beside
+the immutable SHA-named owned PGD; actual training data was explicitly merged.
+Final PGD SHA256:
+`a39410ae4fecc863457b01ec757c802b16ea576e73ff35611e4983b0c4663977`.
 No new FPS or universal performance gain is claimed from this refresh.
 
-Final uninstrumented executable SHA256:
-`feb98f4af8d9329ec45489e753240bf4b28da13e888fd9dbd32e8ae3f2e81ef7`.
-At144Hz, native and32:9 retain all128 paired full WRAM/VRAM/ordinary-PNG samples,
-both full WAVs, and all3,200 execution/input records exactly against the accepted
-pre-PGO integration. Fractional motion remains visible; native emits3,840
-pictures/876 interpolated and wide3,837/684, with237/277 distinct-motion ticks.
-Final save/load restores the exact picture/objects, fresh playback matches all
-1,500 executions including SAVE/LOAD, and87 eight-tick rollback checks pass.
-Both competition views with rate144 selected retain all10 accepted S2-15
-WRAM/VRAM/PNG observations while using ordinary split-screen presentation.
-All20 focused tests were accepted on this source integration before profiling.
+**Final executable SHA256:**
+`f6c69c38b443373deb9208e216d4f1a6a32d76bfe23e24b116b86717bf2b965d`.
+All **22 focused tests** pass, including both renderer variants' sprite tests.
+Native and 32:9 presentation at 144 Hz retain all 128 paired full WRAM/VRAM/
+ordinary-PNG samples, both complete WAVs, and all 3,200 execution/input records
+exactly against the accepted integration control. Each emits 3,840 submissions;
+native/wide include 876/685 interpolated submissions and 237/277 ticks with
+distinct fractional motion. These are submission/image checks, not physical
+monitor certification. Final save/load restores the exact picture/objects,
+fresh playback matches all 1,500 executions including SAVE/LOAD, and 87
+eight-tick rollback checks pass. Both competition views with rate144 selected
+retain all ten accepted S2-15 WRAM/VRAM/PNG observations while using ordinary
+split-screen presentation.
 
-The actual8,020,412-byte ZIP has SHA256
-`1efa281813899cd18fa1c221d72241aa234facb7e4b49d5e47d0eabd336a7190`.
+**Current ZIP:** `SonicTheHedgehog2Recomp-windows-x64-v0.9.7.zip`, 8,018,542 bytes.
+**SHA256:** `8da9795e0bf78811ad35d7cbbb68d0fb7c1727c280ab375c14b30fe64462a8aa`.
 GitHub's uploaded asset digest matches. Archive allowlist/dependency closure,
 extracted launcher144 select/close/relaunch with a minimal system PATH, and the
-bundled replay helper against all1,500 executions pass. It includes app-local
-SDL/MSVC DLLs, assets, notices and feedback tooling; no ROM/donor artwork,
-settings/saves, profiler data, development outputs or forbidden loading mods.
-The sidecar verification parser initially read PowerShell's UTF16 redirection
-as UTF8; the original UTF8 runtime log confirms the successful helper result.
+bundled replay helper against all 1,500 executions pass. The helper's runtime
+also confirms BATCHED. The ZIP contains app-local SDL/MSVC DLLs, assets,
+notices and feedback tooling; no ROM/donor artwork, settings/saves, profiler
+data, development outputs or forbidden loading mods. Native owner saves and
+settings were not changed.
 
 Evidence stays under `G:/Temp/Codex/sonic2-owner-feedback-20261101`, especially
 `high-refresh-qa/release-*`, `high-refresh-release-qa`,
-`competition-wide-qa/release-results.json`, `pgo-training/results.json`,
-`package-check-profile-097/package-results.json`, and `package-replay-097.log`.
-The source, final archive, profile inputs and bounded raw evidence are retained
-for the residual reports; generated build scratch can be removed after that
-follow-up. Disposable package extraction/reproduction copies are cleaned after
-retaining their verification logs. Native owner saves/settings were not changed.
+`competition-wide-qa/release-results.json`, `pgo-batched-training/results.json`,
+`package-check-profile-097/package-results.json`, and
+`package-batched-replay-097.runtime.log`. The source, final archive, profile
+inputs, relevant frozen controls and bounded raw evidence are retained for the
+residual reports. Generated build scratch can be removed after that follow-up.
+Disposable package extraction/reproduction copies and the superseded scalar
+ZIP are cleaned after retaining their verification logs and identities.
