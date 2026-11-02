@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 17 validated fixes, 9 remaining**. One save-menu
+Current intake: **26 reported defect/action items; 18 validated fixes, 8 remaining**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -33,7 +33,7 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-10 | Knuckles uses a walking pose after a vertical spring (early EHZ1 example). Use the original airborne spring flip animation. | **Validated fix**, not released. Real EHZ1 subtype-03 spring at (2220,568): baseline walking frames 1..7 become source tumble frames $32..$3A. All 24 matched samples have identical position, velocity, status and tumble angle. The fixture positions the player but never sets the spring result. Focused both-facing/wrap tests pass; zero dispatch misses. |
 | S2-11 | Knuckles invincibility monitor/sparkles use Sonic 2 art. Use the original Knuckles-in-Sonic-2 grey monitor/sparkles. | **Validated fix**, not released. Original grey invincibility monitor/stars follow the actual Knuckles parent; Tails stays blue. Native/wide/mixed P2 and both competition viewports pass original-pixel/cold-state checks. Real party monitor landing and stale P2 star-history defects found during qualification are repaired. |
 | S2-12 | Widescreen Knuckles sometimes jitters in midair while gliding. Reproduce and remove jitter without changing glide physics. | Open. |
-| S2-13 | Sega logo animation is not extended for widescreen. Extend its intended scene consistently through the margins. | Open. |
+| S2-13 | Sega logo animation is not extended for widescreen. Extend its intended scene consistently through the margins. | **Validated fix**, not released. Sonic and the moving streak span the selected viewport; the logo/TM keep their native pixel size and centered position. Original background edge pixels extend the logo stripe band through its palette animation. Native/16:9/32:9 real boot routes pass, with unchanged RAM/VRAM and native images. |
 | S2-14 | Options background is not extended for widescreen. Fill the extended area with the correct background across navigation/fades. | **Validated fix**, not released. Repeat the populated 40-column background instead of the unused portion of the 64-column plane. Real entry/navigation/exit routes at 320/398/796 pixels: all 426 paired RAM/VRAM samples identical; all 142 native images identical; only Options widescreen images change. 43,200/106,880 checked margin pixels match the native pattern. |
 | S2-15 | Native 2P competition is not extended for widescreen. Extend both viewports, camera/object coverage and HUD appropriately while preserving competition mechanics. | Open. |
 | S2-16 | Save cards always show Sonic & Tails. Update portraits from the characters currently chosen in Options; keep campaign saves roster-independent. | **Validated fix**, not released. Current Options roster supplies original Sonic/Tails/Knuckles solo portraits and verified Amy/Shadow/Mighty gameplay art. Nine runtime cases cover five distinct available characters, native/wide six-seat parties, the original pair and empty seats; campaign bytes stay unchanged. Focused tests cover Amy bank selection, all six identities, bounded layout and unchanged progress. No separate card selector was added. |
@@ -260,3 +260,15 @@ Competition source/ROM verification located DrawSprite2P piece DBFs at $16DEE/$1
   and donor origin removes the jump at Level_started. Text motion now reaches
   the actual extended edge before source cleanup. Green Knuckles remains hidden
   by the displayed card and is revealed into the same wide world.
+
+- S2-13 accepted on executable SHA256
+  `8babdb60d007a9f2d7090ac83d0df9af1b74227fa4922ea2975d4e04486be405`.
+  `wide-scenes-qa/sega-result.json` holds211 samples per aspect, including
+  per-frame observations through Sonic's first crossing and return. All633
+  paired RAM/VRAM samples match; all211 native images are exact. Only47 Sega
+  images per wide route change. Options/card/gameplay and every final-logo
+  image from Sega-frame208 onward remain exact. Sonic's red-shoe bounds reach
+  both added margins; 5,460/33,320 stripe-band margin pixels match the native
+  edge pattern. Ten focused production tests pass. The first candidate exposed
+  the remaining logo-band width; the final change extends those edge pixels
+  while preserving the actual logo and trademark.
