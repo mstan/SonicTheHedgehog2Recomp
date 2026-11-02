@@ -15,6 +15,9 @@
 #include "video/genesis_vdp.h"
 #include "video/genesis_dac.h"
 #include "video/genesis_tile_row.h"
+#if OWN_BACKEND
+#include "video/genesis_machine.h"
+#endif
 #include "cmd_server.h"
 #include <limits.h>
 #include <stdio.h>
@@ -446,6 +449,35 @@ static int knuckles_item_tile(unsigned tile)
 {
     return (tile>=0x4BE && tile<0x500) || (tile>=0x6AC && tile<0x6B4);
 }
+#if OWN_BACKEND
+static int shadow_sprite_tagged(const uint8_t *data,unsigned base)
+{
+    unsigned slot=0;
+    for (unsigned n=0;n<80;++n) {
+        unsigned at=(base+slot*8)&65535u;
+        if ((data[(at+2)&65535u]&0xC0)==0xC0) return 1;
+        slot=data[(at+3)&65535u]&127u;
+        if (!slot) break;
+    }
+    return 0;
+}
+#endif
+static int shadow_palette_needed(void)
+{
+#if OWN_BACKEND
+    for (unsigned o=0xB000;o<0xD400;o+=64)
+        if (g_ram[o]==0x35 && s2_runtime_shadow_star(o)) return 1;
+    if (s_display) for (unsigned n=0;n<s_display->count;++n)
+        if ((s_display->sprites[n].size&0xC0)==0xC0) return 1;
+    /* Retain the palette for both queued and currently displayed pieces:
+     * an interrupt can precede completion/upload of the next native SAT. */
+    return shadow_sprite_tagged(g_ram,0xF800) ||
+        (competition() && shadow_sprite_tagged(g_ram,0xDD00)) ||
+        shadow_sprite_tagged(g_machine.vdp.vram,(g_machine.vdp.reg[5]&127u)<<9);
+#else
+    return 1; /* Legacy backend keeps the always-available presentation path. */
+#endif
+}
 void s2_video_prepare_knuckles_items(void)
 {
     static const S2KnucklesArt *cached;
@@ -471,7 +503,7 @@ void s2_video_prepare_knuckles_items(void)
         if (shadow_ready) for (unsigned t=0x4DE;t<0x500;++t)
             shadow_lines[t]=GVDP_EXT_SPRITE_FORCE|1;
     }
-    if (!shadow || !selected || !shadow_ready) {
+    if (!shadow || !selected || !shadow_ready || !shadow_palette_needed()) {
         gvdp_set_sprite_patterns_bank(1,NULL,0,NULL);
         gvdp_set_ext_tiles(NULL);return;
     }

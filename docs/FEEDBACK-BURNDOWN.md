@@ -51,6 +51,8 @@ the reporter used the latest version.
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Source-backed palette restoration validated; v0.9.9 pending.** Shadow-owned stars use his verified normal/water/Super palette while retaining S2 art, animation, position history and expiry. A separate private sprite bank leaves Knuckles, other actors and world monitors unchanged. Native/wide colour and dry/wet fade checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
+| S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Implemented; final packaged validation pending.** GameSpec.video_default uses the shared pre-load default setter; normal settings load still wins for saved choices. Verify the fresh packaged launcher, actual adaptive gameplay/resizes and preserved disabled/fixed-ratio profiles. |
+
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
 
@@ -779,3 +781,23 @@ An uncapped recording hit the bounded disk writer queue and was rejected;
 qualification returned to the existing normal-speed recording path. Evidence:
 `shadow-stars-qa`, `shadow-stars-fixed-qa` and `shadow-stars-fixed-state-qa` in
 the existing task root. Final replay/rollback and release/package gates follow.
+
+
+The first optimized Shadow-palette build (`dc34c073...`, source `57e3ce8`) was
+rejected by matched local timing: Shadow/Knuckles without active stars measured
+1,422..1,477 CPU fps versus baseline 1,745..1,829 (median ratio .810). Native
+Sonic/Tails had overlapping noisy ranges (median ratio .951), not a proven
+regression or win. The always-active private line unnecessarily paid palette
+conversion costs in ordinary play. The corrected derived gate retains it only
+for a live Shadow effect, queued P1/P2 pieces, the actual displayed native SAT,
+or a retained wide scene. No guessed expiry delay or simulation state is added.
+Lifecycle tests cover activation, both queues, native/wide displayed retention
+and retirement; all 22 focused tests pass. The legacy backend keeps its working
+always-available fallback. Retest timing on the final matched PGO build.
+
+The gated native/wide colour fixtures retain source-matching colours while a
+shortened native timer expires, then observe cleared flags/timer, deletion of
+all four Shadow objects and retirement of displayed bank-1 pieces. This tests
+native expiry, not natural power-up acquisition or its full 20-second duration.
+The owner subsequently requires widescreen defaults for future releases:
+S2-30 uses the existing GameSpec default, with no saved-preference rewrite.

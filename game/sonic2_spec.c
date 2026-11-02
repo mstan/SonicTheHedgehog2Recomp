@@ -278,6 +278,7 @@ static size_t feedback_context(void *data,size_t size,int load)
 const GameSpec g_game_spec = {
     .feedback_context       = feedback_context,
     .video                  = &sonic2_video,
+    .video_default          = "fit",
     .instruction_hook       = s2_instruction_hook,
     .logical_players        = S2_MAX_PLAYERS,
     .load_settings          = s2_options_load,
