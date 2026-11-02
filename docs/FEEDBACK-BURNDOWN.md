@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 audits mixed pairs, S2-28 repairs a newly confirmed shared-history defect, and S2-29 records the unported Shadow sparkle treatment. One save-menu
+Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 audits mixed pairs, S2-28 repairs a newly confirmed shared-history defect, and S2-29 records the reported Shadow sparkle treatment. One save-menu
 question is answered below. Open reports require checking against the current source/build; do not assume
 the reporter used the latest version.
 
@@ -48,9 +48,9 @@ the reporter used the latest version.
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Released in v0.9.7; general audit complete**. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied. Existing four-profile normal-aspect/party samples did not reproduce unstable guest cadence; no optimization is claimed. Reopen with new reproducing evidence and coordinate the owner's host-native overhaul. Not counted resolved. |
 
-| S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for available donors**, 45 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. Amy's 12 cells remain unverified. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
+| S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
-| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Open, source treatment unverified.** Current source and captured SAT/pixels use native S2 star art/palette for Shadow; this is separate from Knuckles colour leakage. Megamix extended effects were outside the accepted character port. No invented purple palette is substituted. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
+| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Open, desired colour reference needs clarification.** Current port uses native S2 stars. Exact Megamix v3 source trace and decoded frames establish grey/white normal-form stars (indices2/3/5/6 at palette $2C80), not a purple reference. Matching verified donor treatment versus an unidentified purple reference are distinct choices; clarification is pending. No invented purple palette is substituted. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
 
@@ -669,8 +669,8 @@ The bounded matrix covers 14 eligible ordered pairs involving Knuckles/Shadow
 among Sonic, Tails, Knuckles, Shadow and Mighty, plus a Sonic/Tails control,
 across VS/co-op/AI (45 native-aspect cells). Wide coverage samples both
 Knuckles/Shadow directions and the control in all three modes (9 cells).
-Four Amy-related ordered pairs across three modes are unverified without a
-verified Amy donor. P1/P2 cannot select duplicate identities by design.
+Four Amy-related ordered pairs across three modes were initially unverified;
+the later donor-location follow-up below closes all twelve cells. P1/P2 cannot select duplicate identities by design.
 
 Gameplay/input checks precede the graphics fixture. The latter freezes actor
 movement, seeds source shield/star objects and parent pointers, and checks
@@ -721,3 +721,23 @@ build/profile data for open reports. Disposable extracted/reproduction copies
 are removed after preserving logs; the delivery folder retains only v0.9.8's
 archive/checksum. The historical v0.9.7 section above describes that superseded
 release; its frozen baseline executable is retained outside delivery folders.
+
+
+## Further addressable work: Amy coverage and Shadow source (2026-11-02)
+
+The owner asked whether more work was possible. The earlier missing-Amy-donor
+conclusion missed an existing private playtest location. Its Amy 1.7.1 donor
+matches the exact required SHA256; no ROM search/download or source change was
+needed. All twelve Amy/Knuckles and Amy/Shadow mode/role cases now pass on the
+released v0.9.8 executable. S2-27 therefore covers all six available identities:
+57 native cells plus the existing nine wide cells, with the original graphics-
+fixture/occlusion limits still explicit. This is completed coverage, not a new
+product fix or release. See the updated matrix for evidence paths.
+
+S2-29 is no longer an uninvestigated source gap. Exact donor instruction/data
+bindings and decoded normal frames establish grey/white Megamix stars. The
+reported purple target is not established by those bytes. A bounded source
+preview is retained under `shadow-stars-source-check`; a colour-target
+clarification is pending. No runtime recolour was made from an assumption.
+Hardware-specific field quirks and the owner's unreproduced-report deferrals
+still need new evidence; those limitations do not prevent the work above.

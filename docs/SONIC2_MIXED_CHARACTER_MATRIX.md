@@ -1,7 +1,8 @@
 # Sonic 2 mixed-character audit ? 2026-11-02
 
-The 54 requested available-donor routes were exercised: 45 native-aspect cells
-and 9 wide spot checks. One actual product defect was found and repaired:
+The audit now exercises 66 routes: 57 native-aspect cells and 9 wide spot
+checks. Twelve Amy cases were added after locating the verified donor in an
+earlier private playtest. One actual product defect was found and repaired:
 when Tails leads, both players wrote the P2 history ring and native stars also
 selected that ring for P1. This is S2-28 in the feedback burndown.
 
@@ -36,6 +37,10 @@ acceptance of the requested purple treatment.
 | Mighty | Knuckles | P | P | I |
 | Mighty | Shadow | P | P | I |
 | Sonic | Tails (control) | P | P | P |
+| Amy | Knuckles | P | P | P |
+| Knuckles | Amy | P | P | P |
+| Amy | Shadow | P | P | P |
+| Shadow | Amy | P | P | P |
 
 ## Wide spot checks (32:9)
 
@@ -83,12 +88,12 @@ rollback checks pass. This identifies the development qualification; the final r
 
 ## Explicit remaining limits
 
-- Amy/Knuckles and Amy/Shadow, both orders in all three modes: **12 unverified
-  cells** without a verified Amy donor. Duplicate P1/P2 identities are not
-  selectable and are N/A.
-- Purple Shadow sparkles: current port uses native S2 stars; original effect
-  palette/art treatment remains unverified (S2-29). No cross-character global
-  palette rewrite or guessed purple recolour was introduced.
+- Duplicate P1/P2 identities are not selectable and are N/A. Amy's previous
+  12-cell gap is closed by the follow-up below.
+- Purple Shadow sparkles: current port uses native S2 stars. Static inspection
+  of the exact Megamix v3 donor establishes grey/white normal-form stars,
+  rather than a purple treatment. The desired reference remains a colour-policy
+  question (S2-29); no guessed purple recolour was introduced.
 - Reporter intends to clarify mixed monitor/effect policy later. Current world
   icons use P1's theme; attached shields/stars use their actual parent.
 - Exact title-card field flicker needs identified Sonic 2 REV01 on NTSC-U North
@@ -133,3 +138,32 @@ helper replay also pass; the runtime confirms BATCHED. Final evidence is in
 `package-check-profile-098` beneath the same task root. The 54-cell audit's
 unaffected baseline observations are reused; no second exhaustive matrix or
 full-campaign claim is made. All explicit remaining limits above still apply.
+
+
+## Additional work completed after the owner asked whether more was possible
+
+The prior missing-Amy-donor conclusion was incomplete. The existing private
+`F:/Projects/segagenesisrecomp/SonicTheHedgehog2Recomp/build-megamix-shadow/playtest-shadow-six/assets/characters/amy-1.7.1.bin`
+exists and matches required SHA256
+`9c028944730128f6b9999fc74babf69694b0edab50e3f42cc6b60a185d0b1457`.
+It was reused read-only, without copying or distributing donor art. All twelve
+Amy/Knuckles and Amy/Shadow ordered mode cells pass current input, HUD,
+separator and attached-effect parent/tag/source-pixel checks on the exact
+released v0.9.8 executable. Resource sidecars explicitly verify enabled Amy.
+Evidence: `amy-matrix-qa/{run,matrix}-results.json` and bounded raw captures.
+Native coverage is now all 18 ordered pairs involving Knuckles/Shadow among
+the six available identities, plus the Sonic/Tails control (57 cells); the
+nine wide spot checks are unchanged. No new executable was necessary.
+
+Shadow source work also advanced. In verified Megamix v3, monitor reward
+`$EFDE` uploads source `$11C162` to VRAM `$AB80` for `$360` words and creates
+Obj38 stars. Obj38 handler `$1B254`, initialization `$1B26C..$1B29E` and
+mappings `$1B7B6` select tile `$055C`, palette 0. Its normal star frames 4..7
+use indices 2/3/5/6. Shadow normal palette `$2C80` maps those to `$000`, `$222`,
+`$666`, `$EEE`: black/grey/white. A decoded source preview and exact instruction
+bindings are retained in `shadow-stars-source-check`. This is static normal-
+form source evidence, not proof of every runtime palette cycle or another
+ROM's purple treatment. A colour-target clarification is pending: matching
+this verified donor treatment and matching an as-yet-unprovided purple
+reference are distinct acceptance choices. Existing colour behavior remains
+unchanged while that choice is unresolved.
