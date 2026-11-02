@@ -50,7 +50,7 @@ the reporter used the latest version.
 
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
-| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Open, desired colour reference needs clarification.** Current port uses native S2 stars. Exact Megamix v3 source trace and decoded frames establish grey/white normal-form stars (indices2/3/5/6 at palette $2C80), not a purple reference. Matching verified donor treatment versus an unidentified purple reference are distinct choices; clarification is pending. No invented purple palette is substituted. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
+| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Source-backed palette restoration validated; v0.9.9 pending.** Shadow-owned stars use his verified normal/water/Super palette while retaining S2 art, animation, position history and expiry. A separate private sprite bank leaves Knuckles, other actors and world monitors unchanged. Native/wide colour and dry/wet fade checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
 
@@ -741,3 +741,41 @@ preview is retained under `shadow-stars-source-check`; a colour-target
 clarification is pending. No runtime recolour was made from an assumption.
 Hardware-specific field quirks and the owner's unreproduced-report deferrals
 still need new evidence; those limitations do not prevent the work above.
+
+
+## Closeout candidate: source-backed Shadow stars (2026-11-02)
+
+The owner explicitly requested closing addressable work and cutting a new
+release. S2-29 now applies the verified donor palette to actual Shadow-owned
+Obj35 pieces. Native S2's 34-tile star atlas, animation, movement history and
+expiry remain authoritative; the S1/Megamix ring geometry is not substituted.
+Normal colours are grey/white. Water/Super shades reuse the same verified
+normal/water/cycle data as Shadow's body. No purple reference was established.
+
+The game uses the existing bank-1 sprite/palette interface. Only Shadow stars
+receive its marker; Knuckles keeps bank 0 and live native colours. No guest
+CRAM or world-monitor theme is rewritten. Palette refresh at VBlank also
+covers native fades without another object tick. Dry and underwater fade gains
+come from their own native palettes (FB00/F080). The first full-water check
+caught an incorrect shared dry fade gain; that candidate was rejected and
+corrected before release qualification.
+
+Fifty bounded captures cover 30 Shadow ordered native mode pairs, six wide
+role/mode cells, two unchanged controls, ten isolated AI owner observations,
+and two palette setups. Forty-five current-contract checks pass directly;
+five combined AI overlaps remain unsuitable for nearest-X ownership and are
+covered separately by all ten isolated-owner passes. All 152 matched pre-star
+RAM/VRAM/PNG observations are identical to the retained release controls.
+The corrected binary passes both native/wide setups for normal, split-water,
+full-submersion and Super source colours, plus dry/wet black fade endpoints.
+Black endpoints prove disappearance, not visible-star rendering. These water
+and power-up fixtures bypass natural acquisition and are not stage-clear or
+Super-unlock claims. All 22 focused tests pass.
+
+Active-star save/load restores the exact picture and complete B000..D3FF
+player/effect objects. Replay qualification excludes unrecorded debugger RAM
+writes: a separate run loads the current-build seed via a recorded LOAD_STATE.
+An uncapped recording hit the bounded disk writer queue and was rejected;
+qualification returned to the existing normal-speed recording path. Evidence:
+`shadow-stars-qa`, `shadow-stars-fixed-qa` and `shadow-stars-fixed-state-qa` in
+the existing task root. Final replay/rollback and release/package gates follow.

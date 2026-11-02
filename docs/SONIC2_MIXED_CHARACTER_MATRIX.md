@@ -17,8 +17,9 @@ P = current attached-art/input/HUD checks pass. R = the Tails-history repair is
 qualified on the candidate. I = movement and parent links pass, with colours
 checked one owner at a time because the frozen AI actors overlap. I does not
 certify simultaneous visibility through an occluding actor. R/I combines these.
-Shadow's current native-blue stars are checked as current behavior, **not** as
-acceptance of the requested purple treatment.
+The original audit checked Shadow's then-current native-blue stars. The
+closeout candidate below restores his verified donor palette; it does not
+claim a purple reference or replace S2's native star geometry.
 
 | P1 | P2 | VS | Local co-op | Solo + AI |
 | --- | --- | --- | --- | --- |
@@ -167,3 +168,30 @@ ROM's purple treatment. A colour-target clarification is pending: matching
 this verified donor treatment and matching an as-yet-unprovided purple
 reference are distinct acceptance choices. Existing colour behavior remains
 unchanged while that choice is unresolved.
+
+
+## Source-backed Shadow-star closeout candidate
+
+The owner requested a final addressable-work closeout and release. The game
+now uses Shadow's verified Megamix palette for his actual parent-owned Obj35
+pieces, retaining Sonic 2's native atlas/animation/lifetime. Normal stars are
+grey/white, with verified water and Super colours. Knuckles' private grey art,
+native characters and the P1 world-monitor policy remain unchanged.
+
+The candidate's 50 captures include every Shadow ordered pair against the
+other five identities in VS/co-op/AI (30 native cells), six wide role/mode
+cells, two controls, ten isolated AI owner observations and two palette
+fixtures. Forty-five direct checks and all isolated-owner checks pass; the
+five combined overlaps remain explicit oracle limits. All 152 pre-star
+RAM/VRAM/images match the retained release controls exactly. The corrected
+underwater fade implementation then passes twelve native/wide colour/fade
+observations: normal, split water, full submersion, Super, dry black and wet
+black. Water palette/flags and Super phase are graphics fixtures; black
+matches establish disappearance only. No natural acquisition/unlock or new
+full-campaign claim follows from them.
+
+The first full-water fixture revealed a genuine mismatch in underwater fade
+gain; the corrected binary uses native underwater palette F080. An empty EHZ
+underwater palette was replaced with an explicit nonblack colour fixture for
+the visible-water checks. Evidence is retained under `shadow-stars-qa` and
+`shadow-stars-fixed-qa`; initial failures are not silently counted as passes.
