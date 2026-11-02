@@ -5,6 +5,7 @@ uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
 S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
+const S2DonorBank *s2_resource_bank(unsigned id) { (void)id;return NULL; }
 static int hud_available;
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
@@ -271,6 +272,20 @@ int main(void)
     save.pos=0;save.mode=2;s2_video_rb_state(&save);CHECK(save.ok && active_x(8192));
     CHECK(s_mode==VIDEO_RATIO && sonic2_video.width(1,1,320,224)==398);
     free(before);free(after);
+    /* Original Sonic uses ink3; the Knuckles card patch uses ink4. Both
+     * full-width fills must follow live VRAM, including palette-1 yellow. */
+    memset(g_ram,0,sizeof g_ram);memset(&v,0,sizeof v);
+    memset(&s_build,0,sizeof s_build);memset(s_history,0,sizeof s_history);
+    memset(&s_display_frame,0,sizeof s_display_frame);
+    g_ram[0xF600]=0x8C;g_ram[0xB080]=0x34;g_ram[0xB000]=1;
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[13]=0x3C;v.reg[16]=1;
+    memset(v.vram+0x5DA*32,0x33,64);v.cram[3]=0xE00;
+    for(unsigned at=0xC000;at<0xD000;at+=2)word(v.vram,at,0x85DA);
+    publish_sprites();sonic2_video.scanline(&v,0,native320,320,out,796);
+    CHECK(s_frame_card && out[0]==0xFF0000FF && out[795]==0xFF0000FF);
+    CHECK(card_fill(0xA5DC) && card_fill(0x85D8) && !card_fill(0xA5DA));
+    sonic2_video.scanline(&v,0,native320,320,out,320);
+    CHECK(!s_frame_card && !memcmp(out,native320,sizeof native320));
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and Sonic/Tails ring gates PASS");
     return 0;
 }

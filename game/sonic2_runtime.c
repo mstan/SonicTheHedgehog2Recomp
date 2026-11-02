@@ -1150,7 +1150,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             }
         }
         s2_video_actor_origin(&frame_vdp,0,width,&left,&top);
-        if (!frame_world[0xF711]) {
+        if (!frame_world[0xF711] && !s2_video_intro_world_visible()) {
             /* Title-card scroll belongs to the card, not the actor camera.
              * Native actors are submitted before Level_started becomes true. */
             left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
