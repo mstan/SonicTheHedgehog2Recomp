@@ -30,11 +30,13 @@ int main(void)
     CHECK(s2_roster_set(r,3,"sonic") && s2_roster_set(r,3,"knuckles"));
     CHECK(!s2_roster_set(r,0,"tails") && !s2_roster_set(r,1,"sonic"));
     CHECK(s2_roster_set(r,1,"amy") && s2_roster_set(r,1,"tails"));
+    s2_party.infinite_lives=s2_party.infinite_time=1;
     s2_party.save_menu_enabled=1;
     strcpy(s2_party.kis2_path,"owner-kis2.bin");
     CHECK(s2_party_save());
     s2_party_load("party-test-settings.ini");
     CHECK(s2_party.save_menu_enabled && !s2_party.s3k_enabled);
+    CHECK(s2_party.infinite_lives && s2_party.infinite_time);
     CHECK(!strcmp(s2_party.kis2_path,"owner-kis2.bin"));
     CHECK(s2_character_register(&amy) && s2_character_register(&knuckles));
     CHECK(!s2_roster_validate(r) && !strcmp(r->character[3],"knuckles"));

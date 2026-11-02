@@ -72,15 +72,23 @@ void s2_netplay_config_image(char *out, size_t cap)
     /* The EFFECTIVE owner features: enabled AND backed by verified assets
      * (an enabled feature without its donor ROM changes nothing). */
     if (n < cap)
-        snprintf(out + n, cap - n, " m=%d%d%d%d",
+        snprintf(out + n, cap - n, " m=%d%d%d%d c=%d%d",
                  s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY) ? 1 : 0,
                  s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0,
                  s2_party.mighty_enabled && s2_resource_verified(S2_RESOURCE_MEGAMIX) ? 1 : 0,
-                 s2_party.shadow_enabled && s2_resource_shadow_bank() ? 1 : 0);
+                 s2_party.shadow_enabled && s2_resource_shadow_bank() ? 1 : 0,
+                 s2_party.infinite_lives!=0,s2_party.infinite_time!=0);
 }
 
 int s2_netplay_config_adopt(const char *line)
 {
+    const char *practice=line?strstr(line," c="):NULL;
+    int lives=0,time=0;
+    if (practice) {
+        if (strlen(practice)!=5 || (practice[3]!='0' && practice[3]!='1') ||
+            (practice[4]!='0' && practice[4]!='1')) return -1;
+        lives=practice[3]=='1';time=practice[4]=='1';
+    }
     S2Roster roster;
     int amy = 0, s3k = 0, mighty = 0, shadow = 0;
     char ids[S2_MAX_PLAYERS * S2_CHARACTER_ID_SIZE];
@@ -118,6 +126,7 @@ int s2_netplay_config_adopt(const char *line)
     }
     /* Session-scoped: set in memory, never written to sonic2-party.ini. */
     s2_party.roster = roster;
+    s2_party.infinite_lives=lives;s2_party.infinite_time=time;
     s2_party.save_menu_enabled = 0;
     return 0;
 }

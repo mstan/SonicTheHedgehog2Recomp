@@ -4,36 +4,41 @@
 #include "sonic2_resources.h"
 #include "sonic2_campaign_file.h"
 #include "diagnostic_replay.h"
+#if GENESIS_HAS_RECOMP_NET
+#include "netplay/genesis_netplay.h"
+#endif
 #if RECOMP_LAUNCHER
 #include "recomp_launcher.h"
 #include <stdio.h>
 #include <string.h>
 static const RecompLauncherCModProvider *base;
 static char error[256];
-static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix" };
-static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)" };
-static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow" };
+static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice" };
+static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)", "Practice" };
+static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time" };
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
 {
-    if (p) for (int i = 0; i < 3; ++i)
+    if (p) for (int i = 0; i < 4; ++i)
         if (!strcmp(p, ids[i])) {
-            int feature=i==2?3:i;
+            int feature=i==3?5:i==2?3:i;
             if (!f || !strcmp(f, features[feature])) return feature;
             if (i==1 && !strcmp(f,features[2])) return 2;
             if (i==2 && !strcmp(f,features[4])) return 4;
+            if (i==3 && !strcmp(f,features[6])) return 6;
         }
     return -1;
 }
-static int *flag(int i) { return i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
+static int *flag(int i) { return i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
 static unsigned resource_id(int i) { return i>=3?S2_RESOURCE_MEGAMIX:i?S2_RESOURCE_SK:S2_RESOURCE_AMY; }
 static char *path(int i) { return i>=3?s2_party.mighty_path:i?s2_party.s3k_path:s2_party.amy_path; }
-static int ready(int i) { return i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
-static int packages(void *ctx) { (void)ctx; return 3 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
-static int feature_count(void *ctx) { (void)ctx; return 5 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
+static int ready(int i) { return i>=5?1:i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
+static int packages(void *ctx) { (void)ctx; return 4 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
+static int feature_count(void *ctx) { (void)ctx; return 7 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
 static const char *status(int i)
 {
     if (!*flag(i)) return "Disabled";
+    if (i>=5) return "Enabled";
     if (!ready(i)) return "Verified owner ROM and decoded feature assets required";
     if (i==2) return "Local campaign slots; open 1 PLAYER on the native title";
     return "Verified gameplay assets; select character in the title OPTIONS menu";
@@ -41,7 +46,14 @@ static const char *status(int i)
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 {
     (void)ctx;
-    if (i >= 3) return base && base->package_get && base->package_get(base->ctx, i - 3, out);
+    if (i >= 4) return base && base->package_get && base->package_get(base->ctx, i - 4, out);
+    if (i==3 && out) {
+        memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.0.0");
+        COPY(out->author,"Host adapter contributors");COPY(out->license,"Project license");
+        COPY(out->description,"Optional infinite lives and no stage time limit. Each option defaults off.");
+        out->enabled=s2_party.infinite_lives || s2_party.infinite_time;
+        COPY(out->status,out->enabled?"Enabled":"Disabled");return 1;
+    }
     if (i < 0 || !out) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, ids[i]); COPY(out->name, names[i]); COPY(out->version, "0.1.0");
     COPY(out->author, i==2?"Team Megamix; SEGA / Sonic Team; host adapter contributors":i ? "SEGA / Sonic Team; host adapter contributors" : "E-122-Psi and Amy hack contributors; host adapter contributors");
@@ -53,7 +65,14 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
 {
-    if (i >= 5) return base && base->feature_get && base->feature_get(base->ctx, i - 5, out);
+    if (i >= 7) return base && base->feature_get && base->feature_get(base->ctx, i - 7, out);
+    if (i>=5 && out) {
+        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[3]);
+        COPY(out->package_name,names[3]);COPY(out->package_version,"1.0.0");COPY(out->group,"Gameplay");
+        COPY(out->name,i==5?"Infinite Lives":"Infinite Time");COPY(out->author,"Host adapter contributors");
+        COPY(out->description,i==5?"Keep your life count after death. Death and retry work normally.":"No stage time limit. The clock stops at 9:59. Competition round countdowns still apply.");
+        out->enabled=*flag(i);COPY(out->status,status(i));return 1;
+    }
     RecompLauncherCModPackage p;
     if (!out || i<0 || !package_get(ctx, i>=3?2:i?1:0, &p)) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, features[i]); COPY(out->package_id, p.id);
@@ -67,6 +86,11 @@ static int enable(void *ctx, const char *p, const char *f, int on)
 {
     (void)ctx; int i = owner(p, f); error[0] = 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_enable && base->feature_enable(base->ctx, p, f, on);
+#if GENESIS_HAS_RECOMP_NET
+    if (i>=5 && genesis_netplay_active() && *flag(i)!=(on!=0)) {
+        COPY(error,"Practice options are fixed for the current online session");return 0;
+    }
+#endif
     /* Amy defaults ON even before private assets are staged; S3&K can only
      * become enabled with a verified owner image. Neither auto-picks a player. */
     /* Preserve an unconfigured default toggle during replay. It was inactive
@@ -80,6 +104,7 @@ static int enable(void *ctx, const char *p, const char *f, int on)
 static int set_enabled(void *ctx, const char *p, int on)
 {
     int i = owner(p, NULL);
+    if (i==5) return enable(ctx,p,features[5],on) && enable(ctx,p,features[6],on);
     if (i==1) {
         if (on && (!ready(1) || !ready(2))) { COPY(error,"Select and verify your Sonic 3 & Knuckles ROM first"); return 0; }
         s2_party.s3k_enabled=s2_party.save_menu_enabled=on!=0;
@@ -100,12 +125,13 @@ static int set_option(void *ctx, const char *p, const char *f, const char *o, co
 { (void)ctx; return owner(p,NULL)<0 && base && base->feature_set_option && base->feature_set_option(base->ctx, p, f, o, v); }
 static int resource_count(void *ctx, const char *p, const char *f)
 {
-    (void)ctx; int i=owner(p,f); if (i>=0) return i==1 || i==2?2:1;
+    (void)ctx; int i=owner(p,f); if(i>=5)return 0; if (i>=0) return i==1 || i==2?2:1;
     return owner(p,NULL)<0 && base && base->feature_resource_count ? base->feature_resource_count(base->ctx, p, f) : 0;
 }
 static int resource_get(void *ctx, const char *p, const char *f, int n, RecompLauncherCModResource *out)
 {
     (void)ctx; int i = owner(p, f);
+    if (i>=5) return 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_resource_get && base->feature_resource_get(base->ctx, p, f, n, out);
     if (n==1 && i==1 && out) {
         memset(out,0,sizeof *out); COPY(out->id,"original-knuckles-art");
@@ -142,6 +168,7 @@ static int resource_get(void *ctx, const char *p, const char *f, int n, RecompLa
 static int resource_set(void *ctx, const char *p, const char *f, const char *r, const char *path)
 {
     (void)ctx; int i = owner(p, f); error[0] = 0;
+    if (i>=5) return 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_resource_set_path && base->feature_resource_set_path(base->ctx, p, f, r, path);
     if (i==1 && r && !strcmp(r,"original-knuckles-art")) {
         int ok=s2_resource_set(S2_RESOURCE_KIS2,path);

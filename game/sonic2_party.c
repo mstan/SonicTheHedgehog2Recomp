@@ -136,6 +136,8 @@ void s2_party_load(const char *settings_path)
         *value++ = 0;
         value[strcspn(value, "\r\n")] = 0;
         if (!strcmp(line, "slots")) s2_party.roster.slots = (unsigned)strtoul(value, NULL, 10);
+        else if (!strcmp(line, "infinite_lives")) s2_party.infinite_lives = atoi(value) == 1;
+        else if (!strcmp(line, "infinite_time")) s2_party.infinite_time = atoi(value) == 1;
         else if (!strcmp(line, "amy_enabled")) s2_party.amy_enabled = atoi(value) == 1;
         else if (!strcmp(line, "s3k_enabled")) s2_party.s3k_enabled = atoi(value) == 1;
         else if (!strcmp(line, "save_menu_enabled")) s2_party.save_menu_enabled = atoi(value) == 1;
@@ -163,6 +165,7 @@ int s2_party_save(void)
     fprintf(file, "version=1\nslots=%u\namy_enabled=%d\ns3k_enabled=%d\namy_path=%s\ns3k_path=%s\n",
         s2_party.roster.slots, s2_party.amy_enabled, s2_party.s3k_enabled, s2_party.amy_path, s2_party.s3k_path);
     for (unsigned i = 0; i < S2_MAX_PLAYERS; ++i) fprintf(file, "player%u=%s\n", i + 1, s2_party.roster.character[i]);
+    fprintf(file, "infinite_lives=%d\ninfinite_time=%d\n",s2_party.infinite_lives,s2_party.infinite_time);
     fprintf(file, "save_menu_enabled=%d\n", s2_party.save_menu_enabled);
     fprintf(file, "mighty_enabled=%d\nmighty_path=%s\n", s2_party.mighty_enabled, s2_party.mighty_path);
     fprintf(file, "shadow_enabled=%d\n",s2_party.shadow_enabled);

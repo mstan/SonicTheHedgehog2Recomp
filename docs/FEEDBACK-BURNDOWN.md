@@ -65,7 +65,7 @@ Do not count deferrals as fixes or repeat their bounded probes without new logs.
 | H-04 | Sonic sprite flicker on spring jumps (handoff S2-03). | Deferred by owner for this pass, not reproduced. Real EHZ1 spring launch retained Sonic in all 120 consecutive native/16:9 frames; exact occurrence/other springs remain unverified. Reopen only with new diagnostics. This is separate from Knuckles glide jitter S2-12. |
 | H-05 | Default-on replayable diagnostics across all S2 variants. | Released and verified in v0.9.4; retain as an ongoing release contract. Native, six-seat party, fresh campaign and existing campaign recordings replayed all 6,351 executions without SRAM writes. Saved opt-outs remain respected; reports retain every sidecar. No new Linux release was claimed. |
 | H-06 | Above-60-FPS native Sonic 2 presentation. | Queued; no native S2 adapter implemented. Reuse the S3 session's shared presenter/API. Independent presentation deadlines must support rates such as 144 Hz without rounding to 120; guest/input/audio/canonical state stay at their normal cadence. Interpolation history is presentation-only, separate from widescreen activation/culling. Qualify the native adapter before release. |
-| H-07 | Infinite lives and infinite time in native Sonic 2. | Queued; no implementation started at transfer. Elective, opt-in features; ordinary behavior must remain intact when off. Validate real death/retry, timer expiry and transitions. |
+| H-07 | Infinite lives and infinite time in native Sonic 2. | **Validated enhancement**, not released. Separate default-off Practice features preserve life count after native death/retry and cap the stage clock at9:59. Real Sonic/Tails/Knuckles, last-life retry, current save/load, both native competition timers/P2 respawn, launcher Play/relaunch and diagnostic playback pass. Ordinary disabled behavior matches the pre-feature WRAM baseline. Round countdowns and drowning retain their separate rules. |
 
 Published handoff baseline: game/tag `8c121ca`, engine `8424dbb`,
 UI `c1867f8`; Windows ZIP SHA256
@@ -304,3 +304,51 @@ presentation timestamps or proof of an optimization win. Current short idle/
 movement samples do not reproduce the report, so do not raise guest timing
 budgets or duplicate the host-native overhaul speculatively. S2-26 stays open.
 Central issue is related to optimization campaign `beads-2wy8.1`, with its label.
+
+## Native Practice options (H-07)
+
+The launcher exposes Infinite Lives and Infinite Time under Gameplay, in the
+Practice package. Each defaults off, needs no extra ROM, persists with the
+existing Mods Play commit and is restored on relaunch. Normal death/retry still
+runs; the life decrement is compensated before its original native instruction.
+The stage clock advances normally until9:59:59, then remains there. Drowning,
+competition loser-round countdowns, checkpoints and stage transitions retain
+native handling. Native SRAM/campaign data is not rewritten by these options.
+
+Source/ROM-verified hooks: life decrements `$1B248` (`$FE12`) and `$1CCA6`
+(`$FEC6`); timer comparisons `$40DEA/$40F22/$40F62/$40F9A`, including the native
+P2 clock at`$FED2`. No ROM patches. The selected values are sealed as`c=XY` in
+the existing session config; malformed values fail adoption and old configs
+mean both off. An active online session refuses changes to these values.
+No live online transport qualification is claimed here. Current-build native
+states include the selected practice profile and use runtime version4; old
+build snapshots need no migration under owner policy.
+
+Evidence: `practice-qa/results.json` covers old-off/new-off, lives-only,
+time-only, both, native Tails, donor Knuckles and last-life1. Real boundary death
+enters the native death path and actual retry; life3 becomes2 with the option
+off, stays3 on, and last-life1 remains1 through retry. Both timer states are
+checked at the real expiry boundary. Last-life current-build save/load returns
+the same paused image at the cap. Disabled WRAM matches the pre-feature build.
+`practice-vs-qa/results.json` proves actual P2 Tails death/respawn (3->2 off,
+3->3 on), unchanged P1 lives and both stage clocks. The native P2 respawn uses
+routineA before routine2; it does not use P1's routine8 retry.
+
+`practice-launcher-qa` retains actual checkbox clicks, Play persistence and
+relaunch images/settings, with the gameplay handoff hidden/muted. Like existing
+Mods, closing the pre-game launcher without Play cancels uncommitted feature
+choices; the separately requested sample-rate save-on-close remains in place.
+`practice-replay-qa` records natural input with both features selected and plays
+back all2,082 executions into a fresh profile. It verifies startup/configuration
+and normal-play replay; the forced death/time boundaries are the separate
+fixtures above, not claimed as part of that recording.
+
+Core runtime/UI/replay executable SHA256
+`e94f27202358399b149229a44fc022f54acb4b9f78c2d5550dd41e63cf6bfd07`.
+The final active-online mutation guard is qualified by all11 focused tests,
+including provider immutability, independent flags, settings persistence and
+session adoption. Final executable SHA256
+`1e515646a5550121b23990abfec2176367342360e50d7c8ef198be011312b467`
+also requalifies disabled behavior and last-life death/retry/time/save-load.
+No remaining H-07 acceptance work is queued. H-06 remains the one imported
+queued enhancement; the five open reports in the original26 stay separate.

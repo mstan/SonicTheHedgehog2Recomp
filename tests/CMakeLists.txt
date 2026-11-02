@@ -58,7 +58,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/recomp-ui/src/recomp_launcher.h")
         "${S2_GAME}/sonic2_campaign_store.c" "${S2_GAME}/sonic2_campaign_file.c"
         "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_save_assets.c"
         "${S2_GAME}/sonic2_donor_assets.c" "${S2_GAME}/sonic2_mods.c" "${S2_SHA}")
-    target_compile_definitions(sonic2_resources_test PRIVATE RECOMP_LAUNCHER=1)
+    target_compile_definitions(sonic2_resources_test PRIVATE RECOMP_LAUNCHER=1 GENESIS_HAS_RECOMP_NET=1)
     target_include_directories(sonic2_resources_test PRIVATE
         "${CMAKE_SOURCE_DIR}/recomp-ui/src" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
         "${RUNNER_ROOT}/external/superzazu")

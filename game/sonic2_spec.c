@@ -242,6 +242,8 @@ static int s2_instruction_hook(uint32_t pc)
     if (s2_save_menu_hook(pc)) return 1;
     if (pc==0x16604) s2_runtime_capture();
     switch (pc) {
+    case 0x1B248: case 0x1CCA6:
+    case 0x40DEA: case 0x40F22: case 0x40F62: case 0x40F9A:
     case 0x157C4:
     case 0x1DE4A: case 0x1DE88:
     case 0x4F64:
