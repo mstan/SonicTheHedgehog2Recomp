@@ -3,6 +3,9 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
+#if OWN_BACKEND
+GenesisMachine g_machine;
+#endif
 S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
 const S2DonorBank *s2_resource_bank(unsigned id) { (void)id;return NULL; }
@@ -14,8 +17,9 @@ uint16_t s2_shadow_color(const S2DonorBank *b,unsigned i,int wet,unsigned phase,
 static int hud_available;
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
+static int shadow_item_owner;
 int s2_runtime_knuckles_item(unsigned o) { return item_owner && o==0xD180; }
-int s2_runtime_shadow_star(unsigned o) { (void)o;return 0; }
+int s2_runtime_shadow_star(unsigned o) { return shadow_item_owner && o==0xD200; }
 static int positions[4][2];
 int genesis_netplay_active(void){return online;}
 int genesis_netplay_local_player(void){return local_player;}
@@ -90,6 +94,22 @@ static void native_interpolation_test(void)
 
 int main(void)
 {
+#if OWN_BACKEND
+    /* Avoid palette work in ordinary play, but retain an expiring star's
+     * palette until both queued and currently displayed SATs retire it. */
+    CHECK(!shadow_palette_needed());g_ram[0xF600]=12;
+    shadow_item_owner=1;g_ram[0xD200]=0x35;
+    CHECK(shadow_palette_needed());
+    shadow_item_owner=0;g_ram[0xD200]=0;
+    g_ram[0xF802]=0xC0;CHECK(shadow_palette_needed());g_ram[0xF802]=0;
+    word(g_ram,0xFFD8,1);g_ram[0xDD02]=0xC0;
+    CHECK(shadow_palette_needed());g_ram[0xDD02]=0;word(g_ram,0xFFD8,0);
+    g_machine.vdp.reg[5]=0x7C;g_machine.vdp.vram[0xF802]=0xC0;
+    CHECK(shadow_palette_needed());g_machine.vdp.vram[0xF802]=0;
+    s_display_frame.count=1;s_display_frame.sprites[0].size=0xC0;s_display=&s_display_frame;
+    CHECK(shadow_palette_needed());s_display=NULL;s_display_frame.count=0;
+    CHECK(!shadow_palette_needed());g_ram[0xF600]=0;
+#endif
     /* Original item art is sprite-only; missing resources retain native VRAM.
      * Piece tags are independent of owner-resource availability. */
     unsigned pattern_bytes=0; s2_video_prepare_knuckles_items();
