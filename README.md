@@ -129,6 +129,24 @@ drowning remain dangerous; this does not add Hyper forms or Super Flickies.
 
 Source and validation: [Player 1 Super forms](docs/SONIC2_PARTY_SUPER.md).
 
+## Optional high refresh rate and practice settings
+
+In **Mods -> Presentation -> High refresh rate**, choose **120 Hz**, **144 Hz**
+or **Display refresh**. This is off by default. Camera and actors interpolate
+between normal game ticks, adding one tick of visual latency. Game speed,
+controls, audio and widescreen object activation keep their original cadence.
+The setting also works with widescreen disabled.
+
+Interpolation currently supports regular Sonic/Tails play with up to two party
+slots. Donor characters, larger parties, transitions, menus, special stages and
+native split-screen retain ordinary completed images. Changing scenes, loading
+a state or changing the output size discards incompatible presentation history.
+
+Under **Mods -> Practice**, **Infinite lives** and **Infinite time** are separate,
+off by default settings. Lives remain after death/retry; the stage timer stops
+at 9:59. Drowning, death animations and competition round countdowns retain
+their normal rules. These settings persist without changing campaign SRAM.
+
 ## Experimental widescreen mod
 
 In the launcher's **Mods** page, enable **Widescreen** and choose **Adaptive

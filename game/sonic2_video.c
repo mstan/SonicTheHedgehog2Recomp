@@ -23,22 +23,98 @@
 enum { VIDEO_OFF, VIDEO_FIT, VIDEO_RATIO, VIDEO_STAGE };
 static int s_mode;
 static double s_ratio = 16.0 / 9.0;
-static int s_width, s_left, s_camera, s_stage_width, s_native_x, s_requested_width = 320;
-static int s_camera_y;
-static unsigned s_frames, s_fallbacks, s_terrain_checks, s_terrain_errors;
-static unsigned s_bg_checks, s_bg_errors, s_bg_unstreamed;
-static unsigned s_scene_misses, s_scene_holds;
-static unsigned s_uninitialized_scroll_lines;
-static unsigned s_terrain_unstreamed;
-static int s_bad_x,s_bad_y;
-static unsigned s_bad_attr,s_bad_expected;
-static int s_bad_world_y,s_bad_hscroll;
-static GVDP s_video_frame;
-static uint8_t s_world_frame[0xA800];
-static int s_frame_level,s_frame_special,s_frame_fg_x,s_frame_fg_y,s_frame_bg_y;
-static unsigned s_frame_zone;
-static int s_frame_campaign_view, s_frame_view_x, s_frame_view_y;
-static int s_frame_card,s_frame_card_leaving,s_frame_sega,s_frame_vs;
+/* Drawing scratch is separate from simulation/activation configuration.
+ * Fractional presentation borrows an owned context and restores this pointer. */
+typedef struct S2RenderContext {
+    GVDP video_frame;
+    uint8_t world_frame[0xA800];
+    int vs_camera[2][4];
+    int width;
+    int left;
+    int camera;
+    int stage_width;
+    int native_x;
+    int camera_y;
+    unsigned frames;
+    unsigned fallbacks;
+    unsigned terrain_checks;
+    unsigned terrain_errors;
+    unsigned bg_checks;
+    unsigned bg_errors;
+    unsigned bg_unstreamed;
+    unsigned scene_misses;
+    unsigned scene_holds;
+    unsigned uninitialized_scroll_lines;
+    unsigned terrain_unstreamed;
+    int bad_x;
+    int bad_y;
+    unsigned bad_attr;
+    unsigned bad_expected;
+    int bad_world_y;
+    int bad_hscroll;
+    int frame_level;
+    int frame_special;
+    int frame_fg_x;
+    int frame_fg_y;
+    int frame_bg_y;
+    unsigned frame_zone;
+    int frame_campaign_view;
+    int frame_view_x;
+    int frame_view_y;
+    int frame_card;
+    int frame_card_leaving;
+    int frame_sega;
+    int frame_vs;
+    int vs_ready;
+    int vs_world;
+} S2RenderContext;
+static S2RenderContext s_real_render,*s_render=&s_real_render;
+static int s_requested_width=320;
+static int s_interpolation_enabled,s_interpolating;
+static double s_interpolation_phase;
+static void interpolation_reset(void);
+static void interpolation_sprite(unsigned index,int *x,int *y);
+#define s_width (s_render->width)
+#define s_left (s_render->left)
+#define s_camera (s_render->camera)
+#define s_stage_width (s_render->stage_width)
+#define s_native_x (s_render->native_x)
+#define s_camera_y (s_render->camera_y)
+#define s_frames (s_render->frames)
+#define s_fallbacks (s_render->fallbacks)
+#define s_terrain_checks (s_render->terrain_checks)
+#define s_terrain_errors (s_render->terrain_errors)
+#define s_bg_checks (s_render->bg_checks)
+#define s_bg_errors (s_render->bg_errors)
+#define s_bg_unstreamed (s_render->bg_unstreamed)
+#define s_scene_misses (s_render->scene_misses)
+#define s_scene_holds (s_render->scene_holds)
+#define s_uninitialized_scroll_lines (s_render->uninitialized_scroll_lines)
+#define s_terrain_unstreamed (s_render->terrain_unstreamed)
+#define s_bad_x (s_render->bad_x)
+#define s_bad_y (s_render->bad_y)
+#define s_bad_attr (s_render->bad_attr)
+#define s_bad_expected (s_render->bad_expected)
+#define s_bad_world_y (s_render->bad_world_y)
+#define s_bad_hscroll (s_render->bad_hscroll)
+#define s_frame_level (s_render->frame_level)
+#define s_frame_special (s_render->frame_special)
+#define s_frame_fg_x (s_render->frame_fg_x)
+#define s_frame_fg_y (s_render->frame_fg_y)
+#define s_frame_bg_y (s_render->frame_bg_y)
+#define s_frame_zone (s_render->frame_zone)
+#define s_frame_campaign_view (s_render->frame_campaign_view)
+#define s_frame_view_x (s_render->frame_view_x)
+#define s_frame_view_y (s_render->frame_view_y)
+#define s_frame_card (s_render->frame_card)
+#define s_frame_card_leaving (s_render->frame_card_leaving)
+#define s_frame_sega (s_render->frame_sega)
+#define s_frame_vs (s_render->frame_vs)
+#define s_vs_ready (s_render->vs_ready)
+#define s_vs_world (s_render->vs_world)
+#define s_video_frame (s_render->video_frame)
+#define s_world_frame (s_render->world_frame)
+#define s_vs_camera (s_render->vs_camera)
 static void scene_mode_changed(int was_enabled);
 
 static uint16_t ram16(unsigned a)
@@ -209,9 +285,19 @@ typedef struct {
 } SceneFrame;
 static SceneFrame s_build, s_history[3], s_display_frame;
 static const SceneFrame *s_display;
+/* Source identities belong to presentation only, never to the rollback image. */
+static uint32_t s_build_keys[SCENE_SPRITES],s_key_history[3][SCENE_SPRITES],s_display_keys[SCENE_SPRITES];
+static unsigned s_key_serial[3],s_display_key_serial;
+static SceneFrame s_native_build,s_native_history[3],s_native_display;
+static uint32_t s_native_build_keys[SCENE_SPRITES],s_native_keys[3][SCENE_SPRITES],s_native_display_keys[SCENE_SPRITES];
+static unsigned s_native_serial;
+static int s_native_pending;
+static void native_capture_objects(void);
+static void native_publish_sprites(void);
+
 static unsigned s_serial, s_scene_tick, s_spawned, s_pool_pressure;
 static int s_vs_other_lo,s_vs_other_hi;
-static int s_vs_camera[2][4],s_vs_ready,s_vs_world;
+
 static unsigned s_tick_samples,s_tick_updates,s_tick_lag,s_tick_multi;
 static unsigned s_publication_lag;
 void s2_video_vblank(void)
@@ -371,7 +457,7 @@ void s2_video_prepare_knuckles_items(void)
      * live CRAM so native fades and underwater palettes retain their timing. */
     gvdp_set_sprite_patterns_bank(0,art?patterns:NULL,art?sizeof patterns:0,NULL);
 }
-static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
+static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned map,unsigned frame,unsigned gfx,unsigned flags,
                         int x,int y,int anchor,int static_mapping)
 {
     unsigned p=map;int count=1;
@@ -380,7 +466,7 @@ static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
         count=scene_read16(p);p+=2;
     }
     if(count>1024)return;
-    for(int n=0;n<count && s_build.count<SCENE_SPRITES;++n,p+=8) {
+    for(int n=0;n<count && dst->count<SCENE_SPRITES;++n,p+=8) {
         int dy=(int8_t)scene_read8(p),size=scene_read8(p+1)&15;
         int dx=(int16_t)scene_read16(p+6);
         int vs=competition();
@@ -388,7 +474,8 @@ static void add_mapping(unsigned map,unsigned frame,unsigned gfx,unsigned flags,
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
         if(!vs && !s2_runtime_campaign_online() && (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
-        SceneSprite *q=&s_build.sprites[s_build.count++];
+        if(keys)keys[dst->count]=owner|(unsigned)n;
+        SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);q->hud=(uint8_t)anchor;
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
     }
@@ -484,41 +571,41 @@ static unsigned rings_end(void)
     while(o+6<=0xEE00 && ram16(o+2)!=65535u)o+=6;
     return o;
 }
-static void capture_objects(void)
+static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,uint32_t *keys)
 {
-    s_build.count=0;s_visible_count=0;++s_scene_tick;
-    s_build.scene=competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
+    dst->count=0;if(!read_only){s_visible_count=0;++s_scene_tick;}
+    dst->scene=competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
     int vs=competition();
-    if (vs) activation_bounds(ram16(0xEE20),s_requested_width,&s_vs_other_lo,&s_vs_other_hi);
+    if (vs) activation_bounds(ram16(0xEE20),render_width,&s_vs_other_lo,&s_vs_other_hi);
     int cam=ram16(vs?0xEE00:0xEEF0),cy=ram16(vs?0xEE04:0xEEF4);
-    s_build.camera_x=cam;s_build.camera_y=cy;
-    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&s_build.views[p][0],&s_build.views[p][1]);
+    dst->camera_x=cam;dst->camera_y=cy;
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&dst->views[p][0],&dst->views[p][1]);
     int campaign=s2_runtime_campaign_online();
     int vs_left[2]={0,0};
-    if (vs) {vs_left[0]=view_left(cam,s_requested_width);vs_left[1]=view_left(ram16(0xEE20),s_requested_width);}
-    int left=gameplay()?view_left(cam,s_requested_width):cam-(s_requested_width-320)/2;
+    if (vs) {vs_left[0]=view_left(cam,render_width);vs_left[1]=view_left(ram16(0xEE20),render_width);}
+    int left=gameplay()?view_left(cam,render_width):cam-(render_width-320)/2;
     if(gameplay() && g_ram[0xF711]) {
         unsigned blink=(g_ram[0xFE05]&8)==0;
         unsigned frame=blink*((ram16(0xFE20)==0?1:0)+(g_ram[0xFE23]==9?2:0));
         /* BuildHUD uses spriteScreenPositionYCentered(24), not Y=24. */
-        add_mapping(0x40A9A,frame,0x86CA,0,16,136,1,0);
+        add_mapping(dst,keys,0x00010000u,0x40A9A,frame,0x86CA,0,16,136,1,0);
         unsigned end=rings_end();
         for(unsigned o=0xE806;o<end;o+=6) {
             if(ram16(o)&0x8000)continue;
             int x=ram16(o+2),y=ram16(o+4);
-            if(!campaign && (x<left-16 || x>=left+s_requested_width+16))continue;
+            if(!campaign && (x<left-16 || x>=left+render_width+16))continue;
             unsigned fr=g_ram[o+1]?g_ram[o+1]:g_ram[0xFEA3];
             unsigned map=0x1736Au+(int16_t)scene_read16(0x1736Au+fr*2u);
-            add_mapping(map,0,0x26BC,0,x-cam,(int16_t)(y-cy),0,1);
+            add_mapping(dst,keys,o<<16,map,0,0x26BC,0,x-cam,(int16_t)(y-cy),0,1);
         }
     }
-    if (vs && s_build.scene==3) {
-        int lo,hi;activation_bounds(cam,s_requested_width,&lo,&hi);
+    if (vs && dst->scene==3) {
+        int lo,hi;activation_bounds(cam,render_width,&lo,&hi);
         for (unsigned o=0xE806,end=rings_end();o<end;o+=6) {
             if ((ram16(o)&0x8000) || !scene_contains(ram16(o+2),lo,hi)) continue;
             unsigned fr=g_ram[o+1]?g_ram[o+1]:g_ram[0xFEA3];
             unsigned map=0x1736Au+(int16_t)scene_read16(0x1736Au+fr*2u);
-            add_mapping(map,0,0x235E,0,(int)ram16(o+2)-cam,(int16_t)(ram16(o+4)-cy),0,1);
+            add_mapping(dst,keys,o<<16,map,0,0x235E,0,(int)ram16(o+2)-cam,(int16_t)(ram16(o+4)-cy),0,1);
         }
     }
     for(unsigned pri=0;pri<8;++pri) {
@@ -533,7 +620,7 @@ static void capture_objects(void)
                 y=(int16_t)(ram16(o+12)-cy);
                 int radius=g_ram[o+(multi?0xE:0x19)];
                 if(!campaign && !vs) {
-                    if(x+radius<left-cam || x-radius>=left-cam+s_requested_width)continue;
+                    if(x+radius<left-cam || x-radius>=left-cam+render_width)continue;
                     if(flags&16){int h=g_ram[o+(multi?0x14:0x16)];if(y+h<0 || y-h>=224)continue;}
                     else {y=((y+128)&2047)-128;if(y<-32 || y>=256)continue;}
                 }
@@ -542,44 +629,66 @@ static void capture_objects(void)
                     for (unsigned p=0;p<2;++p) {
                         int dy=(int16_t)(ram16(o+12)-ram16(p?0xEE24:0xEE04));
                         int px=ram16(o+8);
-                        if (px+radius>=vs_left[p] && px-radius<vs_left[p]+s_requested_width && dy>=-32 && dy<256) visible=1;
+                        if (px+radius>=vs_left[p] && px-radius<vs_left[p]+render_width && dy>=-32 && dy<256) visible=1;
                     }
                     if (!visible) continue;
                 }
-                if(s_visible_count<144)s_visible_objects[s_visible_count++]=o;
+                if(!read_only && s_visible_count<144)s_visible_objects[s_visible_count++]=o;
             } else {
                 x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
                 /* The red serrated edge follows its widened plane boundary;
                  * text keeps its original glyph size and centered layout. */
                 if (g_ram[0xF600]==0 && g_ram[o]==0xB0)
-                    x=(int)((int64_t)x*s_requested_width/320)-(s_requested_width-320)/2;
+                    x=(int)((int64_t)x*render_width/320)-(render_width-320)/2;
                 if (g_ram[o]==0x34) {
                     if (g_ram[o+0x1A]==0x16)
-                        x=x*s_requested_width/320-(s_requested_width-320)/2;
+                        x=x*render_width/320-(render_width-320)/2;
                     else {
                         /* Preserve the settled text layout. Travel to/from
                          * its off-screen source spans the selected viewport,
                          * so the native deletion cannot pop a visible word. */
                         int target=(int16_t)ram16(o+0x30)-128;
-                        x=target+(int)((int64_t)(x-target)*s_requested_width/320);
+                        x=target+(int)((int64_t)(x-target)*render_width/320);
                     }
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
             if(multi) {
-                if(g_ram[o+0xB])add_mapping(map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
+                if(g_ram[o+0xB])add_mapping(dst,keys,o<<16,map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
                 for(unsigned n=0;n<count;++n) {
                     unsigned child=o+0x10+n*6;
                     int sx=(int16_t)(ram16(child)-cam),sy=(int16_t)(ram16(child+2)-cy);
                     if (!campaign) sy=((sy+128)&2047)-128;
-                    add_mapping(map,g_ram[child+5],gfx,flags,sx,sy,0,0);
+                    add_mapping(dst,keys,(o<<16)|((n+1)<<12),map,g_ram[child+5],gfx,flags,sx,sy,0,0);
                 }
-            } else add_mapping(map,g_ram[o+0x1A],gfx,flags,x,y,anchor,(flags&32)!=0);
+            } else add_mapping(dst,keys,o<<16,map,g_ram[o+0x1A],gfx,flags,x,y,anchor,(flags&32)!=0);
         }
     }
 }
 
+static void capture_objects(void)
+{
+    capture_objects_into(&s_build,s_requested_width,0,
+        s_interpolation_enabled && !competition()?s_build_keys:NULL);
+}
+static void native_capture_objects(void)
+{
+    s_native_pending=g_ram[0xF600]==12 && g_ram[0xF711] && !competition();
+    if(s_native_pending)capture_objects_into(&s_native_build,320,1,s_native_build_keys);
+}
+static void native_publish_sprites(void)
+{
+    if(!s_native_pending)return;
+    s_native_pending=0;s_native_build.serial=++s_native_serial;
+    memcpy(s_native_build.sat,g_ram+0xF800,640);
+    SceneFrame *f=&s_native_history[s_native_serial%3];
+    f->count=s_native_build.count;f->serial=s_native_serial;f->scene=s_native_build.scene;
+    f->camera_x=s_native_build.camera_x;f->camera_y=s_native_build.camera_y;
+    memcpy(f->views,s_native_build.views,sizeof f->views);memcpy(f->sat,s_native_build.sat,640);
+    memcpy(f->sprites,s_native_build.sprites,f->count*sizeof *f->sprites);
+    memcpy(s_native_keys[s_native_serial%3],s_native_build_keys,f->count*sizeof *s_native_build_keys);
+}
 static void publish_sprites(void)
 {
     for(unsigned n=0;n<s_visible_count;++n) {
@@ -592,6 +701,11 @@ static void publish_sprites(void)
     memcpy(dst->views,s_build.views,sizeof dst->views);
     memcpy(dst->sat,s_build.sat,640);
     memcpy(dst->sprites,s_build.sprites,s_build.count*sizeof(SceneSprite));
+    unsigned slot=s_serial%3;s_key_serial[slot]=0;
+    if(s_interpolation_enabled && !competition()) {
+        memcpy(s_key_history[slot],s_build_keys,s_build.count*sizeof *s_build_keys);
+        s_key_serial[slot]=s_serial;
+    }
 }
 int s2_video_hook(uint32_t pc)
 {
@@ -621,7 +735,13 @@ int s2_video_hook(uint32_t pc)
     }
     if(pc==0x17B84 && gameplay() && (enabled() || s_loader_active)) {spawn_scene();return 1;}
     if (competition() && s_loader_active && pc==0x17CCC) {spawn_scene();return 1;}
-    if(!enabled())return 0;
+    if(!enabled()) {
+        if(s_interpolation_enabled) {
+            if(pc==0x16604)native_capture_objects();
+            if(pc==0x16712 || pc==0x1671A)native_publish_sprites();
+        }
+        return 0;
+    }
     if (competition()) {
         switch (pc) {
         case 0x17C50:case 0x17CCC:
@@ -688,6 +808,13 @@ static void select_scene(const GVDP *v)
             s_display=&s_display_frame;++s_scene_holds;
         }
     }
+    if(s_interpolation_enabled && s_display && s_display!=&s_display_frame) {
+        unsigned slot=s_display->serial%3;s_display_key_serial=0;
+        if(s_key_serial[slot]==s_display->serial) {
+            memcpy(s_display_keys,s_key_history[slot],s_display->count*sizeof *s_display_keys);
+            s_display_key_serial=s_display->serial;
+        }
+    }
     /* Keep the selected front buffer immutable for all displayed scanlines. */
     if(s_display && s_display!=&s_display_frame) {
         s_display_frame.count=s_display->count;s_display_frame.scene=s_display->scene;
@@ -708,9 +835,11 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
         int world=!s->hud && (s_display->scene==1 || s_display->scene==3);
         int cell_height=(v->reg[12]&6)==6?16:8;
-        int y=s->y+(world?s_display->camera_y-s_camera_y:0);
+        int sx=s->x,sy=s->y;
+        if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
+        int y=sy+(world?s_display->camera_y-s_camera_y:0);
         if(line<y || line>=y+ch*cell_height)continue;
-        int base=s->x+(s->hud==1?0:s->hud==2?(width-320)/2:origin);
+        int base=sx+(s->hud==1?0:s->hud==2?(width-320)/2:origin);
         /* Native camera scroll may advance while a completed host frame is
          * retained. Reproject its world coordinates, not its old screen
          * coordinates; otherwise stationary rings jitter with the camera. */
@@ -724,7 +853,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
             uint32_t custom=0;
-            int knux=s->hud==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+            int knux=!s_interpolating && s->hud==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):pattern_pixel(v,cell,ix,iy);
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
@@ -851,7 +980,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         shadow[i]=genesis_dac_cram_to_argb(v->cram[i],GENESIS_DAC_SHADOW);
         if(palette[i]!=palette[0])uniform_palette=0;
     }
-    if(line==0) {
+    if(line==0 && !s_interpolating) {
         memcpy(&s_video_frame,v,sizeof s_video_frame);
         memcpy(s_world_frame,g_ram,sizeof s_world_frame);
         s_frame_vs=competition();
@@ -948,9 +1077,12 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         camera=s_frame_view_x;camera_y=s_frame_view_y;
     }
     if(line==0) {
-        if(level)s_stage_width=stage_width();
+        if(level && !s_interpolating)s_stage_width=stage_width();
         s_camera=camera;s_camera_y=camera_y;++s_frames;
-        s_left=level?view_left(camera,width):camera-(width-nw)/2;
+        if(level && s_interpolating) {
+            int end=s_stage_width-width;
+            s_left=end<0?end/2:clamp(camera-(width-320)/2,0,end);
+        } else s_left=level?view_left(camera,width):camera-(width-nw)/2;
     }
     int origin=level?s_camera-s_left:(width-nw)/2;
     s_native_x=origin;
@@ -1088,6 +1220,177 @@ static void scanline_lazy(const GVDP *v, int line, int nw, uint32_t *out, int wi
     render_scanline(v,line,NULL,nw,out,width,native_row,native_ctx);
 }
 
+/* These snapshots are deliberately absent from video_state(). Native aspect
+ * captures use their own read-only publication, without enabling the expanded
+ * object loader, changing sprite flags or spending additional guest cycles. */
+typedef struct {
+    S2RenderContext render;
+    SceneFrame scene;
+    uint32_t keys[SCENE_SPRITES];
+    uint16_t cram[224][64],hscroll[224][2],vscroll[224][2];
+    uint32_t *image;
+    size_t capacity;
+    unsigned tick,zone;
+    int width,lines,valid;
+} PresentationFrame;
+static PresentationFrame s_present[2];
+static unsigned s_present_front;
+static const PresentationFrame *s_lerp_old,*s_lerp_new;
+
+static void interpolation_reset(void)
+{
+    for(unsigned i=0;i<2;++i)s_present[i].valid=s_present[i].lines=0;
+    for(unsigned i=0;i<3;++i) {
+        s_native_history[i].serial=0;s_key_serial[i]=0;
+    }
+    s_native_display.serial=s_native_serial=s_display_key_serial=0;
+    s_native_pending=0;
+}
+static void presentation_configure(int on)
+{
+    s_interpolation_enabled=on!=0;interpolation_reset();
+}
+static const SceneFrame *native_select_scene(const GVDP *v)
+{
+    const SceneFrame *best=NULL;
+    unsigned sat=(v->reg[5]&127u)<<9;
+    for(unsigned i=0;i<4;++i) {
+        const SceneFrame *p=i==3?&s_native_display:&s_native_history[i];
+        if(!p->serial || (best && p->serial<best->serial))continue;
+        unsigned k=0;
+        for(;k<640 && p->sat[k]==v->vram[(sat+k)&65535u];++k){}
+        if(k==640)best=p;
+    }
+    if(best && best!=&s_native_display) {
+        unsigned count=best->count;
+        memcpy(s_native_display_keys,s_native_keys[best->serial%3],count*sizeof(uint32_t));
+        s_native_display.count=count;s_native_display.serial=best->serial;
+        s_native_display.scene=best->scene;s_native_display.camera_x=best->camera_x;
+        s_native_display.camera_y=best->camera_y;
+        memcpy(s_native_display.views,best->views,sizeof best->views);
+        memcpy(s_native_display.sat,best->sat,sizeof best->sat);
+        memcpy(s_native_display.sprites,best->sprites,count*sizeof(SceneSprite));
+        best=&s_native_display;
+    }
+    return best;
+}
+static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
+                                 int width,int native_w,const struct GVDPRasterRow *raster)
+{
+    (void)raster;
+    if(!s_interpolation_enabled || line<0 || line>=224)return;
+    if(line==0) {
+        s_present_front^=1;
+        PresentationFrame *f=&s_present[s_present_front];
+        f->valid=0;f->lines=0;f->width=width;
+        /* Donor actors/providers, native interlace and transition screens
+         * retain ordinary completed pictures until an adapter is qualified. */
+        if(width<native_w || native_w!=320 || g_ram[0xF600]!=12 ||
+           !g_ram[0xF711] || ram16(0xF63A) || competition() ||
+           (v->reg[12]&14) || !(v->reg[1]&64) ||
+           s2_runtime_campaign_online() || s2_party.roster.slots>2 ||
+           strcmp(s2_party.roster.character[0],"sonic") ||
+           (s2_party.roster.slots>1 && strcmp(s2_party.roster.character[1],"tails")))return;
+        const SceneFrame *scene=enabled()?s_display:native_select_scene(v);
+        const uint32_t *keys=enabled()?s_display_keys:s_native_display_keys;
+        if(!scene || scene->scene!=1 || (enabled() && s_display_key_serial!=scene->serial))return;
+        for(unsigned i=0;i<scene->count;++i)if(scene->sprites[i].size&0x80)return;
+        size_t need=(size_t)width*224;
+        if(need>f->capacity) {
+            uint32_t *next=(uint32_t*)realloc(f->image,need*sizeof *next);
+            if(!next)return;
+            f->image=next;f->capacity=need;
+        }
+        if(width>s_priority_capacity) {
+            uint8_t *next=(uint8_t*)realloc(s_priority,(size_t)width);
+            if(!next)return;
+            s_priority=next;s_priority_capacity=width;
+        }
+        f->render=s_real_render;
+        if(!enabled()) {
+            memset(&f->render,0,sizeof f->render);
+            memcpy(&f->render.video_frame,v,sizeof *v);
+            memcpy(f->render.world_frame,g_ram,sizeof f->render.world_frame);
+            f->render.frame_level=1;f->render.frame_fg_x=ram16(0xEE60);
+            f->render.frame_fg_y=ram16(0xEE64);f->render.frame_bg_y=ram16(0xEE6C);
+            f->render.frame_zone=g_ram[0xFE10];f->render.stage_width=stage_width();
+            f->render.width=width;
+        }
+        f->scene.count=scene->count;f->scene.scene=scene->scene;
+        f->scene.camera_x=scene->camera_x;f->scene.camera_y=scene->camera_y;
+        memcpy(f->scene.sprites,scene->sprites,scene->count*sizeof(SceneSprite));
+        memcpy(f->keys,keys,scene->count*sizeof(uint32_t));
+        f->tick=ram16(0xFE04);f->zone=ram16(0xFE10);f->valid=1;
+    }
+    PresentationFrame *f=&s_present[s_present_front];
+    if(!f->valid || line!=f->lines || width!=f->width || !image) {f->valid=0;return;}
+    memcpy(f->image+(size_t)line*width,image,(size_t)width*sizeof *image);
+    memcpy(f->cram[line],v->cram,sizeof f->cram[line]);
+    int mode=v->reg[11]&3,row=mode==0?0:mode==2?line&~7:line;
+    unsigned base=(v->reg[13]&63u)<<10;
+    for(unsigned p=0;p<2;++p) {
+        f->hscroll[line][p]=vram16(v,base+(unsigned)row*4+p*2);
+        f->vscroll[line][p]=v->vsram[p];
+    }
+    ++f->lines;
+}
+static int lerp_position(int a,int b)
+{ return a+(int)((b-a)*s_interpolation_phase+((b>=a)?0.5:-0.5)); }
+static void interpolation_sprite(unsigned index,int *x,int *y)
+{
+    const SceneFrame *a=&s_lerp_old->scene,*b=&s_lerp_new->scene;
+    *x=lerp_position(a->sprites[index].x+a->camera_x,b->sprites[index].x+b->camera_x)-b->camera_x;
+    *y=lerp_position(a->sprites[index].y+a->camera_y,b->sprites[index].y+b->camera_y)-b->camera_y;
+}
+static int interpolate(double phase,uint32_t *image,int stride,int height)
+{
+    const PresentationFrame *b=&s_present[s_present_front],*a=&s_present[s_present_front^1];
+    if(!s_interpolation_enabled || !image || height!=224 || !(phase>=0 && phase<=1) ||
+       !a->valid || !b->valid || a->lines!=224 || b->lines!=224 ||
+       a->width!=b->width || stride<b->width || a->zone!=b->zone ||
+       (uint16_t)(b->tick-a->tick)>2 || a->scene.count!=b->scene.count ||
+       abs(a->render.frame_fg_x-b->render.frame_fg_x)>128 ||
+       abs(a->render.frame_fg_y-b->render.frame_fg_y)>128)return 0;
+    for(unsigned i=0;i<b->scene.count;++i) {
+        const SceneSprite *p=&a->scene.sprites[i],*q=&b->scene.sprites[i];
+        if(a->keys[i]!=b->keys[i] || p->attr!=q->attr || p->size!=q->size || p->hud!=q->hud ||
+           (!q->hud && (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
+                       abs(p->y+a->scene.camera_y-q->y-b->scene.camera_y)>48)))return 0;
+    }
+    if(phase==0 || phase==1) {
+        const PresentationFrame *f=phase==0?a:b;
+        for(int y=0;y<224;++y)memcpy(image+(size_t)y*stride,f->image+(size_t)y*f->width,(size_t)f->width*sizeof *image);
+        return 1;
+    }
+    static S2RenderContext fractional;
+    fractional=b->render;
+    s_interpolation_phase=phase;s_lerp_old=a;s_lerp_new=b;
+    fractional.frame_fg_x=lerp_position(a->render.frame_fg_x,b->render.frame_fg_x);
+    fractional.frame_fg_y=lerp_position(a->render.frame_fg_y,b->render.frame_fg_y);
+    fractional.frame_bg_y=lerp_position(a->render.frame_bg_y,b->render.frame_bg_y);
+    S2RenderContext *saved_render=s_render;
+    const SceneFrame *saved_display=s_display;
+    s_render=&fractional;s_display=&b->scene;s_interpolating=1;
+    unsigned base=(fractional.video_frame.reg[13]&63u)<<10;
+    int mode=fractional.video_frame.reg[11]&3;
+    for(int y=0;y<224;++y) {
+        memcpy(fractional.video_frame.cram,b->cram[y],sizeof b->cram[y]);
+        int row=mode==0?0:mode==2?y&~7:y;
+        for(unsigned p=0;p<2;++p) {
+            int old=(int16_t)a->hscroll[y][p],delta=(int16_t)(b->hscroll[y][p]-a->hscroll[y][p]);
+            unsigned hs=(uint16_t)lerp_position(old,old+delta),at=(base+row*4+p*2)&65535;
+            fractional.video_frame.vram[at]=(uint8_t)(hs>>8);
+            fractional.video_frame.vram[(at+1)&65535]=(uint8_t)hs;
+            old=a->vscroll[y][p];delta=((b->vscroll[y][p]-old+512)&1023)-512;
+            fractional.video_frame.vsram[p]=(uint16_t)lerp_position(old,old+delta);
+        }
+        render_scanline(&fractional.video_frame,y,b->image+(size_t)y*b->width,320,
+                        image+(size_t)y*stride,b->width,NULL,NULL);
+    }
+    s_interpolating=0;s_display=saved_display;s_render=saved_render;
+    return 1;
+}
+
 void s2_video_command(int id, const char *json)
 {
     (void)json;
@@ -1190,4 +1493,9 @@ int s2_video_knuckles_hud_pixel(const GVDP *v,unsigned attr,int x,int y,uint32_t
     *color=c; return 1;
 }
 extern void s2_options_overlay(const GVDP *, int, uint32_t *, int);
-const GameVideo sonic2_video = { configure, enabled, width, scanline, s2_options_overlay, scanline_lazy };
+const GameVideo sonic2_video = {
+    .configure=configure,.enabled=enabled,.width=width,.scanline=scanline,
+    .overlay_scanline=s2_options_overlay,.scanline_lazy=scanline_lazy,
+    .presentation_configure=presentation_configure,.presentation_capture=presentation_capture,
+    .interpolate=interpolate,.presentation_reset=interpolation_reset
+};
