@@ -143,7 +143,7 @@ to the screen, and keeps the selected canvas through title cards and fades.
 Adaptive follows live window resizing without a 32:9 cap; the practical
 limits are texture size, memory, and rendering cost.
 
-While enabled, the mod also gives single-player level simulation extra CPU
+While enabled, the mod also gives level simulation extra CPU
 headroom so the wider active object range does not inherit the original
 hardware's slowdown. Physics still advances once per VBlank; music, DMA,
 interrupts and display timing retain their normal clocks. Disabling the mod
@@ -157,10 +157,11 @@ First-pass limitations:
 
 - Special-stage scenery expands, but the half-pipe and its HUD retain the
   original centered projection.
-- Native two-player competition keeps its original split-screen rendering;
-  netplay disables the custom renderer.
+- Native two-player competition keeps its split-screen format with both views
+  extended, independent cameras and roster-aware HUDs. The original race rules
+  and results remain in use.
 - Extreme stage-length views can exhaust the original dynamic-object pool.
-  Loading prioritizes objects nearest the player; rendering itself has no
+  Loading prioritizes objects nearest the players; rendering itself has no
   Genesis sprite-per-line limit.
 - This is an experimental port, not a full-game/boss-route certification.
   Collision and stage decompression are unchanged, but expanded activation

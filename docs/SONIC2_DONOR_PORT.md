@@ -150,7 +150,7 @@ The HUD keeps native placement and live counter updates while using the
 original face/name pixels and palette-0 orange/white treatment. Native output
 removes the old glyph shape using a private VDP copy; the widescreen renderer
 substitutes the same art in its existing HUD pass. No guest palette, status,
-VRAM or other character HUD is changed. Native 2P identity remains separate
-work. The shield/star/monitor payloads are decoded for subsequent item fixes;
-their presentation is not implemented by this HUD change. Donor bytes stay
+VRAM or other character HUD is changed. Native 2P uses the actual roster in both HUDs, including extended viewports.
+The original shield/star/monitor artwork is also implemented in native and
+widescreen single-player and competition views. Donor bytes stay
 private and must not enter source commits or release packages.

@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 22 validated resolutions (21 fixes and 1 current-HUD verification), 2 active and 2 explicitly deferred**. One save-menu
+Current intake: **26 reported defect/action items; 23 validated resolutions (22 fixes and 1 current-HUD verification), 1 partially resolved and 2 explicitly deferred**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -35,7 +35,7 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-12 | Widescreen Knuckles sometimes jitters in midair while gliding. Reproduce and remove jitter without changing glide physics. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied; bounded samples did not establish a fix, and the completed pose-history experiment was rejected as pixel/state-identical. Reopen on new reproducing evidence; not counted resolved. |
 | S2-13 | Sega logo animation is not extended for widescreen. Extend its intended scene consistently through the margins. | **Validated fix**, not released. Sonic and the moving streak span the selected viewport; the logo/TM keep their native pixel size and centered position. Original background edge pixels extend the logo stripe band through its palette animation. Native/16:9/32:9 real boot routes pass, with unchanged RAM/VRAM and native images. |
 | S2-14 | Options background is not extended for widescreen. Fill the extended area with the correct background across navigation/fades. | **Validated fix**, not released. Repeat the populated 40-column background instead of the unused portion of the 64-column plane. Real entry/navigation/exit routes at 320/398/796 pixels: all 426 paired RAM/VRAM samples identical; all 142 native images identical; only Options widescreen images change. 43,200/106,880 checked margin pixels match the native pattern. |
-| S2-15 | Native 2P competition is not extended for widescreen. Extend both viewports, camera/object coverage and HUD appropriately while preserving competition mechanics. | Open. |
+| S2-15 | Native 2P competition is not extended for widescreen. Extend both viewports, camera/object coverage and HUD appropriately while preserving competition mechanics. | **Validated fix**, not released. Both IM2 views extend terrain, sprites/rings, source title cards and HUDs through the selected width, with independent cameras and shared bounded object coverage. EHZ/CNZ/MCZ movement,16:9/32:9, Knuckles P2, both-player bridge/signpost/results mechanics, state roundtrip and diagnostic replay pass. Native control retains162 exact RAM/VRAM/PNG samples. See competition widescreen qualification below. |
 | S2-16 | Save cards always show Sonic & Tails. Update portraits from the characters currently chosen in Options; keep campaign saves roster-independent. | **Validated fix**, not released. Current Options roster supplies original Sonic/Tails/Knuckles solo portraits and verified Amy/Shadow/Mighty gameplay art. Nine runtime cases cover five distinct available characters, native/wide six-seat parties, the original pair and empty seats; campaign bytes stay unchanged. Focused tests cover Amy bank selection, all six identities, bounded layout and unchanged progress. No separate card selector was added. |
 | S2-17 | Delete-mode UI sounds are missing: entering delete mode, scrolling, choosing a file and successful deletion. Match the source-backed events, including silence for ignored actions. | **Validated fix**, not released. Focused event/ignored-action/failing-commit tests and actual native generated-audio A/B pass. Source-backed event order uses native S2 cues: Checkpoint $A1 for enter/confirm, BonusBumper $D8 for delete navigation, TallyEnd $C5 after successful disk commit. S3&K uses Starpost/SmallBumpers/Perfect; this preserves the established S2-native sound policy rather than claiming identical timbres. |
 | S2-18 | Delete-mode cancellation differs from S3&K. Start on an empty card or Delete, B anywhere, and choosing No at confirmation should leave deletion mode without starting/deleting a file. | **Validated fix**, not released. All five actual routes pass with disposable saves: empty, No, B at confirmation, Delete card and Yes. Unit cases also preserve read-only data and fail commits without a success sound. |
@@ -432,3 +432,57 @@ recording and was corrected. Neither is a passing validation claim.
 
 S2-15 now proceeds from this stable corrected dependency. H-06 presenter work
 remains separate and unadopted; no more artificial flash adjustments are queued.
+
+S2-15 work in progress (2026-11-02): current uncommitted candidate reuses the existing completed SceneFrame and bounded placement pool rather than introducing a second scene/loader framework. Native2P mapping uses its original alternate pattern word and8x16 cell shape, cross-checked against the actual VDP in a focused test. The current renderer uses live per-field VSRAM so the source's even-row plane scroll is preserved independently of odd actor-camera coordinates. Existing native EHZ control matches all162 captured WRAM/VRAM/PNG samples exactly. First32:9 EHZ prototype shows five active world objects versus one in the native view. Those are preparation/observations, not an accepted S2-15 result. Current qualification is `competition-wide-qa` via `qualify_wide_competition.py`; source remains uncommitted until its acceptance checks pass. H-06 is still unimplemented.
+
+
+Competition widescreen qualification (S2-15, 2026-11-02): `competition-wide-qa`
+retains real-menu EHZ16:9/32:9, CNZ32:9, MCZ32:9 and Knuckles-P2 routes. Both
+viewports render original alternate2P mappings and8x16 cells from the current
+world; the renderer preserves source per-field VSRAM independently of odd
+actor-camera coordinates. The existing completed SceneFrame supplies sprites;
+no second scene framework was added. The existing bounded placement pool now
+covers both camera windows, including the original CNZ2P object layouts.
+Focused tests cover native-object adoption, preserving a moving root inside
+an active view, clean retirement/respawn and retaining loader ownership when
+widescreen is turned off. The extended simulation retains its VBlank wait;
+loading, special stages and the disabled mode retain their previous CPU budget.
+
+All five movement cases retain native competition mode, separate cameras and
+independent lives. Source clock samples advance32 ticks for the first32-frame
+input setup,31 per30-frame wait plus capture boundary, and11 for the final
+10-frame wait plus boundary. This is guest-cadence evidence, not a physical
+monitor/FPS benchmark. The independent source-art oracle verifies12,856 opaque
+HUD pixels, including the original Knuckles face/name/colours, and both black
+dividers. The earlier native-aspect control remains byte-identical across all
+162 paired WRAM/VRAM/PNG observations (`vs-divider-qa/native-proto-ehz`).
+
+The final EHZ mechanics fixture positions both characters at the original
+bridge and near the original goal; it bypasses travel, never writes standing,
+finish or result flags. Both characters land through normal physics and refer
+to an actual Obj11 bridge. They then cross the signpost through normal input;
+their independent timers stop and the real game enters2P results. The results
+background now repeats its populated40-column motif across the whole canvas.
+11,424 margin pixels match the source motif; all six matched WRAM snapshots and
+the native results center remain unchanged by that final pattern correction.
+No complete-stage traversal or exhaustive object-type certification is claimed.
+
+All11 focused tests pass. Core movement/visual/state/replay build SHA256:
+`520ff34774fa47f8b8f435266b4df97290d0e37a804c9c6f4199d361a42dd6b7`.
+It passes83 eight-tick rollback checks, an identical-picture/current-object
+state roundtrip, and all1,467 fresh diagnostic playback executions. Final
+moving-root guard/results build SHA256:
+`f2eeab2a363f36354b900da2aaaac0467b95e6c3d866a0b40d1a9bdcbf0bc120`
+requalifies all11 focused tests, the actual both-player bridge/finish/results
+fixture and all83 rollback checks. `results.json`, `pixel-results.json`,
+`state-results-core.json`, `state-results.json` and `mechanics/result.json`
+retain individual evidence and exact identities.
+
+Next H-06 uses the prepared shared presenter API. Its native-aspect scene
+capture must be read-only and use separate presentation history: enabling
+interpolation must not mutate the canonical SceneFrame history, object flags,
+loader activation, width, input or audio. Fractional draws must use owned
+VRAM/world/palette/scene snapshots and restore the ordinary drawing context.
+Native vs widened activation stays separate; unsupported scenes retain their
+ordinary images. S2-22 remains partially resolved with its existing reference
+fidelity caveat, and S2-12/S2-26 remain explicitly deferred by the owner.
