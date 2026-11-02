@@ -402,7 +402,7 @@ or rare table shapes the static extractor doesn't recognize.
 
 ## Contributors
 
-- [TheGabeMaster29](https://github.com/TheGabeMaster29) ? extensive QA testing,
+- [TheGabeMaster29](https://github.com/TheGabeMaster29): extensive QA testing,
   detailed bug reports, and regression feedback.
 
 ## License
