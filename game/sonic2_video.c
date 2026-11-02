@@ -38,7 +38,7 @@ static uint8_t s_world_frame[0xA800];
 static int s_frame_level,s_frame_special,s_frame_fg_x,s_frame_fg_y,s_frame_bg_y;
 static unsigned s_frame_zone;
 static int s_frame_campaign_view, s_frame_view_x, s_frame_view_y;
-static int s_frame_card,s_frame_card_leaving;
+static int s_frame_card,s_frame_card_leaving,s_frame_sega;
 static void scene_mode_changed(int was_enabled);
 
 static uint16_t ram16(unsigned a)
@@ -486,6 +486,8 @@ static void capture_objects(void)
                 x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
                 /* The red serrated edge follows its widened plane boundary;
                  * text keeps its original glyph size and centered layout. */
+                if (g_ram[0xF600]==0 && g_ram[o]==0xB0)
+                    x=(int)((int64_t)x*s_requested_width/320)-(s_requested_width-320)/2;
                 if (g_ram[o]==0x34) {
                     if (g_ram[o+0x1A]==0x16)
                         x=x*s_requested_width/320-(s_requested_width-320)/2;
@@ -706,6 +708,8 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=g_ram[0xFE10];
         s_frame_card=0;s_frame_card_leaving=ram16(0xB0BE)!=0;
+        s_frame_sega=width>nw && !g_ram[0xF600] && g_ram[0xB040]==0xB0 &&
+            v->reg[2]==0x30 && v->reg[4]==5;
         if (width>nw && (g_ram[0xF600]&127)==12 && !ram16(0xFFD8) &&
             (v->vram[0xBB40]==0x33 || v->vram[0xBB40]==0x44) &&
             v->vram[0xBB7F]==v->vram[0xBB40])
@@ -834,6 +838,16 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         /* Menus have a centered foreground composition, with full-width
          * scenery underneath. Special-stage planes are repeating art. */
         if(!level && (nx<0 || nx>=nw))ap=0;
+        if (s_frame_sega) {
+            /* The streak plane follows Sonic across the whole viewport.
+             * Logo/TM artwork remains centered at its original pixel size. */
+            int px=(int)((int64_t)x*nw/width)-hs_a,py=line+v->vsram[0];
+            a=plane_attr(v,base_a,px,py);ap=pattern_pixel(v,a,px,py);
+            if (nx<0 || nx>=nw) {
+                int edge=(nx<0?0:nw-1)-hs_b;
+                b=plane_attr(v,base_b,edge,by);bp=pattern_pixel(v,b,edge,by);
+            }
+        }
         if (s_frame_card) {
             /* Stretch only the original geometric fill. Its live name table
              * supplies every entry/exit row; never repeat a 512px card seam. */
@@ -885,7 +899,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         ++background_x;
         if(bg_width>0 && background_x==bg_width)background_x=0;
     }
-    if(s_frame_card && s_display) {
+    if((s_frame_card || s_frame_sega) && s_display) {
         draw_scene_sprites(v,line,out,width,origin,palette);
     } else if(!level) {
         if (!native) native = native_row(native_ctx);
