@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Current intake: **26 reported defect/action items; 15 validated fixes, 11 remaining**. One save-menu
+Current intake: **26 reported defect/action items; 17 validated fixes, 9 remaining**. One save-menu
 question is answered below. All defect reports still require checking against
 the current source/build; do not assume the reporter used the latest version.
 
@@ -39,8 +39,8 @@ the current source/build; do not assume the reporter used the latest version.
 | S2-16 | Save cards always show Sonic & Tails. Update portraits from the characters currently chosen in Options; keep campaign saves roster-independent. | **Validated fix**, not released. Current Options roster supplies original Sonic/Tails/Knuckles solo portraits and verified Amy/Shadow/Mighty gameplay art. Nine runtime cases cover five distinct available characters, native/wide six-seat parties, the original pair and empty seats; campaign bytes stay unchanged. Focused tests cover Amy bank selection, all six identities, bounded layout and unchanged progress. No separate card selector was added. |
 | S2-17 | Delete-mode UI sounds are missing: entering delete mode, scrolling, choosing a file and successful deletion. Match the source-backed events, including silence for ignored actions. | **Validated fix**, not released. Focused event/ignored-action/failing-commit tests and actual native generated-audio A/B pass. Source-backed event order uses native S2 cues: Checkpoint $A1 for enter/confirm, BonusBumper $D8 for delete navigation, TallyEnd $C5 after successful disk commit. S3&K uses Starpost/SmallBumpers/Perfect; this preserves the established S2-native sound policy rather than claiming identical timbres. |
 | S2-18 | Delete-mode cancellation differs from S3&K. Start on an empty card or Delete, B anywhere, and choosing No at confirmation should leave deletion mode without starting/deleting a file. | **Validated fix**, not released. All five actual routes pass with disposable saves: empty, No, B at confirmation, Delete card and Yes. Unit cases also preserve read-only data and fail commits without a success sound. |
-| S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | Open. Separate from Knuckles' green artwork S2-05. |
-| S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | Open. Separate transition acceptance from S2-19 static coverage. |
+| S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | **Validated fix**, not released. Live card-plane geometry fills the viewport; the serrated red edge follows its new boundary and text keeps its native glyph size/settled position. Real Sonic 16:9/32:9 and green Knuckles 32:9 intros pass; native images remain identical. Separate from S2-05. |
+| S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | **Validated fix**, not released. Card fills use the displayed plane cells without wrapping; revealed terrain/donor actors share the final widescreen origin. Text travel scales around its settled anchor so it exits before native deletion. Complete 320-frame card routes pass, with exact post-exit images and unchanged paired RAM/VRAM. |
 | S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | Open. User is unsure which differences are original limitations or reference-emulator presentation; do not assume Kega Fusion is a hardware oracle. |
 | S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | Open. Validate CNZ and EHZ independently, including field ordering and the actual source-triggered event. |
 | S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | Open. Preserve the complete intended HUD; compare matching scenes/fields and distinguish rendering defects from original artifacts. |
@@ -245,3 +245,18 @@ Competition source/ROM verification located DrawSprite2P piece DBFs at $16DEE/$1
 - Bounded independent focus check reaffirmed honest counts, rejected further
   comparison machinery/glide sampling without a new hypothesis, and directed
   one runnable title-card coverage/exit candidate using existing scene routes.
+
+- S2-19/S2-20 accepted on executable SHA256
+  `332e13db291cdbb6b09c76ce5852ad12a2d5cac662f31f3ce1a426b30c6c60d5`.
+  `wide-scenes-qa/card-result.json` retains three matched 169-sample routes:
+  Sonic at398/796 pixels and Knuckles at796. All507 paired RAM/VRAM samples
+  match. Only37 title-card images per route change; Sega/Options and every
+  post-exit image from card-frame228 onward remain exact. The142 native control
+  images/RAM/VRAM samples are exact. Static coverage preserves the original
+  serrated edge's three-pixel black outline rather than removing original art.
+  Ten focused tests pass, including original ink3/Knuckles ink4 detection,
+  palette-1 yellow selection, full-width fill and native-width preservation.
+  The bounded first run exposed a centered terrain reveal; aligning that reveal
+  and donor origin removes the jump at Level_started. Text motion now reaches
+  the actual extended edge before source cleanup. Green Knuckles remains hidden
+  by the displayed card and is revealed into the same wide world.

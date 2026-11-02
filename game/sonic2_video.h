@@ -15,3 +15,5 @@ int s2_video_knuckles_hud_pixel(const struct GVDP *vdp,unsigned attr,int x,int y
 int s2_video_hud_origin(int width);
 
 void s2_video_prepare_knuckles_items(void);
+
+int s2_video_intro_world_visible(void);

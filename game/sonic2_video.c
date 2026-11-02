@@ -38,6 +38,7 @@ static uint8_t s_world_frame[0xA800];
 static int s_frame_level,s_frame_special,s_frame_fg_x,s_frame_fg_y,s_frame_bg_y;
 static unsigned s_frame_zone;
 static int s_frame_campaign_view, s_frame_view_x, s_frame_view_y;
+static int s_frame_card,s_frame_card_leaving;
 static void scene_mode_changed(int was_enabled);
 
 static uint16_t ram16(unsigned a)
@@ -158,6 +159,12 @@ static uint8_t pattern_pixel(const GVDP *v, uint16_t attr, int x, int y)
     int byte = v->vram[a & 0xFFFFu];
     int nibble = fx & 1 ? byte & 15 : byte >> 4;
     return nibble ? (uint8_t)(((attr >> 9) & 48) | nibble) : 0;
+}
+static int card_fill(unsigned attr)
+{
+    unsigned tile=attr&2047;
+    return tile>=0x5D8 && tile<=0x5DD &&
+        (attr&0x6000)==(tile>=0x5DC?0x2000u:0u);
 }
 static int plane_tiles(int bits) { return bits == 1 ? 64 : bits == 3 ? 128 : 32; }
 static uint16_t plane_attr(const GVDP *v, unsigned base, int x, int y)
@@ -475,7 +482,22 @@ static void capture_objects(void)
                     else {y=((y+128)&2047)-128;if(y<-32 || y>=256)continue;}
                 }
                 if(s_visible_count<144)s_visible_objects[s_visible_count++]=o;
-            } else {x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;}
+            } else {
+                x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
+                /* The red serrated edge follows its widened plane boundary;
+                 * text keeps its original glyph size and centered layout. */
+                if (g_ram[o]==0x34) {
+                    if (g_ram[o+0x1A]==0x16)
+                        x=x*s_requested_width/320-(s_requested_width-320)/2;
+                    else {
+                        /* Preserve the settled text layout. Travel to/from
+                         * its off-screen source spans the selected viewport,
+                         * so the native deletion cannot pop a visible word. */
+                        int target=(int16_t)ram16(o+0x30)-128;
+                        x=target+(int)((int64_t)(x-target)*s_requested_width/320);
+                    }
+                }
+            }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
             if(multi) {
                 if(g_ram[o+0xB])add_mapping(map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
@@ -683,6 +705,12 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         s_frame_level=gameplay() && g_ram[0xF711];
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=g_ram[0xFE10];
+        s_frame_card=0;s_frame_card_leaving=ram16(0xB0BE)!=0;
+        if (width>nw && (g_ram[0xF600]&127)==12 && !ram16(0xFFD8) &&
+            (v->vram[0xBB40]==0x33 || v->vram[0xBB40]==0x44) &&
+            v->vram[0xBB7F]==v->vram[0xBB40])
+            for (unsigned o=0xB080;o<=0xB1C0;o+=64)
+                if (g_ram[o]==0x34) s_frame_card=1;
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
         /* Presentation width only. s_requested_width is SIMULATION (object
          * activation, spawn culling) and comes from width() -- the sealed
@@ -740,6 +768,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
      * displayed. Do not expose the incoming level before its own display
      * list/planes reach VBlank. */
     if(s_display && s_display->scene!=1)level=0;
+    if(s_frame_card && s_frame_card_leaving)level=1;
     /* Stock SwScrl_EHZ only initializes 222/224 rows. The last two contain
      * stale scroll words, not a valid terrain reference. Extend its last row
      * in the enhanced renderer and report the excluded native rows explicitly. */
@@ -750,7 +779,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         ++s_uninitialized_scroll_lines;
     }
     int camera=level?unwrap(-hs_a,s_frame_fg_x):ram16(0xEE00);
-    int camera_y=unwrap(v->vsram[0],s_frame_fg_y);
+    int camera_y=s_frame_card && s_frame_card_leaving?s_frame_fg_y:unwrap(v->vsram[0],s_frame_fg_y);
     int native_camera=camera,native_camera_y=camera_y;
     if (level && s_frame_campaign_view) {
         camera=s_frame_view_x;camera_y=s_frame_view_y;
@@ -805,9 +834,30 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         /* Menus have a centered foreground composition, with full-width
          * scenery underneath. Special-stage planes are repeating art. */
         if(!level && (nx<0 || nx>=nw))ap=0;
+        if (s_frame_card) {
+            /* Stretch only the original geometric fill. Its live name table
+             * supplies every entry/exit row; never repeat a 512px card seam. */
+            if (!level && (card_fill(a) || nx<0 || nx>=nw)) {
+                a=s_frame_card_leaving?world_attr(s_world_frame,nx+ram16(0xEE60),line+ram16(0xEE64),0):0;
+                ap=pattern_pixel(v,a,nx+ram16(0xEE60),line+ram16(0xEE64));
+            }
+            int card_x=(int)((int64_t)x*nw/width)-hs_a,card_y=line+v->vsram[0];
+            unsigned fill=plane_attr(v,base_a,card_x,card_y);
+            if (card_fill(fill)) { a=(uint16_t)fill;ap=pattern_pixel(v,a,card_x,card_y); }
+        }
         s_priority[x]=(uint8_t)(((a&0x8000)&&ap)||((b&0x8000)&&bp));
         uint8_t p=ap&&(a&0x8000)?ap:bp&&(b&0x8000)?bp:ap?ap:bp;
         out[x]=p?palette[p]:backdrop;
+        if (s_frame_card && (a&2047)>=0x5DA && (a&2047)<=0x5DB && ap==4 &&
+            s2_party.s3k_enabled && !strcmp(s2_party.roster.character[0],"knuckles")) {
+            const S2DonorBank *bank=s2_resource_bank(S2_RESOURCE_SK);
+            if (bank) {
+                uint32_t green=genesis_dac_cram_to_argb(bank->palette[5],GENESIS_DAC_NORMAL);
+                unsigned gain=palette[4]&255;
+                out[x]=0xFF000000u|((((green>>16)&255)*gain/255)<<16)|
+                    ((((green>>8)&255)*gain/255)<<8)|((green&255)*gain/255);
+            }
+        }
         /* The half-pipe uses H32 plus shadow/highlight. Outside the original
          * track projection only planes are drawn, so plane priority alone
          * determines shadow; native operator sprites remain in the center. */
@@ -835,7 +885,9 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         ++background_x;
         if(bg_width>0 && background_x==bg_width)background_x=0;
     }
-    if(!level) {
+    if(s_frame_card && s_display) {
+        draw_scene_sprites(v,line,out,width,origin,palette);
+    } else if(!level) {
         if (!native) native = native_row(native_ctx);
         /* Logos/copyright/menus remain centered at their original pixel
          * scale. The full-width background follows the live scene palette. */
@@ -883,8 +935,10 @@ void s2_video_command(int id, const char *json)
         s_tick_samples,s_tick_updates,s_tick_lag,s_tick_multi,s_publication_lag);
     cmd_send_response(reply);
 }
+int s2_video_intro_world_visible(void) { return s_frame_card && s_frame_card_leaving; }
 void s2_video_actor_origin(const GVDP *v, int line, int width, int *left, int *top)
 {
+    if (s2_video_intro_world_visible()) { *left=s_left;*top=s_camera_y;return; }
     if (s_frame_campaign_view && s2_runtime_campaign_online()) {
         *left=s_left;*top=s_camera_y;return;
     }
@@ -904,6 +958,7 @@ int s2_video_actor_pixel_visible(const GVDP *v, int wx, int wy, int high, const 
 int s2_video_intro_pixel_visible(const GVDP *v,int x,int line,int high)
 {
     if (high) return 1;
+    if (s_frame_card && s_width>320) x=(int)((int64_t)(x+(s_width-320)/2)*320/s_width);
     /* Before Level_started the foreground is still the sliding title-card
      * plane. Its displayed high-priority pixels hide actors, while the newly
      * revealed stage must already show the native DisplaySprite submission. */
