@@ -52,7 +52,7 @@ the reporter used the latest version.
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 | S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
-| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Caption-entry correction prepared; owner visual resize Pass, report remains open.** Engine `a53cd65` retains cooperative dispatch while forwarding minimize/maximize/close presses, preserving the released IRQ4 correction. Controlled caption-loop tests change from zero scheduler yields to 6..7, with event delivery and active-loop shutdown passing. A hidden native-button probe lacks a genuine mouse sequence and is rejected as qualification evidence. Actual held-button gameplay/music continuity still needs a direct check. Reported version/setup stay unknown. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Cooperative dispatch/caption-entry correction released in v0.9.10; owner visual resize Pass, report remains open.** Engine `61bbab1` includes `a53cd65`'s timer around minimize/maximize/close forwarding and preserves the released IRQ4 and launcher corrections. Controlled caption-loop tests change from zero scheduler yields to 6..7, with event delivery and active-loop shutdown passing. A hidden native-button probe lacks a genuine mouse sequence and is rejected as qualification evidence. Actual held-button gameplay/music continuity still needs a direct check. Reported version/setup stay unknown. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -984,3 +984,70 @@ or qualify actual button interaction. Preserve the live failure alongside
 `replay-delivery-20261103/results.json`; no queue-size or scheduling change is
 made without an attributed failure. H-05's ongoing release contract retains
 this candidate caveat.
+
+## v0.9.10 release closeout (2026-11-03)
+
+The owner explicitly requested a release of the available fixes while remaining
+reports stay open. [v0.9.10 is published](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.10)
+and verified as the latest non-draft release. Tag/source `5a007d1` pins engine
+`61bbab1` and unchanged UI `761f76e`. Neither shared engine PR66 nor game PR14
+has been merged. The overall all-items goal remains blocked, not complete.
+
+The release adds cooperative Windows event dispatch, the controlled caption
+timer correction and bounded local rewind presentation history. Owner visual
+resizing remains accepted without another handoff. The release review caught
+and restored three previously shipped contracts dropped by the newer engine
+pin: all launcher preferences save on Close, combined keyboard/gamepad input
+survives an unchanged launcher selection, and importing bindings preserves
+live Mods choices. Engine `5f42134`, `688a2cb` and `61bbab1` restore those paths;
+these are preserved behavior, not three additional burndown resolutions.
+
+The final production BATCHED/IPO/fresh-PGO executable SHA256 is
+`f41022e8ead4dfd0fd3d6e9f149eb7ed20352c587894e7812e2c9404d1f973d8`.
+Fresh native and widescreen Shadow training each ran 1,700 frames; USE consumed
+97.4% profiled functions with zero invalid or new callsites. All 24 focused
+checks pass. Actual hidden/muted launcher Play/Close/relaunch checks preserve
+44.1/48 kHz choices and the actual output rates, filtering, rewind, P6 mode and
+bindings, unchanged P1 bindings and P2 combined input. Active-effect current-
+build save/load restores exact image/object data; all 2,000 diagnostic replay
+executions match and 117 depth-eight rollback checks pass. The preceding
+324-image/RAM/VRAM IRQ qualification is retained separately; the restored
+launcher code does not alter interrupt handling.
+
+The initial 1,800-frame runtime samples were noisy: Sonic/Tails median CPU
+ratio 1.043 and Shadow/Knuckles 0.904, with the latter's candidate samples
+spanning 2,174..2,618 CPU fps. A bounded three-pair 9,000-frame matched repeat
+has overlapping ranges and median ratios 0.990/0.987 respectively; each
+roster's simulation and audio end hashes match across all builds/samples.
+The result is neutral/inconclusive within observed variation, not a proven
+performance improvement or an explained occurrence of the reported slowdown.
+Both short and longer raw results are retained.
+
+Current ZIP: `SonicTheHedgehog2Recomp-windows-x64-v0.9.10.zip`, **8,029,083 bytes**;
+SHA256 `226b8167202d1755459aa4652f61656bfa2987b7080dc197dbbb4e41ec62a430`.
+GitHub's uploaded archive and checksum digests match before publication. The
+25-entry dependency/allowlist check, extracted minimal-system-PATH launcher
+and bundled helper's full 2,000-execution replay pass. Actual packaged fresh
+launcher/gameplay verifies Adaptive Fit with real margins at 398x224; explicit
+saved disabled/32:9 and enabled/16:9 choices retain their settings and render
+320/398 pixels respectively. The bundled README now states the fresh default
+and Sonic/optional-Tails interpolation limit accurately. ROMs, donor artwork,
+settings/saves, PGO data and forbidden loading mods are absent from the archive.
+
+S2-12/S2-26/H-03/H-04 remain owner-deferred; S2-22 exact hardware fidelity,
+actual S2-32 held-button continuity and the unattributed live recording overflow
+remain unverified. Ordinary record/replay successes do not erase that overflow.
+Original intake remains 23/26 resolved, two deferred and one hardware question.
+No native saves or owner settings are changed; the existing owner candidate
+is left intact.
+
+Evidence under the existing task root: `pgo-0910-{generate,use}-*.log`,
+`pgo-0910-training/results.json`, `release-0910-tests.log`,
+`launcher-release-0910-qa/results.json`,
+`release-0910-state-qa/qualified/state-results.json`,
+`release-0910-runtime{,-long}-qa/results.json`,
+`package-check-profile-0910/package-results.json`, `package-replay-0910.log`
+and `packaged-wide-default-0910/results.json`. Retain the exact production build,
+merged profile, frozen v0.9.9 baseline and bounded raw evidence for pending work.
+The superseded v0.9.9 local ZIP/checksum and disposable extracted package/temp
+directory are removed after replacement verification; delivery has one current ZIP.
