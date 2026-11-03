@@ -14,11 +14,11 @@ bypassed. Previously accepted real Knuckles pickups are separate evidence.
 ## Native aspect
 
 P = current attached-art/input/HUD checks pass. R = the Tails-history repair is
-qualified on the candidate. I = movement and parent links pass, with colours
+qualified on released v0.9.8. I = movement and parent links pass, with colours
 checked one owner at a time because the frozen AI actors overlap. I does not
 certify simultaneous visibility through an occluding actor. R/I combines these.
 The original audit checked Shadow's then-current native-blue stars. The
-closeout candidate below restores his verified donor palette; it does not
+v0.9.9 closeout below restores his verified donor palette; it does not
 claim a purple reference or replace S2's native star geometry.
 
 | P1 | P2 | VS | Local co-op | Solo + AI |
@@ -91,10 +91,9 @@ rollback checks pass. This identifies the development qualification; the final r
 
 - Duplicate P1/P2 identities are not selectable and are N/A. Amy's previous
   12-cell gap is closed by the follow-up below.
-- Purple Shadow sparkles: current port uses native S2 stars. Static inspection
-  of the exact Megamix v3 donor establishes grey/white normal-form stars,
-  rather than a purple treatment. The desired reference remains a colour-policy
-  question (S2-29); no guessed purple recolour was introduced.
+- Purple Shadow sparkles: v0.9.9 retains native S2 geometry/animation with the
+  verified Megamix donor palette, including grey/white normal-form stars.
+  A purple reference remains unverified (S2-29); no guessed recolour was added.
 - Reporter intends to clarify mixed monitor/effect policy later. Current world
   icons use P1's theme; attached shields/stars use their actual parent.
 - Exact title-card field flicker needs identified Sonic 2 REV01 on NTSC-U North
@@ -164,13 +163,11 @@ use indices 2/3/5/6. Shadow normal palette `$2C80` maps those to `$000`, `$222`,
 `$666`, `$EEE`: black/grey/white. A decoded source preview and exact instruction
 bindings are retained in `shadow-stars-source-check`. This is static normal-
 form source evidence, not proof of every runtime palette cycle or another
-ROM's purple treatment. A colour-target clarification is pending: matching
-this verified donor treatment and matching an as-yet-unprovided purple
-reference are distinct acceptance choices. Existing colour behavior remains
-unchanged while that choice is unresolved.
+ROM's purple treatment. The purple reference remains unverified. The owner's
+later closeout request is implemented below using the verified donor colours.
 
 
-## Source-backed Shadow-star closeout candidate
+## Source-backed Shadow-star development qualification
 
 The owner requested a final addressable-work closeout and release. The game
 now uses Shadow's verified Megamix palette for his actual parent-owned Obj35
@@ -195,3 +192,29 @@ gain; the corrected binary uses native underwater palette F080. An empty EHZ
 underwater palette was replaced with an explicit nonblack colour fixture for
 the visible-water checks. Evidence is retained under `shadow-stars-qa` and
 `shadow-stars-fixed-qa`; initial failures are not silently counted as passes.
+
+## Shadow-star closeout delivered in v0.9.9
+
+[v0.9.9](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.9)
+delivers the verified palette from source/tag `85e52dd`. The exact final PGO
+executable repeats both Knuckles/Shadow roles across native/wide VS/co-op/AI,
+Amy/Shadow and Tails/Shadow regressions, a Sonic/Tails control, ten isolated AI
+owner observations and two colour/expiry setups. Direct checks pass in 27/29
+captures; two combined wide AI views remain occluded, with their isolated-owner
+checks passing. Twelve colour/fade and eight visible-expiry observations pass;
+both final retirement checks clear the native flag/timer, remove all four
+Shadow children and retire displayed private pieces. All earlier unaffected
+matrix observations are reused. This is still the bounded 66-cell audit above.
+
+The final gate also passes all 22 focused tests, exact current-build state
+picture/object restore, 2,000-execution replay, 117 natural-route rollback checks
+and actual-package helper replay. Fresh Adaptive Fit and saved disabled/fixed
+aspect profiles pass actual packaged launcher/gameplay checks. Matched local
+timing clears an initial candidate's idle-palette regression, with identical
+end-state hashes; detailed values and artifact identities are in the
+[burndown closeout](FEEDBACK-BURNDOWN.md#addressable-closeout-delivered-v099-2026-11-02).
+Final evidence is under `shadow-stars-release-099-qa`,
+`shadow-stars-release-099-state-qa`, `shadow-stars-gated-runtime-099-qa` and
+`packaged-wide-default-099` in the existing task root. Hardware field fidelity,
+the unverified purple reference and the reported world-monitor policy remain
+the explicit limits above.

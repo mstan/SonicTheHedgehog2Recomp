@@ -15,7 +15,7 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
-Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 audits mixed pairs, S2-28 repairs a newly confirmed shared-history defect, and S2-29 records the reported Shadow sparkle treatment. One save-menu
+Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 completes the bounded mixed-pair audit, S2-28 delivers the shared-history repair, S2-29 delivers verified Shadow star colours, and S2-30 enables fresh-install Adaptive Fit. One save-menu
 question is answered below. Open reports require checking against the current source/build; do not assume
 the reporter used the latest version.
 
@@ -47,11 +47,10 @@ the reporter used the latest version.
 | S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Released in v0.9.7**. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Released in v0.9.7; general audit complete**. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied. Existing four-profile normal-aspect/party samples did not reproduce unstable guest cadence; no optimization is claimed. Reopen with new reproducing evidence and coordinate the owner's host-native overhaul. Not counted resolved. |
-
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
-| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Source-backed palette restoration validated; v0.9.9 pending.** Shadow-owned stars use his verified normal/water/Super palette while retaining S2 art, animation, position history and expiry. A separate private sprite bank leaves Knuckles, other actors and world monitors unchanged. Native/wide colour and dry/wet fade checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy also awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
-| S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Implemented; final packaged validation pending.** GameSpec.video_default uses the shared pre-load default setter; normal settings load still wins for saved choices. Verify the fresh packaged launcher, actual adaptive gameplay/resizes and preserved disabled/fixed-ratio profiles. |
+| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
+| S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -745,7 +744,7 @@ Hardware-specific field quirks and the owner's unreproduced-report deferrals
 still need new evidence; those limitations do not prevent the work above.
 
 
-## Closeout candidate: source-backed Shadow stars (2026-11-02)
+## Development qualification: source-backed Shadow stars (2026-11-02)
 
 The owner explicitly requested closing addressable work and cutting a new
 release. S2-29 now applies the verified donor palette to actual Shadow-owned
@@ -801,3 +800,57 @@ all four Shadow objects and retirement of displayed bank-1 pieces. This tests
 native expiry, not natural power-up acquisition or its full 20-second duration.
 The owner subsequently requires widescreen defaults for future releases:
 S2-30 uses the existing GameSpec default, with no saved-preference rewrite.
+
+## Addressable closeout delivered: v0.9.9 (2026-11-02)
+
+Published [v0.9.9](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.9)
+from source/tag `85e52dd`, engine `ec523d5`, UI `761f76e`. Later integration
+preserves the concurrent README QA credits; no executable source changed after
+qualification. S2-29's verified donor palette and S2-30's fresh Fit default are
+delivered. Original intake stays **23/26 resolved, 2 owner-deferred, 1 hardware
+question**. The bounded six-character audit is complete (57 native + 9 wide
+cells), with explicit occlusion limits. H-03/04 stay owner-deferred. Purple
+artwork and a different mixed-world-monitor policy still need a reference or
+clarification; neither is represented as a verified defect or a completed fix.
+
+Final BATCHED/IPO/fresh-PGO executable SHA256:
+`aedb3c894b0aba39b2d9e76f225268c9db1eb40367fff8bfc0ce88f9465eee23`.
+Normal/native and widescreen Shadow training each ran 1,700 frames, then merged
+PGD `0ac1134d22e4e83046ce58af15814a01a88ca37848709fe5e23a6e1ad66cdb2a`
+before USE; 97.4% of functions have profile data, zero invalid/new callsites.
+The final matched three-pair 1,800-frame checks clear the rejected candidate's
+idle-palette regression: Sonic/Tails baseline 2,215..2,351 CPU fps versus
+candidate 2,400..2,560 (median ratio 1.085); Shadow/Knuckles 2,021..2,174 versus
+2,259..2,304 (1.059). All per-roster simulation and audio end hashes match.
+These are bounded local samples, not a universal performance-gain claim.
+Rejected and final raw timing remain separate.
+
+The exact final binary passes 27/29 direct effect checks; two combined wide AI
+views remain unsuitable for nearest-X ownership when actors overlap, and all
+ten isolated-owner observations pass. Twelve source-colour/fade observations
+cover normal, split water, full submersion, Super and dry/wet black endpoints
+in native and wide modes. Eight visible-expiry observations pass; both native
+timers then clear flags, delete Shadow's four children and retire displayed
+private pieces. These graphics fixtures bypass acquisition and shorten expiry.
+Current-build active-star save/load restores exact image/object RAM, paced
+diagnostic playback matches all 2,000 executions, and 117 depth-8 natural-route
+rollback checks pass. All 22 focused source tests pass.
+
+Current ZIP: `SonicTheHedgehog2Recomp-windows-x64-v0.9.9.zip`, **8,027,821 bytes**;
+SHA256 `6c735637b964964cf5c8030a2c7b24f3ffbc4d20fa8a9bfac472822424d5351b`.
+GitHub's uploaded asset digest/size match; latest release is non-draft v0.9.9.
+The 25-entry package passes dependency/allowlist checks, a hidden launcher on
+minimal system PATH and the bundled helper's full 2,000-execution replay.
+Packaged runtime confirms BATCHED. ROMs, donor art, settings/saves, profiles and
+forbidden loading mods are absent. Actual packaged launcher/gameplay verifies
+fresh Adaptive Fit and both saved-choice profiles described in S2-30. These
+startup captures are not replay qualification; the paced replay gate is separate.
+Native saves and owner settings are untouched.
+
+Evidence under the existing task root: `shadow-stars-release-099-qa`,
+`shadow-stars-release-099-state-qa`, `shadow-stars-gated-runtime-099-qa`,
+`pgo-099-gated-training`, `package-check-profile-099`, `package-replay-099.log`,
+`package-replay-099.runtime.log` and `packaged-wide-default-099`. Retain these
+bounded qualification records and the frozen v0.9.8 baseline outside delivery.
+The superseded v0.9.8 ZIP/checksum and disposable extracted/reproduction copies
+are removed after verification; the delivery folder contains only v0.9.9.
