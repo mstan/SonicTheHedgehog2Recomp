@@ -1090,7 +1090,16 @@ no healthy game/build job or owner saves/settings were changed.
 There is no further demonstrated game fix ready to implement from this intake.
 Reopen these deferred rows when a reproducing occurrence or the relevant
 reference/physical observation arrives. Keep the exact caveats with the report;
-a deferral is not a validated fix. Shared-engine integration remains tracked
-by draft [PR66](https://github.com/mstan/segagenesisrecomp/pull/66) and consumer
-[PR14](https://github.com/mstan/SonicTheHedgehog2Recomp/pull/14), with their
-remaining engine/consumer review requirements.
+a deferral is not a validated fix.
+
+## PR integration approval (2026-11-03)
+
+The owner explicitly authorized merging
+[engine PR66](https://github.com/mstan/segagenesisrecomp/pull/66) and
+[consumer PR14](https://github.com/mstan/SonicTheHedgehog2Recomp/pull/14).
+Engine PR66 is merged as `dd520f1`; the consumer is approved for the subsequent
+merge. Both frozen heads were conflict-free with no outstanding CI checks.
+Reuse the recorded production/runtime validation and accepted owner visual
+Resize Pass. The exact qualified engine pin remains `61bbab1`, now reachable
+from engine master. This integration adds no product code beyond the already
+qualified changes; v0.9.10, its tag/archive and the deferred reports are preserved.
