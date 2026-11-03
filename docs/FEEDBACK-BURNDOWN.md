@@ -971,3 +971,16 @@ retained separately; the caption patch does not alter that interrupt code.
 Actual held-button qualification remains pending; the next prepared check
 starts with gameplay running and requires only the mouse. The owner-approved
 visual resize check will not be requested again. Release v0.9.9 remains current.
+
+Diagnostics follow-up: the live Windows caption handoff stopped its recording
+at the existing bounded writer capacity. That partial report is not valid
+complete-replay evidence, and its cause has not been attributed. A matched
+pair on the exact `4bb97071...` executable then records all 1,500 inputs/results
+with no writer errors in both dummy-driver and hidden native Windows
+D3D11/audio configurations. Both reports replay all 1,500 executions. Those
+ordinary routes have no host hitch/conceal events (maximum recorded intervals
+19.144ms and17.347ms). They do not reproduce or explain the live-run overflow
+or qualify actual button interaction. Preserve the live failure alongside
+`replay-delivery-20261103/results.json`; no queue-size or scheduling change is
+made without an attributed failure. H-05's ongoing release contract retains
+this candidate caveat.
