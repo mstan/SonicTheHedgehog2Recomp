@@ -52,7 +52,7 @@ the reporter used the latest version.
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 | S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
-| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Deferred, unverified; host tentatively standalone Sonic 2.** No build, recording or exact setup is available. Windows/SDL modal-loop behavior is a hypothesis, not a diagnosis. Kega's similar behavior does not establish an SDL defect or a recomp regression. Keep separate from S2-26's ordinary in-game cadence report; no speculative audio/timing change is made. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Candidate under review; report remains open.** Current upstream has a cooperative Windows move/resize dispatcher. The Sonic 2 candidate preserves its released IRQ4 correction while adopting that dispatcher; 11 focused checks and targeted built-game regression checks pass. The native modal test covers move/resize dispatch, not minimize/close-button holds. Actual held-caption behavior remains unverified and needs a separate direct check. Reported version/setup stay unknown. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -883,3 +883,50 @@ for these dispositions. Original intake remains 23/26 resolved, two deferred
 and one hardware-fidelity question. S2-31 is an answered question; S2-32 is an
 additional deferred observation. Release v0.9.9 and its validated artifact remain
 unchanged.
+
+## Active-goal candidate: Windows event dispatch (2026-11-03)
+
+The owner activated the goal to finish all reported items. Current upstream
+engine `5d6ebf9` includes the cooperative Windows dispatcher from merged PR65.
+It runs event dispatch on a same-thread fiber and yields back to the normal
+frame scheduler during a modal move/resize loop. Its hidden native-window test
+passes. Minimize/close-button holds are a separate acceptance gap: the existing
+test explicitly sends WM_ENTERSIZEMOVE and cannot prove caption tracking.
+
+A direct upstream engine update was rejected because it lacks Sonic 2's
+already released masked-IRQ4 correction. The existing correction was carried
+forward, including its file/rollback/hash state and explicit machine-test
+stubs. Candidate engine `f157e77` is in
+[engine PR66](https://github.com/mstan/segagenesisrecomp/pull/66), a draft.
+The game dependency pin selects that exact candidate. No new release or merge
+is claimed. The built development executable uses game source `aa0f725` plus
+the explicit candidate engine override, SHA256
+`1efc8c9a632efcb523cd04665ba112e61b4a4676f9d32bb96ae256b53be343f9`;
+native IPO/PGO is off for this correctness qualification.
+
+Eleven focused checks pass. Both EHZ/CNZ competition routes retain all 324
+paired images, complete RAM samples and VRAM samples exactly, with 71/72
+depth-eight rollback checks. Active-effect current-build state restore matches
+the picture and object RAM; paced diagnostic replay matches 2,000 executions
+and the ordinary route passes 117 rollback checks. This preserves the previous
+IRQ repair while adding the new event dispatcher.
+
+Before the IRQ carry-forward, the clean upstream build also exercised three
+bounded native-aspect EHZ1 routes: Sonic/Tails at144, and a six-character mixed
+party with high FPS off/at144. All 570 sampled intervals advance one level tick
+and VBlank; all 192 high/off six-party RAM pairs are identical. There are no
+recorded host hitch/conceal events, and maximum recorded intervals are
+17.571..21.808ms. Ordinary Sonic/Tails produces 565 fractional pictures; the
+six-party route produces zero, retaining original-rate motion. These samples
+confirm the support limit and do not reproduce the unknown reported slowdown,
+measure a physical display, or establish a performance improvement. They are
+kept distinct from the final IRQ-preserving candidate qualification.
+
+Evidence under the existing task root: `window-20261103-{build,tests}.log`,
+`vs-divider-qa/window-hint-20261103-results.json`,
+`window-20261103-state-qa/qualified/state-results.json`, and
+`party-cadence-qa/window-20261103-results.json`. The original v0.9.9 executable
+and the rejected direct-upstream executable are frozen outside delivery.
+Actual caption-hold qualification is still pending. The earlier no-reproduction
+deferrals and exact hardware-reference question remain open limitations; the
+active goal is not complete.
