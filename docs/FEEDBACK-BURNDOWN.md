@@ -52,7 +52,7 @@ the reporter used the latest version.
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 | S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
-| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Candidate under review; owner visual resize Pass, report remains open.** Current upstream has a cooperative Windows move/resize dispatcher. The Sonic 2 candidate preserves its released IRQ4 correction while adopting that dispatcher; 11 focused checks and targeted built-game regression checks pass. The native modal test covers move/resize dispatch, not minimize/close-button holds. Actual gameplay/music continuity during movement and held-caption behavior remain unverified. Reported version/setup stay unknown. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Caption-entry correction prepared; owner visual resize Pass, report remains open.** Engine `a53cd65` retains cooperative dispatch while forwarding minimize/maximize/close presses, preserving the released IRQ4 correction. Controlled caption-loop tests change from zero scheduler yields to 6..7, with event delivery and active-loop shutdown passing. A hidden native-button probe lacks a genuine mouse sequence and is rejected as qualification evidence. Actual held-button gameplay/music continuity still needs a direct check. Reported version/setup stay unknown. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -940,3 +940,24 @@ keyboard resume is still unverified. Both test processes closed normally.
 Movement/music continuity and held minimize/close checks remain pending;
 visual resizing alone is not blanket acceptance of those checks. Failed setup,
 the correction and owner observations are retained in the existing QA profile.
+
+Caption-entry candidate `a53cd65` addresses a separate demonstrated dispatcher
+gap. Windows non-client button presses use
+[WM_NCLBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown);
+the existing timer was armed only by the move/size entry event. The controlled
+native-window fixture forwards minimize/maximize/close into bounded nested
+dispatch loops without sending move/size entry. Before the correction,
+minimize produces zero scheduler yields; afterward all three produce 6..7
+and deliver all ten queued fixture events. Cancellation/shutdown passes for
+both an active move loop and an active close-button loop. Forwarding remains
+on the existing event fiber, and normal game/render work stays on its caller.
+
+A separate attempt to use the real caption procedure on an unseen window
+without mouse input did not unwind. Both attempted cancellation variants are
+rejected as qualification fixtures; they establish neither success nor failure
+of the actual gesture. That probe was removed from the acceptance gate, its
+failed evidence retained, and no further hidden-probe variants are queued.
+The valid controlled checks remain, with a ten-second test timeout. Evidence:
+`caption-entry-before.log`, `caption-entry-final-controlled.log` and
+`caption-entry-native-rejected.log` in the existing task root. Full-game build
+and current-build state/replay qualification of this new engine commit follow.
