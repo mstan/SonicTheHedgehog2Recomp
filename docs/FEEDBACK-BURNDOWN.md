@@ -15,6 +15,12 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
+Future widescreen reference (owner preference, 2026-11-03): consider
+[Sonic 2 Community's Cut / s2cx](https://github.com/heyjoeway/s2cx) when it helps
+with a concrete Sonic 2 widescreen task. Its meta repository links the
+`s2disasm` and `Genesis-Plus-GX` source revisions. Treat it as an optional
+implementation/comparison reference alongside the existing acceptance evidence.
+
 Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 completes the bounded mixed-pair audit, S2-28 delivers the shared-history repair, S2-29 delivers verified Shadow star colours, and S2-30 enables fresh-install Adaptive Fit. One save-menu
 question is answered below. Open reports require checking against the current source/build; do not assume
 the reporter used the latest version.
@@ -42,17 +48,17 @@ the reporter used the latest version.
 | S2-19 | Widescreen title cards do not cover the extended viewport properly. Extend the intended card elements and preserve the normal-aspect layout. | **Released in v0.9.7**. Live card-plane geometry fills the viewport; the serrated red edge follows its new boundary and text keeps its native glyph size/settled position. Real Sonic 16:9/32:9 and green Knuckles 32:9 intros pass; native images remain identical. Separate from S2-05. |
 | S2-20 | Widescreen title-card slide-out looks glitched. Animate the complete card coherently through its exit without wrapping or edge remnants. | **Released in v0.9.7**. Card fills use the displayed plane cells without wrapping; revealed terrain/donor actors share the final widescreen origin. Text travel scales around its settled anchor so it exits before native deletion. Complete 320-frame card routes pass, with exact post-exit images and unchanged paired RAM/VRAM. |
 | S2-21 | Native 2P separator differs during title cards: recomp bar is thicker and briefly flashes blue; reference CNZ bar is thinner and blank. Compare actual interlaced fields/display policies and correct unintended size/colour changes. | **Released in v0.9.7**. Eight output rows216..223 (four displayed TV rows) form an opaque black gap. P1 HUD ends215; P2 viewport begins224 and its HUD at232 is preserved. The original larger P1 sprite mask is replaced by H-int and is not the permanent divider. EHZ/CNZ complete title/game routes pass. No reference-emulator flicker was invented. |
-| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | **IRQ repair released in v0.9.7; exact hardware fidelity unverified.** Reporter now questions Kega as the reference and considers the separator leak the only confirmed rendering defect. Do not treat absent/emulator-specific flicker as a required change.  Fixed dropped masked IRQ4 requests in shared engine024db9b: the erroneous full-P2 flash is gone in both zones. Final native source transient appears on EHZ P1 and at the CNZ seam, differing from the reported emulator's zone pattern. No artificial flicker relocation is added. Both-zone rollback, current save/load and diagnostic replay pass; see qualification below. |
+| S2-22 | 2P title-card transition flashes the wrong region. In reference CNZ P1 flashes; recomp flashes P2. In reference EHZ part of the separator flashes; recomp still flashes P2. | **IRQ repair released in v0.9.7; exact hardware-fidelity question deferred.** Reporter now questions Kega as the reference and considers the separator leak the only confirmed rendering defect. Do not treat absent/emulator-specific flicker as a required change.  Fixed dropped masked IRQ4 requests in shared engine024db9b: the erroneous full-P2 flash is gone in both zones. Final native source transient appears on EHZ P1 and at the CNZ seam, differing from the reported emulator's zone pattern. No artificial flicker relocation is added. Both-zone rollback, current save/load and diagnostic replay pass; see qualification below. |
 | S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | **Validated current-HUD resolution (v0.9.7)**, not a newly repaired glyph claim. The unintended full-width divider strip is covered by S2-21/24. Current baseline and candidate both match all476 original opaque P1 life/name/count pixels in each of six EHZ and six CNZ samples; no clipping was reproduced. All pixels above216 and from224 onward remain identical. Original small flicker artifacts are not reintroduced. |
 | S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Released in v0.9.7**. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Released in v0.9.7; general audit complete**. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
 | S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred; additional context 2026-11-03:** EHZ1, 4:3, high-FPS enabled, large party. Version, exact roster/rate and logs are unknown. Current interpolation explicitly excludes parties above two seats and donor rosters, retaining original-rate motion. That limitation can explain a lack of smoothing but does not establish the cause of the reported lag. Existing bounded cadence samples did not reproduce unstable guest timing; no fix or optimization is claimed. Prior owner deferral remains in force without a reproducible occurrence. |
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
-| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
+| S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. The alternate purple-art claim and changes to mixed world-monitor policy are deferred pending a concrete source/reproducing example; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 | S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
-| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Deferred, unverified; host tentatively standalone Sonic 2.** No build, recording or exact setup is available. Windows/SDL modal-loop behavior is a hypothesis, not a diagnosis. Kega's similar behavior does not establish an SDL defect or a recomp regression. Keep separate from S2-26's ordinary in-game cadence report; no speculative audio/timing change is made. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Cooperative dispatch/caption-entry correction released in v0.9.10; owner visual resize Pass, actual held-button continuity deferred.** Engine `61bbab1` includes `a53cd65`'s timer around minimize/maximize/close forwarding and preserves the released IRQ4 and launcher corrections. Controlled caption-loop tests change from zero scheduler yields to 6..7, with event delivery and active-loop shutdown passing. A hidden native-button probe lacks a genuine mouse sequence and is rejected as qualification evidence. Actual held-button gameplay/music continuity still needs a direct check. Reported version/setup stay unknown. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -883,3 +889,217 @@ for these dispositions. Original intake remains 23/26 resolved, two deferred
 and one hardware-fidelity question. S2-31 is an answered question; S2-32 is an
 additional deferred observation. Release v0.9.9 and its validated artifact remain
 unchanged.
+
+## Active-goal candidate: Windows event dispatch (2026-11-03)
+
+The owner activated the goal to finish all reported items. Current upstream
+engine `5d6ebf9` includes the cooperative Windows dispatcher from merged PR65.
+It runs event dispatch on a same-thread fiber and yields back to the normal
+frame scheduler during a modal move/resize loop. Its hidden native-window test
+passes. Minimize/close-button holds are a separate acceptance gap: the existing
+test explicitly sends WM_ENTERSIZEMOVE and cannot prove caption tracking.
+
+A direct upstream engine update was rejected because it lacks Sonic 2's
+already released masked-IRQ4 correction. The existing correction was carried
+forward, including its file/rollback/hash state and explicit machine-test
+stubs. Candidate engine `f157e77` is in
+[engine PR66](https://github.com/mstan/segagenesisrecomp/pull/66), a draft.
+The game dependency pin selects that exact candidate. No new release or merge
+is claimed. The built development executable uses game source `aa0f725` plus
+the explicit candidate engine override, SHA256
+`1efc8c9a632efcb523cd04665ba112e61b4a4676f9d32bb96ae256b53be343f9`;
+native IPO/PGO is off for this correctness qualification.
+
+Eleven focused checks pass. Both EHZ/CNZ competition routes retain all 324
+paired images, complete RAM samples and VRAM samples exactly, with 71/72
+depth-eight rollback checks. Active-effect current-build state restore matches
+the picture and object RAM; paced diagnostic replay matches 2,000 executions
+and the ordinary route passes 117 rollback checks. This preserves the previous
+IRQ repair while adding the new event dispatcher.
+
+Before the IRQ carry-forward, the clean upstream build also exercised three
+bounded native-aspect EHZ1 routes: Sonic/Tails at144, and a six-character mixed
+party with high FPS off/at144. All 570 sampled intervals advance one level tick
+and VBlank; all 192 high/off six-party RAM pairs are identical. There are no
+recorded host hitch/conceal events, and maximum recorded intervals are
+17.571..21.808ms. Ordinary Sonic/Tails produces 565 fractional pictures; the
+six-party route produces zero, retaining original-rate motion. These samples
+confirm the support limit and do not reproduce the unknown reported slowdown,
+measure a physical display, or establish a performance improvement. They are
+kept distinct from the final IRQ-preserving candidate qualification.
+
+Evidence under the existing task root: `window-20261103-{build,tests}.log`,
+`vs-divider-qa/window-hint-20261103-results.json`,
+`window-20261103-state-qa/qualified/state-results.json`, and
+`party-cadence-qa/window-20261103-results.json`. The original v0.9.9 executable
+and the rejected direct-upstream executable are frozen outside delivery.
+Actual caption-hold qualification is still pending. The earlier no-reproduction
+deferrals and exact hardware-reference question remain open limitations; the
+active goal is not complete.
+
+Owner check: **"sonic 2 resizing looks good"** is recorded as a visual resize
+Pass and will not be requested again. The first isolated handoff could not
+resume from Enter because its P1 device was incorrectly configured as None.
+The handoff profile was corrected to Keyboard and the same executable was
+retested; that second recording contains no post-route Start press, so actual
+keyboard resume is still unverified. Both test processes closed normally.
+Movement/music continuity and held minimize/close checks remain pending;
+visual resizing alone is not blanket acceptance of those checks. Failed setup,
+the correction and owner observations are retained in the existing QA profile.
+
+Caption-entry candidate `a53cd65` addresses a separate demonstrated dispatcher
+gap. Windows non-client button presses use
+[WM_NCLBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown);
+the existing timer was armed only by the move/size entry event. The controlled
+native-window fixture forwards minimize/maximize/close into bounded nested
+dispatch loops without sending move/size entry. Before the correction,
+minimize produces zero scheduler yields; afterward all three produce 6..7
+and deliver all ten queued fixture events. Cancellation/shutdown passes for
+both an active move loop and an active close-button loop. Forwarding remains
+on the existing event fiber, and normal game/render work stays on its caller.
+
+A separate attempt to use the real caption procedure on an unseen window
+without mouse input did not unwind. Both attempted cancellation variants are
+rejected as qualification fixtures; they establish neither success nor failure
+of the actual gesture. That probe was removed from the acceptance gate, its
+failed evidence retained, and no further hidden-probe variants are queued.
+The valid controlled checks remain, with a ten-second test timeout. Evidence:
+`caption-entry-before.log`, `caption-entry-final-controlled.log` and
+`caption-entry-native-rejected.log` in the existing task root. Full-game build
+and all 11 focused checks now pass on game source `315173e`, engine `a53cd65`.
+Executable SHA256:
+`4bb970713c09a78655d97d3be7db703b4446ff37b5ea6a93c0b515207ed4b125`.
+The exact executable restores the active-effect picture/object RAM, matches
+all 2,000 replay executions and passes 117 depth-eight rollback checks.
+Evidence: `caption-guard-state-qa/qualified/state-results.json` and the current
+`window-20261103-{build,tests}.log`. The IRQ-only VS qualification above is
+retained separately; the caption patch does not alter that interrupt code.
+Actual held-button qualification remains pending; the next prepared check
+starts with gameplay running and requires only the mouse. The owner-approved
+visual resize check will not be requested again. Release v0.9.9 remains current.
+
+Diagnostics follow-up: the live Windows caption handoff stopped its recording
+at the existing bounded writer capacity. That partial report is not valid
+complete-replay evidence, and its cause has not been attributed. A matched
+pair on the exact `4bb97071...` executable then records all 1,500 inputs/results
+with no writer errors in both dummy-driver and hidden native Windows
+D3D11/audio configurations. Both reports replay all 1,500 executions. Those
+ordinary routes have no host hitch/conceal events (maximum recorded intervals
+19.144ms and17.347ms). They do not reproduce or explain the live-run overflow
+or qualify actual button interaction. Preserve the live failure alongside
+`replay-delivery-20261103/results.json`; no queue-size or scheduling change is
+made without an attributed failure. H-05's ongoing release contract retains
+this candidate caveat.
+
+## v0.9.10 release closeout (2026-11-03)
+
+The owner explicitly requested a release of the available fixes while remaining
+reports stay open. [v0.9.10 is published](https://github.com/mstan/SonicTheHedgehog2Recomp/releases/tag/v0.9.10)
+and verified as the latest non-draft release. Tag/source `5a007d1` pins engine
+`61bbab1` and unchanged UI `761f76e`. Neither shared engine PR66 nor game PR14
+has been merged. The overall all-items goal remains blocked, not complete.
+
+The release adds cooperative Windows event dispatch, the controlled caption
+timer correction and bounded local rewind presentation history. Owner visual
+resizing remains accepted without another handoff. The release review caught
+and restored three previously shipped contracts dropped by the newer engine
+pin: all launcher preferences save on Close, combined keyboard/gamepad input
+survives an unchanged launcher selection, and importing bindings preserves
+live Mods choices. Engine `5f42134`, `688a2cb` and `61bbab1` restore those paths;
+these are preserved behavior, not three additional burndown resolutions.
+
+The final production BATCHED/IPO/fresh-PGO executable SHA256 is
+`f41022e8ead4dfd0fd3d6e9f149eb7ed20352c587894e7812e2c9404d1f973d8`.
+Fresh native and widescreen Shadow training each ran 1,700 frames; USE consumed
+97.4% profiled functions with zero invalid or new callsites. All 24 focused
+checks pass. Actual hidden/muted launcher Play/Close/relaunch checks preserve
+44.1/48 kHz choices and the actual output rates, filtering, rewind, P6 mode and
+bindings, unchanged P1 bindings and P2 combined input. Active-effect current-
+build save/load restores exact image/object data; all 2,000 diagnostic replay
+executions match and 117 depth-eight rollback checks pass. The preceding
+324-image/RAM/VRAM IRQ qualification is retained separately; the restored
+launcher code does not alter interrupt handling.
+
+The initial 1,800-frame runtime samples were noisy: Sonic/Tails median CPU
+ratio 1.043 and Shadow/Knuckles 0.904, with the latter's candidate samples
+spanning 2,174..2,618 CPU fps. A bounded three-pair 9,000-frame matched repeat
+has overlapping ranges and median ratios 0.990/0.987 respectively; each
+roster's simulation and audio end hashes match across all builds/samples.
+The result is neutral/inconclusive within observed variation, not a proven
+performance improvement or an explained occurrence of the reported slowdown.
+Both short and longer raw results are retained.
+
+Current ZIP: `SonicTheHedgehog2Recomp-windows-x64-v0.9.10.zip`, **8,029,083 bytes**;
+SHA256 `226b8167202d1755459aa4652f61656bfa2987b7080dc197dbbb4e41ec62a430`.
+GitHub's uploaded archive and checksum digests match before publication. The
+25-entry dependency/allowlist check, extracted minimal-system-PATH launcher
+and bundled helper's full 2,000-execution replay pass. Actual packaged fresh
+launcher/gameplay verifies Adaptive Fit with real margins at 398x224; explicit
+saved disabled/32:9 and enabled/16:9 choices retain their settings and render
+320/398 pixels respectively. The bundled README now states the fresh default
+and Sonic/optional-Tails interpolation limit accurately. ROMs, donor artwork,
+settings/saves, PGO data and forbidden loading mods are absent from the archive.
+
+S2-12/S2-26/H-03/H-04 remain owner-deferred; S2-22 exact hardware fidelity,
+actual S2-32 held-button continuity and the unattributed live recording overflow
+remain unverified. Ordinary record/replay successes do not erase that overflow.
+Original intake remains 23/26 resolved, two deferred and one hardware question.
+No native saves or owner settings are changed; the existing owner candidate
+is left intact.
+
+Evidence under the existing task root: `pgo-0910-{generate,use}-*.log`,
+`pgo-0910-training/results.json`, `release-0910-tests.log`,
+`launcher-release-0910-qa/results.json`,
+`release-0910-state-qa/qualified/state-results.json`,
+`release-0910-runtime{,-long}-qa/results.json`,
+`package-check-profile-0910/package-results.json`, `package-replay-0910.log`
+and `packaged-wide-default-0910/results.json`. Retain the exact production build,
+merged profile, frozen v0.9.9 baseline and bounded raw evidence for pending work.
+The superseded v0.9.9 local ZIP/checksum and disposable extracted package/temp
+directory are removed after replacement verification; delivery has one current ZIP.
+
+
+## Final bounded assessment (2026-11-03)
+
+The owner requested a final pass and explicitly allowed unreproduced reports
+to remain deferred. All currently qualified fixes are delivered in v0.9.10.
+This pass adds recording qualification and explicit dispositions; it adds no
+product code, release or counted fix. The original 26 remain 23 resolved,
+two owner deferrals and one deferred hardware-fidelity question.
+
+| Remaining item | Current disposition |
+| --- | --- |
+| S2-12 glide jitter; S2-26 large-party slowdown | **Deferred, not reproduced.** Retain the existing bounded native/wide cadence and rejected pose-history evidence. Large/donor parties still retain original-rate motion when high-FPS presentation is enabled. No new occurrence justifies repeating the old negative experiments. |
+| H-03 CPZ2 drowning; H-04 Sonic spring flicker | **Deferred, not reproduced.** Existing Sonic drowning/death/retry and consecutive real-spring samples pass at their recorded scope. Tails' independent drowning and other unsupplied occurrences are not qualified. |
+| S2-22 exact 2P field/flicker fidelity | **Deferred reference question.** Confirmed divider/IRQ defects are repaired. The supplied videos do not establish the ROM/console/capture field identity needed to change a transient. No new physical-hardware reference is available. |
+| S2-29 purple stars / alternate world-monitor policy | **Verified donor behaviour is delivered; unsupported alternatives deferred.** The verified donor's normal star ink is black/grey/white; water/Super colours and the bounded mixed-character ownership audit pass. The current P1-selected world monitors and actual-parent attached effects are documented. No concrete failing example or source requirement establishes another colour/policy correction. |
+| S2-32 real held Minimize/Close continuity | **Deferred validation.** The released timer correction, controlled nested-loop checks and accepted owner visual Resize Pass remain valid. The prior playtest ended normally. No genuine three-second hold is performed in this pass; actual gameplay/music continuity remains unverified. |
+| H-05 intermittent recording overflow | **Deferred, not reproduced in the new bounded checks.** Preserve the original partial PC report ending around execution 179. Two fresh starts of the exact released executable on SERVER each record 1,800 inputs/hashes without writer errors, then replay every execution. They use native Windows OpenGL/vsync and real 48 kHz audio emulation with output muted; they do not retest the old PC's D3D11 interaction or establish an overflow fix. |
+
+The recording check uses final EXE SHA256
+`f41022e8ead4dfd0fd3d6e9f149eb7ed20352c587894e7812e2c9404d1f973d8`.
+SERVER had measured CPU/memory/storage headroom; two independent sessions take
+31.469/31.047 seconds. Both reports complete and all **3,600 recorded executions
+match**. Maximum recorded host intervals are 44.219/58.749ms; those observations
+are not a timing improvement claim. Evidence, full sidecars, playback and raw
+logs are retained in `closeout-replay-server-0910-qa`. The temporary SERVER
+package/ROM/profile directory is removed after copying that evidence locally.
+The unstarted local reservation was cancelled when SERVER supplied capacity;
+no healthy game/build job or owner saves/settings were changed.
+
+There is no further demonstrated game fix ready to implement from this intake.
+Reopen these deferred rows when a reproducing occurrence or the relevant
+reference/physical observation arrives. Keep the exact caveats with the report;
+a deferral is not a validated fix.
+
+## PR integration approval (2026-11-03)
+
+The owner explicitly authorized merging
+[engine PR66](https://github.com/mstan/segagenesisrecomp/pull/66) and
+[consumer PR14](https://github.com/mstan/SonicTheHedgehog2Recomp/pull/14).
+Engine PR66 is merged as `dd520f1`; the consumer is approved for the subsequent
+merge. Both frozen heads were conflict-free with no outstanding CI checks.
+Reuse the recorded production/runtime validation and accepted owner visual
+Resize Pass. The exact qualified engine pin remains `61bbab1`, now reachable
+from engine master. This integration adds no product code beyond the already
+qualified changes; v0.9.10, its tag/archive and the deferred reports are preserved.
