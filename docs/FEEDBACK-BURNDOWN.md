@@ -52,7 +52,7 @@ the reporter used the latest version.
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
 | S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
-| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Candidate under review; report remains open.** Current upstream has a cooperative Windows move/resize dispatcher. The Sonic 2 candidate preserves its released IRQ4 correction while adopting that dispatcher; 11 focused checks and targeted built-game regression checks pass. The native modal test covers move/resize dispatch, not minimize/close-button holds. Actual held-caption behavior remains unverified and needs a separate direct check. Reported version/setup stay unknown. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Candidate under review; owner visual resize Pass, report remains open.** Current upstream has a cooperative Windows move/resize dispatcher. The Sonic 2 candidate preserves its released IRQ4 correction while adopting that dispatcher; 11 focused checks and targeted built-game regression checks pass. The native modal test covers move/resize dispatch, not minimize/close-button holds. Actual gameplay/music continuity during movement and held-caption behavior remain unverified. Reported version/setup stay unknown. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -930,3 +930,13 @@ and the rejected direct-upstream executable are frozen outside delivery.
 Actual caption-hold qualification is still pending. The earlier no-reproduction
 deferrals and exact hardware-reference question remain open limitations; the
 active goal is not complete.
+
+Owner check: **"sonic 2 resizing looks good"** is recorded as a visual resize
+Pass and will not be requested again. The first isolated handoff could not
+resume from Enter because its P1 device was incorrectly configured as None.
+The handoff profile was corrected to Keyboard and the same executable was
+retested; that second recording contains no post-route Start press, so actual
+keyboard resume is still unverified. Both test processes closed normally.
+Movement/music continuity and held minimize/close checks remain pending;
+visual resizing alone is not blanket acceptance of those checks. Failed setup,
+the correction and owner observations are retained in the existing QA profile.
