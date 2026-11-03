@@ -46,11 +46,13 @@ the reporter used the latest version.
 | S2-23 | Native 2P corruption below P1 extends across the recomp screen, protruding into P1 and clipping the life icon/count. Reference shows only a small left-edge disturbance. | **Validated current-HUD resolution (v0.9.7)**, not a newly repaired glyph claim. The unintended full-width divider strip is covered by S2-21/24. Current baseline and candidate both match all476 original opaque P1 life/name/count pixels in each of six EHZ and six CNZ samples; no clipping was reproduced. All pixels above216 and from224 onward remain identical. Original small flicker artifacts are not reintroduced. |
 | S2-24 | Level graphics and characters can draw inside the native 2P separator (particularly EHZ). Keep the intended divider opaque to both viewports. | **Released in v0.9.7**. Both planes and native/host actors are composited behind the eight-row gap. EHZ/CNZ transition/terrain checks and six positioned EHZ actor observations pass; actual P1/P2 SAT pieces overlap the gap while it stays black. Adjacent HUD/view rows are unchanged. |
 | S2-25 | Bring Sonic 2 launcher behavior into parity with the other recomps. | **Released in v0.9.7; general audit complete**. Builds the exact current upstream UI base plus six-seat compatibility/fixes, rather than the stale pin. Play/close/relaunch preserve tested preferences; P3-P6 keyboard/gamepad/reset and pad modes target the selected seat; P5/P6 bindings read back correctly. 18 focused UI tests, 10 game tests and real hidden launcher checks pass. See launcher audit below. |
-| S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred by owner (2026-11-02)**. No reproducing recording/setup supplied. Existing four-profile normal-aspect/party samples did not reproduce unstable guest cadence; no optimization is claimed. Reopen with new reproducing evidence and coordinate the owner's host-native overhaul. Not counted resolved. |
+| S2-26 | Large companion parties make the game's framerate unstable in 4:3. Restore stable normal-speed play with the reported party workload and preserve ordinary native-aspect behavior. | **Deferred; additional context 2026-11-03:** EHZ1, 4:3, high-FPS enabled, large party. Version, exact roster/rate and logs are unknown. Current interpolation explicitly excludes parties above two seats and donor rosters, retaining original-rate motion. That limitation can explain a lack of smoothing but does not establish the cause of the reported lag. Existing bounded cadence samples did not reproduce unstable guest timing; no fix or optimization is claimed. Prior owner deferral remains in force without a reproducible occurrence. |
 | S2-27 | Audit ordered character pairs involving Knuckles/Shadow in native 2P VS, two-human local co-op and solo+AI; check independent controls, HUDs, separator and shield/star ownership without leaking another actor's artwork/palette. | **Audit complete for all six available donor identities**, 57 native + 9 wide cells exercised. Found S2-28; targeted fixed-build qualification passes. Eight overlapping AI fixtures require isolated-owner observations (16 runs); simultaneous occluded pixels remain unverified. The missing Amy donor was subsequently located and all 12 Amy cells pass on released v0.9.8. See [matrix and limits](SONIC2_MIXED_CHARACTER_MATRIX.md). |
 | S2-28 | With Tails leading, native invincibility children use P2's movement history; both actors also write the same ring. Keep P1/P2 histories separate and stars attached to their actual parent. | **Released in v0.9.8.** Four separated VS/co-op baseline cases expose alternating 32/32-owner E600 entries and misplaced stars. Candidate has 64/64 correct entries per ring and every star centered on its own parent in all six Tails/Knuckles or Tails/Shadow mode cells. Ordinary sampled movement unchanged. 22 focused tests, exact state picture/objects, 1,500-execution playback and 87 rollback checks pass. |
 | S2-29 | Shadow is expected to have purple invincibility sparkles. Establish the original donor treatment and apply it per actual actor without affecting Knuckles or native characters. | **Verified donor palette restoration released in v0.9.9.** Shadow-owned stars use his normal/water/Super palette while retaining S2 art, animation, position history and expiry. Final native/wide source-pixel, fade, expiry, state/replay and rollback checks pass. The reported purple treatment remains unverified; it is not guessed or claimed fixed. Mixed world-monitor policy awaits the reporter's promised clarification; existing P1 world art / parent-owned attached effects remains explicit. |
 | S2-30 | New owner release requirement: fresh installs enable adaptive widescreen Fit to screen, while explicit saved aspect/mod choices survive updates. | **Released in v0.9.9.** Fresh packaged launcher visibly enables Widescreen and selects Adaptive (fit window); ordinary level gameplay renders at 398x224 with real margin content. Saved disabled/32:9 and enabled/16:9 profiles retain their choices through launcher/game exit and render at 320x224 and 398x224 respectively. Existing adaptive-resize qualification is reused; production startup captures use the built-in input script, not the excluded TCP server. |
+| S2-31 | Delete-mode scrolling sounds different from Sonic 3: intentional local equivalent or an unintended cue? | **Answered: intentional S2-native equivalent; no code change.** S2-17 deliberately maps S3&K SmallBumpers to S2 BonusBumper ($D8). Current `controls()` selects $D8 in erase mode and $C0 otherwise; the focused event test expects $D8. Existing generated-audio qualification is retained. This is a timbre difference, not a new missing-sound defect or another counted fix. |
+| S2-32 | Moving/resizing the window or holding a caption button can pause execution and produce repeating audio; a similar effect is reported in Kega. Avoid treating comparison behavior as a confirmed cause. | **Deferred, unverified; host tentatively standalone Sonic 2.** No build, recording or exact setup is available. Windows/SDL modal-loop behavior is a hypothesis, not a diagnosis. Kega's similar behavior does not establish an SDL defect or a recomp regression. Keep separate from S2-26's ordinary in-game cadence report; no speculative audio/timing change is made. |
 
 
 ## Imported 0.9.4 handoff (owner transfer, 2026-11-01)
@@ -854,3 +856,30 @@ Evidence under the existing task root: `shadow-stars-release-099-qa`,
 bounded qualification records and the frozen v0.9.8 baseline outside delivery.
 The superseded v0.9.8 ZIP/checksum and disposable extracted/reproduction copies
 are removed after verification; the delivery folder contains only v0.9.9.
+
+## Follow-up assessment (2026-11-03)
+
+The scrolling-sound question is resolved by the existing S2-native sound policy
+and current implementation/test: erase navigation writes BonusBumper `$D8`,
+the local counterpart selected for S3&K's SmallBumpers. Enter/confirm still use
+Checkpoint `$A1`, and successful deletion uses TallyEnd `$C5`. No new waveform
+capture or sound replacement is needed to answer whether this was intentional.
+
+S2-26 gains a useful setting combination (EHZ1, native aspect, high FPS), but no
+version, roster, rate or reproduction. The exact v0.9.9 source in
+`presentation_capture()` invalidates fractional snapshots when the roster has
+more than two seats or is not Sonic with optional Tails. `interpolate()` then
+returns false, so the shared presenter uses the completed original-rate image.
+High-FPS enabled therefore does not promise smooth fractional motion for a big
+party. This is an established support limit, not proof that it explains every
+reported jitter or a measured slowdown. The existing native two/six-seat and
+mixed-six cadence evidence is reused; those samples are not a retest of this
+unknown occurrence. S2-26 remains deferred rather than counted fixed.
+
+S2-32 records the tentative standalone host and unverified window-interaction
+audio report. It is not attributed to SDL as an established defect. No guessed
+roster matrix, new timing harness, engine change or additional release is needed
+for these dispositions. Original intake remains 23/26 resolved, two deferred
+and one hardware-fidelity question. S2-31 is an answered question; S2-32 is an
+additional deferred observation. Release v0.9.9 and its validated artifact remain
+unchanged.
