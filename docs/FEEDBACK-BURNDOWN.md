@@ -960,4 +960,14 @@ failed evidence retained, and no further hidden-probe variants are queued.
 The valid controlled checks remain, with a ten-second test timeout. Evidence:
 `caption-entry-before.log`, `caption-entry-final-controlled.log` and
 `caption-entry-native-rejected.log` in the existing task root. Full-game build
-and current-build state/replay qualification of this new engine commit follow.
+and all 11 focused checks now pass on game source `315173e`, engine `a53cd65`.
+Executable SHA256:
+`4bb970713c09a78655d97d3be7db703b4446ff37b5ea6a93c0b515207ed4b125`.
+The exact executable restores the active-effect picture/object RAM, matches
+all 2,000 replay executions and passes 117 depth-eight rollback checks.
+Evidence: `caption-guard-state-qa/qualified/state-results.json` and the current
+`window-20261103-{build,tests}.log`. The IRQ-only VS qualification above is
+retained separately; the caption patch does not alter that interrupt code.
+Actual held-button qualification remains pending; the next prepared check
+starts with gameplay running and requires only the mouse. The owner-approved
+visual resize check will not be requested again. Release v0.9.9 remains current.
