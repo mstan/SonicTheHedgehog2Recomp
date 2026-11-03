@@ -15,6 +15,12 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
+Future widescreen reference (owner preference, 2026-11-03): consider
+[Sonic 2 Community's Cut / s2cx](https://github.com/heyjoeway/s2cx) when it helps
+with a concrete Sonic 2 widescreen task. Its meta repository links the
+`s2disasm` and `Genesis-Plus-GX` source revisions. Treat it as an optional
+implementation/comparison reference alongside the existing acceptance evidence.
+
 Original intake: **26 reports; 23 validated resolutions (22 fixes and 1 current-HUD verification), 2 owner deferrals and 1 hardware-fidelity question**. Follow-up S2-27 completes the bounded mixed-pair audit, S2-28 delivers the shared-history repair, S2-29 delivers verified Shadow star colours, and S2-30 enables fresh-install Adaptive Fit. One save-menu
 question is answered below. Open reports require checking against the current source/build; do not assume
 the reporter used the latest version.
