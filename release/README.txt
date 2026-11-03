@@ -92,8 +92,9 @@ Sonic and Tails. Death pits, crushing and drowning remain dangerous.
 
 OPTIONAL WIDESCREEN
 ------------------
-Open Mods, enable Widescreen, then choose Adaptive, 16:9, 21:9, or 32:9.
-Native rendering remains the default. Adaptive follows the window beyond
+Fresh installs enable Widescreen with Adaptive Fit to screen. Existing saved
+choices are preserved. Open Mods to choose Adaptive, 16:9, 21:9, 32:9 or native.
+Adaptive follows the window beyond
 32:9, with expanded scenery, object activation, rings and screen-anchored HUD.
 The mod gives gameplay extra CPU headroom while retaining normal VBlank,
 audio and physics tick rates. Special-stage scenery expands; its half-pipe
@@ -106,7 +107,9 @@ HIGH REFRESH RATE AND PRACTICE
 Mods > Presentation > High refresh rate offers 120 Hz, 144 Hz and Display
 refresh. Off by default. Camera and actors interpolate between normal ticks;
 this adds one tick of visual latency. Controls, game speed and audio keep
-their original cadence. Widescreen can remain disabled.
+their original cadence. Widescreen can remain disabled. Fractional motion is
+supported for Sonic with optional Tails; larger parties and donor characters
+retain original-rate motion.
 
 Interpolation currently supports regular Sonic/Tails play with up to two
 party slots. Donor characters, larger parties, transitions, menus, special
