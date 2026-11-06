@@ -119,8 +119,44 @@ static void private_water_palette_test(void)
     s_item_water_enabled=0;gvdp_set_host_sprites(NULL,NULL);
     gvdp_set_sprite_patterns(NULL,0,NULL);gvdp_set_ext_tiles(NULL);
 }
+static void special_stage_pixel_shape_test(void)
+{
+    static GVDP v;
+    uint32_t native[256],out[398],lazy[398];uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);
+    memset(&s_build,0,sizeof s_build);memset(s_history,0,sizeof s_history);
+    s_display=NULL;g_ram[0xF600]=16;
+    v.reg[1]=64;v.reg[12]=8;v.cram[1]=0xE;
+    for(unsigned x=0;x<256;++x)native[x]=0xFF010000u+x;
+    CHECK(sonic2_video.configure("16:9"));memcpy(ram,g_ram,sizeof ram);
+    sonic2_video.scanline(&v,0,native,256,out,398);
+    CHECK(s_width==398 && s_native_x==39);
+    int populated=0;unsigned seen[256]={0};
+    for(int x=0;x<398;++x) {
+        int sample=x*318/398,local=sample-31;
+        CHECK(out[x]==(local>=0 && local<256?native[local]:0xFF000000u));
+        if(local>=0 && local<256){++populated;++seen[local];}
+    }
+    CHECK(populated>=319 && populated<=321);
+    for(unsigned x=0;x<256;++x)CHECK(seen[x]);
+    native_fetches=0;sonic2_video.scanline_lazy(&v,0,256,lazy,398,fetch_native,native);
+    CHECK(native_fetches==1 && !memcmp(out,lazy,sizeof out));
+    sonic2_video.scanline(&v,0,native,256,out,256);
+    CHECK(!memcmp(out,native,sizeof native));
+    CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
+}
+
 int main(void)
 {
+    /* Byte-matched SwScrl_EHZ_2P band boundaries and fixed-point gradient;
+     * CPZ's row18 ripple stays in BG1 before the half-speed BG2 band. */
+    CHECK(ehz_2p_parallax(64,21)==0 && ehz_2p_parallax(64,22)==1);
+    CHECK(ehz_2p_parallax(64,101)==1 && ehz_2p_parallax(64,102)==0);
+    CHECK(ehz_2p_parallax(64,112)==4 && ehz_2p_parallax(64,128)==6);
+    CHECK(ehz_2p_parallax(64,144)==8 && ehz_2p_parallax(64,146)==9);
+    CHECK(ehz_2p_parallax(64,222)==28);
+    CHECK(cpz_parallax(80,288)==10 && cpz_parallax(80,303)==10);
+    CHECK(cpz_parallax(80,304)==40);
     /* Attract end/skip selects Sega/title before the old world fades. Its
      * display stays wide until incoming initialization retires the level;
      * original loading/fade CPU timing remains unchanged. */
@@ -468,6 +504,7 @@ int main(void)
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
     private_water_palette_test();
+    special_stage_pixel_shape_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }
