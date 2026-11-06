@@ -167,6 +167,11 @@ int main(void)
     assert(composed[1].menu_frame==7);
     s2_party.roster.slots=2; strcpy(s2_party.roster.character[1],"tails");
     begin_menu(); assert(!view.portrait); /* exact original pair art */
+    assert(view.counter_character==0);
+    strcpy(s2_party.roster.character[0],"knuckles"); begin_menu();
+    assert(view.counter_character==2);
+    strcpy(s2_party.roster.character[0],"tails"); begin_menu();
+    assert(view.counter_character==1);
     puts("PASS save-menu movement sounds, wrap, bounds, opposite/idle/sliding inputs and disabled mod");
     return 0;
 }

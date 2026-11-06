@@ -114,6 +114,8 @@ static void begin_menu(void)
     view.selection=1; view.scroll=0; view.frame=0; view.erase=view.confirm=0;
     view.cursor=144; view.delete_x=968; view.delete_frame=0;
     view.portrait=NULL;
+    view.counter_character=!strcmp(s2_party.roster.character[0],"knuckles")?2:
+        !strcmp(s2_party.roster.character[0],"tails")?1:0;
     unsigned count=0; const char *ids[6];
     for (unsigned p=0;p<s2_party.roster.slots && p<6;++p)
         if (strcmp(s2_party.roster.character[p],"none")) ids[count++]=s2_party.roster.character[p];

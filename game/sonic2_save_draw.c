@@ -145,13 +145,12 @@ static void counter_number(const S2SaveAssets *a,unsigned value,int x,int y,int 
         counter_tile(a,tile+1,x+i*8,y+8,line,out,width);
     }
 }
-static void counters(const S2SaveAssets *a,const S2CampaignSlot *slot,int x,int line,uint32_t *out,int width)
+static void counters(const S2SaveAssets *a,const S2CampaignSlot *slot,unsigned character,int x,int line,uint32_t *out,int width)
 {
-    /* Original Map_DataSelect_Player_LivesContinues Sonic block (DAAA),
-     * loc_C97A's row18 destination and loc_C9CC's row21 continue counter.
-     * Icons are cosmetic Sonic regardless of the selected gameplay roster. */
-    static const unsigned tiles[15]={0x6E,0x70,0x5A,0x6F,0x71,0x5B,
-        0x5C,0x5F,0,0x5D,0x60,0x5A,0x5E,0x61,0x5B};
+    /* Original loc_C97A row18 and loc_C9CC row21. Characters theme the
+     * indicators, while every slot keeps its roster-independent counters. */
+    if (character>=3) character=0;
+    const uint16_t *tiles=a->counter_icons[character];
     for (unsigned i=0;i<15;++i) if (tiles[i])
         counter_tile(a,tiles[i],x-16+(i%3)*8,144+(i/3)*8,line,out,width);
     counter_number(a,slot->lives,x+8,144,line,out,width);
@@ -203,7 +202,7 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
             if (picked) snprintf(label,sizeof label,"ZONE %02u",s->zone+1);
             else snprintf(label,sizeof label,"CLEAR");
             centered(a,x,80,label,line,out,width);
-            counters(a,slot,x,line,out,width);
+            counters(a,slot,v->counter_character,x,line,out,width);
         }
     }
     centered(a,base+968,96,"DELETE",line,out,width);
