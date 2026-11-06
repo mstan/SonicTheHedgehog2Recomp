@@ -1134,7 +1134,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-34 | Save-select background does not fill widescreen consistently. Extend both margins without disturbing cards, selection or fades. | **Verified existing behavior** in v0.9.10 and the candidate: both 796-pixel margins contain background, selection leaves it fixed, and complete native/wide fades pass. No new fix is claimed. |
 | S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | **Fixed and runtime-validated**: dispatch native Teleport ($EC) through REV01 PlayMusic queue $FFFFE4 at the incoming level fade, including loading mode $8C. Nonzero generated PCM matches before start and changes at the actual event. |
 | S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | **Fixed and runtime-validated**: persist before departure while freezing the outgoing blank card from successful selection onward. Native/wide NEW regions match their pre-start image exactly; the released baseline changes to the saved thumbnail. |
-| S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | P2; zone-dependent report, not yet reproduced. |
+| S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | **Fixed/validated candidate.** Keep the outgoing displayed level through the native fade after mode changes to Sega/title. EHZ 2P and CPZ 1P, natural end and Start-to-skip: 520 paired snapshots retain full-width margins and byte-identical RAM. |
 | S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
 | S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
 | S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
@@ -1225,9 +1225,9 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**13/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
-S2-35, S2-36, S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
-**11 groups remain open**, including the
+**14/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
+S2-35, S2-36, S2-37, S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
+**10 groups remain open**, including the
 unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1394,3 +1394,37 @@ and its [publisher artwork](https://cdn.akamai.steamstatic.com/steam/apps/71163/
 Asset SHA-256 `9edd61c793ce493b8a654798a546b174b46d6542f9700eefa36c4f52affbe786`.
 Evidence: `followups-20261105/cover-launcher/{results.json,normal.png,small.png,large.png}`.
 Candidate EXE SHA-256 `b8e3285011b78722596de4f6fc0ced3b663c6d9e743a8072a5d4c2e08728c0e1`.
+
+
+### Attract fade and collision follow-up (2026-11-06 UTC)
+
+S2-37 is fixed: mode 0/4 is selected before the old demo has finished fading.
+The renderer now retains that displayed level while Level_started and its
+native player still identify it. An initial broader change to gameplay mode
+classification corrected the image but altered object state and is rejected.
+The accepted correction changes only the frame's render identity. It leaves
+simulation mode predicates, activation and guest timing unchanged.
+
+EHZ 2P and CPZ 1P each pass natural-end and Start-to-skip routes, 130 paired
+snapshots apiece. Every one of the 520 canonical RAM images is byte-identical
+with the preceding candidate; active fades retain content on both margins.
+The selected width stays 796, including the normal 224/448-row transitions.
+The incoming centered title/logo after the old level is retired remains an
+intentional composition, rather than a false margin failure. Video checks pass.
+Accepted EXE SHA-256:
+`04d70a4e887bcbd8c5c50ab2d6808b668a862df3fed9fd60bce041d328873c83`.
+Evidence: `followups-20261105/attract-fade-acceptance.json`,
+`wide-transition-{,postfix-}results.json` and the paired demo captures.
+
+The same bounded scene run captures CPZ/ARZ/CNZ title cards and complete exits
+without a center-only frame; those three routes are useful evidence for S2-40,
+not a blanket disposition of all remaining title-card claims.
+
+A separate read-only observation of the original recording again matches all
+89,338 executions. The first boss death after frame 70,000 occurs at frame
+74,535, position (10856,1134), routine 6; its earlier standing state was
+(10750,1068), routine 2. This does not establish that the floor allegation was
+merely the missing death pose. S2-51 remains open for a direct native collision
+comparison. Release memory-write tracing could not arm, so no write-PC cause
+is claimed. Evidence: `followups-20261105/recorded-boss-death/{results.json,run.log}`
+and five small RAM observations. No additional general replay sampler is needed.
