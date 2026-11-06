@@ -1148,7 +1148,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | **Expected original behavior; no change.** The original PSG3 noise track begins with six $30-duration rests, then starts percussion. The reported later arrival agrees with that sequence. |
 | S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | **Fixed/qualified candidate.** Natural frame-boundary capture repairs partial track buffers. Three native stage points match uninterrupted images after alignment to the actual saved tick; native/wide warm/cold restoration and all 23 existing quickstate fixtures pass. Integration/release pending. |
 | S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
-| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route. The recorded EHZ2 boss-arena fall is also fixed and qualified below; ARZ floor/wall and CPZ block/loop routes remain open. |
+| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route. The recorded EHZ2 boss-arena fall is also fixed and qualified below. **The four remaining ARZ floor/wall and CPZ block/loop subcases are deferred after bounded no-reproduction checks**; no complete collision-audit pass is claimed. |
 | S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | **Fixed/validated candidate.** Real native capsule button press releases eight initial animals and subsequent groups; 48,620 original-palette pixels across 80 visible paired samples. Enemy-released animals also qualify. Simulation and native pattern/plane VRAM unchanged. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | **Fixed/qualified candidate.** Native/wide Knuckles and Amy retain original opaque results/countdown pixels in front, with unchanged paired RAM/VRAM. Actual priority terrain hides low actors and exposes high actors with exact source pixels. Existing Sonic native/result images stay unchanged; wide countdown anchoring is corrected for every character. Current-build state and focused tests pass; integration/release pending. |
 | S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Fixed/validated candidate.** Original Knuckles CPZ/ARZ actor and surface palettes; real native palette timing also controls the boundary row. CPZ2 native/wide and ARZ1 native surface checks, original actor pixels, unchanged dry head away from the boundary and native Sonic control pass. |
@@ -1228,7 +1228,7 @@ affected acceptance; this does not claim the pending combat fix passed.
 **21/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
 S2-35, S2-36, S2-37, S2-38, S2-39, S2-40 (existing behavior), S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-48 (original music sequence), S2-50, S2-52, S2-54 and
 S2-55 (original fade endpoint), plus S2-49 (natural-boundary save/load repair) and S2-53 (donor layering).
-**2 groups remain open** (S2-47 and S2-51); **S2-56 is deferred** after the recorded-segment assessment. Open work includes the
+**1 group remains open** (S2-47). **S2-51 is partly fixed with four subcases deferred; S2-56 is deferred** after the recorded-segment assessment. Open work includes the
 unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1608,3 +1608,32 @@ focused game tests and all23 current-build quickstate fixtures. Evidence:
 `followups-20261105/front-ui-acceptance.json` and linked captures/checks.
 Remaining open groups: S2-47 combined host-overlay/transition acceptance and
 S2-51's remaining CPZ/ARZ collision subcases. S2-56 remains explicitly deferred.
+
+
+### Remaining collision subcases deferred (2026-11-06 UTC)
+
+S2-51 retains its two qualified fixes(EHZ2 boss-floor landing and the original
+Knuckles duck-arrow hitbox). Its remaining four CPZ block/boosted-loop and ARZ1
+floor/wall subcases are deferred under the owner's no-reproduction direction.
+The supplied recorded playthrough remains in EHZ/special stages; it does not
+contain a reproducing CPZ/ARZ route.
+
+Bounded native-controller CPZ/ARZ routes retain the original geometry/camera
+and yield96 samples each, including16 and40 actual glide-pose samples. Neither
+shows an OOB/death/floor/wall clip. The original shoes status/timer/physics
+values also exercise a bounded CPZ boosted route without a demonstrated full
+movement halt. A separate continuous-right sample keeps changing position and
+inertia around vertical-tangent samples where horizontal velocity becomes
+zero; that is not proof of the alleged full stop or a full loop-mechanics pass.
+Sonic takes a different route, so no matched cross-character loop pass is
+claimed. A guessed grounded loop-entry fixture fell/died for both characters
+and was rejected as invalid setup, contributing no acceptance.
+
+Evidence: `followups-20261105/remaining-collision-disposition.json` and its
+existing raw samples. Reopen these four subcases on a reproducing route or
+recording. No additional speculative collision change was adopted.
+
+Current status:21 accepted groups; S2-51 has two fixed/four deferred subcases;
+S2-56 is deferred; S2-47 is the single remaining open group(combined host UI
+and special-stage transition validation). Integration, final production gates,
+owner engine-batch visual clearance and release remain outstanding.
