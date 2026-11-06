@@ -1137,7 +1137,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | **Fixed/validated candidate.** Keep the outgoing displayed level through the native fade after mode changes to Sega/title. EHZ 2P and CPZ 1P, natural end and Start-to-skip: 520 paired snapshots retain full-width margins and byte-identical RAM. |
 | S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
 | S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
-| S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
+| S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | **Verified existing behavior.** All eleven non-EHZ title-card families fill the 796-pixel canvas and complete their exits. See the qualification below. |
 | S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | **Fixed/validated candidate.** Genesis picker explicitly permits .68k with the existing UI ABI. Actual hidden launcher verifies the supported image under an uppercase .68K filename and Play opens the native audio device; an altered .68k image is shown as ROM not recognized and Play remains blocked. Revision validation retained. |
 | S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | **Fixed and runtime-validated**: restore the final name column between live digit tiles 9/11. Native/wide/mixed original-art pixels and live counters pass; Sonic/Tails, RAM and VRAM unchanged. |
 | S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | **Fixed/validated candidate.** Original Sonic/Tails/Knuckles counter mappings select by P1; native/wide Knuckles and Tails icon-only pixel changes, unchanged digits, campaign bytes and RAM/VRAM. Sonic output unchanged. Distinct from S2-16's large portrait. |
@@ -1148,7 +1148,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
 | S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
 | S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
-| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route; boss/floor/wall/CPZ routes remain open. |
+| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route. The recorded EHZ2 boss-arena fall is also fixed and qualified below; ARZ floor/wall and CPZ block/loop routes remain open. |
 | S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | **Fixed/validated candidate.** Real native capsule button press releases eight initial animals and subsequent groups; 48,620 original-palette pixels across 80 visible paired samples. Enemy-released animals also qualify. Simulation and native pattern/plane VRAM unchanged. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
 | S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Fixed/validated candidate.** Original Knuckles CPZ/ARZ actor and surface palettes; real native palette timing also controls the boundary row. CPZ2 native/wide and ARZ1 native surface checks, original actor pixels, unchanged dry head away from the boundary and native Sonic control pass. |
@@ -1225,9 +1225,9 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**14/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
-S2-35, S2-36, S2-37, S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
-**10 groups remain open**, including the
+**15/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
+S2-35, S2-36, S2-37, S2-40 (existing behavior), S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
+**9 groups remain open**, including the
 unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1428,3 +1428,32 @@ merely the missing death pose. S2-51 remains open for a direct native collision
 comparison. Release memory-write tracing could not arm, so no write-PC cause
 is claimed. Evidence: `followups-20261105/recorded-boss-death/{results.json,run.log}`
 and five small RAM observations. No additional general replay sampler is needed.
+
+### Title-card families and Knuckles boss-floor landing (2026-11-06 UTC)
+
+S2-40 meets the existing-behavior acceptance: CPZ, ARZ, CNZ, HTZ, MCZ, OOZ,
+MTZ, MTZ3, SCZ, WFZ and DEZ each show complete full-width fills and departing
+labels, then a populated 796-pixel level. The eleven native initialization
+routes retain the selected stage and finish without dispatch misses or a
+center-only canvas. The eight added families contribute 800 snapshots; their
+full-card and final departing-label frames were visually inspected. This is
+verification of the existing title-card renderer, not another code fix.
+Evidence: `followups-20261105/{wide-transition-results.json,
+wide-card-family-results.json,title-cards-full.png,title-cards-exit.png}`.
+
+The S2-51 EHZ2 boss-floor subcase now has a bounded reproducer: let the native
+camera and boss load at the recorded arena position, disable enemy damage,
+then apply the supplied 352-tick control sequence without geometry edits.
+Both v0.9.10 and the previous candidate die at tick346, position10856,1135.
+The new candidate remains alive, lands at tick194 and ends grounded at
+10843,1072. It uses the original KiS2 floor rule for both glide and the fall
+after releasing glide: every negative floor distance is accepted. The native
+floor query, displacement, angle and landing code remain authoritative. A
+glide-only first experiment did not prevent the fall and was rejected.
+
+Sonic's 176 paired RAM snapshots are byte-identical. The affected glide-slide
+and glide-fall recovery checks each retain sixteen grounded recovery ticks,
+normal radii and a clean grounded finish. This qualifies the boss-floor
+subcase only; CPZ and ARZ collision reports remain open. Evidence:
+`followups-20261105/{boss-floor-acceptance.json,
+floor-qualified-glide-recovery-results.json}`. Candidate EXE SHA256: `522f50eb1c73daf8fa82ef263a5fd46222643373e2d16197a5558b7a2c156a11`.

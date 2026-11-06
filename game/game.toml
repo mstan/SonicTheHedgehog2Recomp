@@ -969,3 +969,7 @@ kind = "game_hook"
 [[widescreen_site]]
 addr = 0xC680 # Deform_EHZ return: Knuckles completes the final two scroll rows
 kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x1AF2C # Knuckles gliding uses the original KiS2 floor acceptance
+kind = "game_hook"

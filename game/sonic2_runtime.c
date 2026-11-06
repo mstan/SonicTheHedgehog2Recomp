@@ -1042,6 +1042,17 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;
     unsigned o=g_cpu.A[0]&0xFFFF;
+    if (pc==0x1AF2C && kind(actor)==S2_CHAR_KNUCKLES &&
+        (characters[actor].special==S2_SK_GLIDE ||
+         characters[actor].special==S2_SK_FALL) && (int16_t)g_cpu.D[1]<0) {
+        /* KiS2 Knuckles_DoLevelCollision2 accepts negative floor distance
+         * without Sonic's velocity-based penetration rejection. Preserve
+         * the real distance/angle and let native landing continue; only the
+         * second reject comparison is made equal, including wrapped speed
+         * bytes. D0 is otherwise unused by the native landing path. */
+        g_cpu.D[0]=(g_cpu.D[0]&0xFFFFFF00u)|(g_cpu.D[2]&0xFFu);
+        return 0;
+    }
     if (pc==0x3F5A0 && kind(actor)==S2_CHAR_KNUCKLES &&
         g_ram[o+0x1A]==0x9C && (g_cpu.A[1]&0xFFFF)==0xB400) {
         /* KiS2 TouchResponse recognizes Knuckles' final duck frame $9C,
