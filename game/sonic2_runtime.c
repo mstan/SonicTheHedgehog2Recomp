@@ -249,7 +249,8 @@ int s2_runtime_knuckles_item(unsigned o)
     unsigned id=g_ram[o];
     /* Monitor contents are world objects: the primary character selects the
      * lock-on game's monitor theme. Attached effects follow their own parent. */
-    if (id==0x26 || id==0x2E) return kind(0)==S2_CHAR_KNUCKLES && knuckles_available();
+    if (id==0x26 || id==0x2E || ((id==0x0D || id==0x04 || id==0x28) && !word(0xFFD8)))
+        return kind(0)==S2_CHAR_KNUCKLES && knuckles_available();
     if (id!=0x38 && id!=0x35) return 0;
     unsigned parent=word(o+0x3E);
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p)
@@ -1365,8 +1366,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         unsigned zone=frame_world[0xFE10];
         /* Native H-int split, including a partly submerged body. The physics
          * underwater flag describes the center, not the current scanline. */
-        int wet=!frame_vs && frame_world[0xF64C] &&
-            (frame_world[0xF64E] || line>frame_world[0xF625]);
+        int wet=!frame_vs && s2_video_water_palette(v);
         const uint16_t *knux_water=original && wet && (zone==13 || zone==15)?
             original->water_palette[zone==15]:NULL;
         unsigned fade_full=42;

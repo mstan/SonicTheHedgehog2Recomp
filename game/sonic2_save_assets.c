@@ -273,6 +273,7 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
      * and S2. Its artwork uses S&K's original KiS2 palette at $60BEA. */
     if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
         !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
+        !nemesis(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
         !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor)) return 0;
     for (unsigned i=0;i<16;++i) {
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
