@@ -146,6 +146,60 @@ static void special_stage_pixel_shape_test(void)
     CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
 }
 
+static void front_ui_and_background_priority_test(void)
+{
+    static GVDP v;uint32_t out[398];uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    presentation_configure(0);CHECK(sonic2_video.configure("off"));
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB800]=0x3A;
+    v.reg[1]=64;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;v.cram[1]=0xEEE;
+    memset(v.vram+32,0x10,32); /* real ink followed by transparent donor-visible holes */
+    word(g_ram,0xF800,128);word(g_ram,0xF804,0x8001);word(g_ram,0xF806,128);
+    s2_video_hook(0x16604);g_cpu.A[0]=0xFFFFB800;g_cpu.A[2]=0xFFFFF808;
+    s2_video_hook(0x1684E);s2_video_hook(0x16712);
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);memcpy(ram,g_ram,sizeof ram);
+    for(unsigned x=0;x<320;++x)out[x]=0xFFFF0000;
+    s2_video_front_ui(&v,0,out,320);
+    CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
+    CHECK(!memcmp(ram,g_ram,sizeof ram));
+    /* A disk state restores the matching publication/classification, while
+     * rollback invalidates this presentation-only cache for the next build. */
+    S2StateIO len={0};s2_video_state(&len);
+    uint8_t *saved=malloc(len.pos);CHECK(saved);
+    S2StateIO state={0};state.data=saved;state.size=len.pos;state.ok=1;
+    s2_video_state(&state);CHECK(state.ok);
+    memset(s_front_history,0,sizeof s_front_history);
+    memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
+    state.pos=0;state.mode=2;s2_video_state(&state);CHECK(state.ok);
+    CHECK(s_front_serial && s_front_history[s_front_serial%3].kind[0][0]==2);
+    out[0]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);CHECK(out[0]==0xFFFFFFFF);
+    free(saved);
+    S2StateIO rb_len={0};s2_video_rb_state(&rb_len);
+    saved=malloc(rb_len.pos);CHECK(saved);
+    state=(S2StateIO){0};state.data=saved;state.size=rb_len.pos;state.ok=1;
+    s2_video_rb_state(&state);CHECK(state.ok);
+    state.pos=0;state.mode=2;s2_video_rb_state(&state);CHECK(state.ok);
+    CHECK(!s_front_serial && !s_front_display[0].serial);free(saved);
+    /* A background plane with priority also hides low-priority actors. */
+    word(v.vram,0xE000,0x8001);
+    CHECK(!s2_video_actor_pixel_visible(&v,0,0,0,g_ram));
+    CHECK(s2_video_actor_pixel_visible(&v,0,0,1,g_ram));
+    /* The complete wide scene already knows which opaque UI pixels win.
+     * Restore precisely those after a donor, including extended card edges. */
+    CHECK(sonic2_video.configure("16:9"));CHECK(reserve_sprite_row(398));
+    memset(s_priority,0,398);memset(&s_display_frame,0,sizeof s_display_frame);
+    s_display=&s_display_frame;s_display_frame.scene=1;s_display_frame.count=1;
+    s_display_frame.sprites[0]=(SceneSprite){0,0,0x8001,0,130};
+    s_frame_level=1;s_frame_vs=0;s_camera=s_camera_y=0;
+    uint32_t palette[64]={0};palette[1]=0xFFFFFFFF;
+    for(unsigned x=0;x<398;++x)out[x]=0xFFFF0000;
+    draw_scene_sprites(&v,0,out,398,0,palette);
+    CHECK(out[39]==0xFFFFFFFF && out[40]==0xFFFF0000);
+    out[39]=0xFFFF0000;s2_video_front_ui(&v,0,out,398);
+    CHECK(out[39]==0xFFFFFFFF && out[40]==0xFFFF0000);
+    CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
+}
+
 int main(void)
 {
     /* Byte-matched SwScrl_EHZ_2P band boundaries and fixed-point gradient;
@@ -505,6 +559,7 @@ int main(void)
     native_interpolation_test();
     private_water_palette_test();
     special_stage_pixel_shape_test();
+    front_ui_and_background_priority_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }
