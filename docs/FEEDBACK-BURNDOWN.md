@@ -1637,3 +1637,12 @@ Current status:21 accepted groups; S2-51 has two fixed/four deferred subcases;
 S2-56 is deferred; S2-47 is the single remaining open group(combined host UI
 and special-stage transition validation). Integration, final production gates,
 owner engine-batch visual clearance and release remain outstanding.
+
+
+### Current engine integration (2026-11-06 UTC)
+
+The four shared-engine fixes have been rebased onto fetched masterac7eb9de11.
+The new combined engine head is08464b88c13b9ee121448ee5725d0cfc21091fc3.
+Earlier raw acceptance records retain their exact producer identities; they
+are not claimed as qualification of this new combined head. Current-source
+production, state/replay and affected presentation gates remain required.
