@@ -15,6 +15,11 @@ configuration was changed.
 
 ## Sonic 2 work queue
 
+**New feedback assessment, 2026-11-05:** current-release Knuckles reports reopen
+the queue below. Earlier resolution counts describe their original bounded
+qualification, not proof that these new routes/resources pass. See the
+[new report groups](#new-report-groups-2026-11-05). No new fix is claimed yet.
+
 Future widescreen reference (owner preference, 2026-11-03): consider
 [Sonic 2 Community's Cut / s2cx](https://github.com/heyjoeway/s2cx) when it helps
 with a concrete Sonic 2 widescreen task. Its meta repository links the
@@ -1103,3 +1108,91 @@ Reuse the recorded production/runtime validation and accepted owner visual
 Resize Pass. The exact qualified engine pin remains `61bbab1`, now reachable
 from engine master. This integration adds no product code beyond the already
 qualified changes; v0.9.10, its tag/archive and the deferred reports are preserved.
+
+## New report groups (2026-11-05)
+
+New owner-provided screenshots and an EHZ-through-ARZ1 Knuckles recording are
+available. The recording identifies the exact released v0.9.10 executable:
+BUILD `9a163e9c`, game `5a007d149d`, engine `61bbab13c1`, ROM CRC `7b905383`.
+Its header matches the retained qualified release recording. This establishes
+build identity and available evidence; replay/reproduction is still pending.
+The text contains 89,339 input records and 89,338 result hashes, ending with a
+pending input and no completion marker. Preserve the original and qualify its
+available prefix explicitly; do not call it a complete validated replay or
+infer why recording ended from that fact alone.
+
+Recorded settings are native aspect, Display-refresh HRR, unfiltered audio,
+Amy and Knuckles enabled with the original Knuckles-art resource, S3 save menu,
+infinite lives/time, and play as Knuckles. The screenshot/recording evidence
+is especially useful for the P1 groups below. Broader widescreen reports came
+from a separate earlier session whose exact version/aspect is unknown.
+
+| ID | Report and acceptance | Status |
+| --- | --- | --- |
+| S2-33 | Launcher cover art is cropped/blurry. Preserve the cover's intended bounds and useful resolution. | P3 cosmetic; screenshot available, not runtime-qualified. |
+| S2-34 | Save-select background does not fill widescreen consistently. Extend both margins without disturbing cards, selection or fades. | P2; screenshot available. |
+| S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | P2; separate from optional importing of S3 music/sound timbres. |
+| S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | P2; reported, needs a real start/fade route. |
+| S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | P2; zone-dependent report, not yet reproduced. |
+| S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
+| S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
+| S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
+| S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | P2 shared-launcher report; separate from unsupported revision rejection below. |
+| S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | P2; screenshot and current-release recording; follow-up to S2-08. |
+| S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | P2; distinct from the large portrait checked in S2-16. |
+| S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | P1 core character assessment; several examples and recording. |
+| S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | P1 progression; screenshot and recording. |
+| S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | P2 accuracy; separate from progression S2-45. |
+| S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
+| S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
+| S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
+| S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | P2; character-specific follow-up to the original EHZ fidelity note. |
+| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | P1 collision assessment; compare each route with original Knuckles-in-Sonic-2 before choosing substantial reuse or local repairs. Screenshots and recording available; suspected original-game quirks are not presumed port defects. |
+| S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | P2 accuracy; screenshot and recording. |
+| S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
+| S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | P2 accuracy; comparison screenshots and recording. |
+| S2-55 | Special-stage entry fade ends white rather than the expected grey. Establish original-game/capture behavior before changing the endpoint. | Reference question; Kega provenance and the proposed relation to S2-47 are unverified. |
+| S2-56 | Slight Knuckles glide jitter is reported again, now during the recorded native-aspect HRR session. Assess the recorded pose/camera cadence before attributing it to missing interpolation. | P2; related new evidence for S2-12; the old widescreen-only occurrence remains unqualified. |
+
+The first qualification action is to replay the available build-matching prefix
+with its donor resources, retain the exact failing locations and distinguish
+native guest state/collision from host actor rendering. The repeated Knuckles
+state/collision/layering reports warrant evaluating the original lock-on
+implementation before accumulating further local pose fixes. These are queued
+acceptance decisions, not newly reproduced defects or a completed stage audit.
+
+### Clarifications and withdrawn reports
+
+- **Save-deletion cancellation:** the reporter retested and explicitly withdrew
+  the allegation, confirming the controls are accurate. Preserve S2-18's accepted
+  result and the detailed control description; do not reopen it from the earlier
+  complaint alone.
+- **Menu sounds/music:** native S2 scroll/success cues and Options music are the
+  documented implementation. Exact S3 timbres/music are an enhancement request.
+  This does not dispose of the distinct missing start cue, S2-35.
+- **HRR while playing Knuckles:** the recorded option is enabled. Current
+  interpolation excludes donor rosters, retaining original-rate motion. This is
+  a documented support limit; the separate glide-jitter report is not explained
+  or dismissed solely by that fact.
+- **Sonic/Tails in special stages:** retaining the stock special-stage cast is
+  documented. Knuckles/solo-cast parity needs a deliberate enhancement decision;
+  the aspect and save/load reports remain independent bugs to investigate.
+- **CPZ2 intro flash:** the reporter subsequently identified it as original-game
+  behavior. Retain that correction instead of inventing another flash fix.
+- **Supplied “USA Rev-B” ROM rejection:** its actual header is
+  `GM 00001051-02`, CRC `f23ad4b3`; the supported image is
+  `GM 00001051-01`, CRC `7b905383`. A filename is not a revision identity.
+  Treat another revision as unsupported until qualified; keep S2-41's file-picker
+  usability issue separate.
+- **Saving the current act:** this is the owner's existing campaign design,
+  alongside roster-independent saves. The historical original-game difference
+  is noted without silently removing accepted persistence behavior.
+
+### Low-priority requests
+
+Keep optional S3 menu music/sound import, original Options/character-select
+redesign, extra Pink Edition characters/powerups/VS stages, donor-character
+interpolation, and configurable sound-driver/music tooling in the feature
+backlog. No such feature is started by this assessment. Reports from the
+Sonic 1 or S3-family host remain with those products even when the zone name
+also appears in Sonic 2.
