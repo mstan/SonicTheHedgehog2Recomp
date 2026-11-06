@@ -1130,7 +1130,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 
 | ID | Report and acceptance | Status |
 | --- | --- | --- |
-| S2-33 | Launcher cover art is cropped/blurry. Preserve the cover's intended bounds and useful resolution. | P3 cosmetic; screenshot available, not runtime-qualified. |
+| S2-33 | Launcher cover art is cropped/blurry. Preserve the cover's intended bounds and useful resolution. | **Fixed/validated candidate.** Replace the cropped 142x214 source with unmodified 600x900 SEGA Steam artwork. Existing contain/full-UV rendering retains the complete logo and characters; actual hidden launcher images pass at 1100x880, 900x720 and 1600x1000. |
 | S2-34 | Save-select background does not fill widescreen consistently. Extend both margins without disturbing cards, selection or fades. | **Verified existing behavior** in v0.9.10 and the candidate: both 796-pixel margins contain background, selection leaves it fixed, and complete native/wide fades pass. No new fix is claimed. |
 | S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | **Fixed and runtime-validated**: dispatch native Teleport ($EC) through REV01 PlayMusic queue $FFFFE4 at the incoming level fade, including loading mode $8C. Nonzero generated PCM matches before start and changes at the actual event. |
 | S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | **Fixed and runtime-validated**: persist before departure while freezing the outgoing blank card from successful selection onward. Native/wide NEW regions match their pre-start image exactly; the released baseline changes to the saved thumbnail. |
@@ -1138,10 +1138,10 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
 | S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
 | S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
-| S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | P2 shared-launcher report; separate from unsupported revision rejection below. |
+| S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | **Fixed/validated candidate.** Genesis picker explicitly permits .68k with the existing UI ABI. Actual hidden launcher verifies the supported image under an uppercase .68K filename and Play opens the native audio device; an altered .68k image is shown as ROM not recognized and Play remains blocked. Revision validation retained. |
 | S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | **Fixed and runtime-validated**: restore the final name column between live digit tiles 9/11. Native/wide/mixed original-art pixels and live counters pass; Sonic/Tails, RAM and VRAM unchanged. |
 | S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | **Fixed/validated candidate.** Original Sonic/Tails/Knuckles counter mappings select by P1; native/wide Knuckles and Tails icon-only pixel changes, unchanged digits, campaign bytes and RAM/VRAM. Sonic output unchanged. Distinct from S2-16's large portrait. |
-| S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Partly fixed/validated.** Actual Coconuts collisions now select hurt $8D/death $AB instead of retaining standing $56. Real glide-release landing and slide/get-up retain recovery poses for 16 sampled ticks versus one in the baseline. Source ledge timing/left completion unit checks pass; real terrain climb-out remains open. |
+| S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Fixed/validated candidate.** Native Coconuts hurt/death select original $8D/$AB, glide-release/slide recovery retains the native lock and visible poses. Real EHZ terrain climb removes seven extra hover ticks, follows all three original visible seven-tick poses and settles on the ledge with normal radius 19. The source intentionally never displays final $D2; left/right completion also has source/unit coverage. |
 | S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | **Fixed and runtime-validated**: preserve scripted input during global control lock. Real signpost trigger advances EHZ1 to EHZ2 with no further input; opposing left/jump input cannot reclaim control. Released baseline stalls in the same setup. |
 | S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | **Fixed/validated candidate.** Original 24-tile KiS2 signpost patch, 1,461 exact source pixels in native output and matching 796-wide changes. Native art, progression and other characters remain unchanged. |
 | S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
@@ -1225,10 +1225,10 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**10/24 groups meet current-build acceptance:** S2-34 (existing behavior),
-S2-35, S2-36, S2-42, S2-43, S2-45, S2-46, S2-50, S2-52 and S2-54.
-**14 groups remain open**, including the
-unqualified parts of S2-44/S2-54. This is not a released build or a completed
+**13/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
+S2-35, S2-36, S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
+**11 groups remain open**, including the
+unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
 The native and 796-pixel save-menu routes retain fixed, populated backgrounds
@@ -1342,3 +1342,55 @@ Evidence: `followups-20261105/theme-{baseline,candidate}-results.json`,
 bounded native images/RAM/VRAM in their existing task directories. Source
 checkpoints before this wave are game `9c55933` and engine `097a396`.
 These remain candidate fixes pending integration/release qualification.
+
+
+S2-41 also meets acceptance. The current pinned launcher receives the Genesis
+extension list including `*.68k`; recomp-ui stays at `761f76e`. Actual hidden
+launcher captures identify the supported CRC `7b905383` as ROM verified under
+an uppercase `.68K` filename, and Play enters the real runner and 32,000 Hz
+muted device. A deliberately altered owned `.68k` fixture remains ROM not
+recognized, displays the expected CRC and blocks Play. This is actual launcher
+validation, not an inference from the no-launcher path. The shared strict
+picker policy remains; the Genesis override permits the requested extension.
+Evidence: `followups-20261105/launcher-rom-suffix/{results.json,good/,bad/}`.
+
+
+S2-44 now has its remaining real-terrain decision. The fixture derives a real
+side-solid edge at EHZ1 x=1888 from the loaded level, positions an already
+jumping/gliding actor beside it, then uses normal B/Up input and native collision.
+No climb/ledge outcome is written. The final setup waits 700 native ticks on
+the wall before Up input and never writes camera state, so native scrolling
+loads correct terrain for the images. The initial manual-camera setup is
+setup-only evidence. Both builds engage wall climb and settle on
+real ground at (1888,581), radius 19, with zero velocity and grounded status.
+The release spends seven extra ticks stationary at (1877,606) before its first
+pull-up offset; the candidate applies that first offset immediately. Each
+$BD/$BE/$BF source pose is selected for seven samples; native invulnerability
+blinking is retained, and visible poses/settlement are checked in the images. The final source offset (+8,-5)
+completes at tick 54 instead of 61, followed by the existing small ground
+settlement; this is not a claim of a new terrain collision optimization.
+
+The original S3&K disassembly at $16EFE/$16F6C explicitly notes that $D2 is
+immediately overwritten by the waiting animation. An initial check incorrectly
+expected it to appear and is rejected; the complete existing captures pass the
+correct source contract without another game run. Together with the accepted
+native damage and glide-recovery routes, this closes S2-44. Evidence:
+`followups-20261105/ledge-acceptance.json`, `ledge-terrain2-{baseline,candidate}-results.json`
+and bounded per-tick images/RAM. Candidate EXE remains
+`4c3a7691cffcd8c1d818ce2b7e9e97719611c67a70977b73554ecc50ea35074b`.
+
+
+S2-33 is fixed with SEGA's unmodified 600x900 Steam artwork, replacing the
+cropped 142x214 TGA used by the launcher. The existing shared renderer already
+uses contain sizing and full UV bounds, so no UI fork or upscaling filter was
+needed. CMake stages `boxart.jpg` under its real name and GameSpec selects it.
+Actual hidden GL captures at 1100x880, 900x720 and 1600x1000 retain the complete
+logo, both characters and the poster margins; the source resolution exceeds
+its displayed bounds in these layouts. No gameplay setting or owner artwork
+profile is changed.
+
+Source: [SEGA's Steam listing](https://store.steampowered.com/app/71163/Sonic_The_Hedgehog_2/)
+and its [publisher artwork](https://cdn.akamai.steamstatic.com/steam/apps/71163/library_600x900_2x.jpg).
+Asset SHA-256 `9edd61c793ce493b8a654798a546b174b46d6542f9700eefa36c4f52affbe786`.
+Evidence: `followups-20261105/cover-launcher/{results.json,normal.png,small.png,large.png}`.
+Candidate EXE SHA-256 `b8e3285011b78722596de4f6fc0ced3b663c6d9e743a8072a5d4c2e08728c0e1`.

@@ -298,6 +298,7 @@ const GameSpec g_game_spec = {
     .main_cpu_divisor       = s2_video_main_cpu_divisor,
     .display_name           = "Sonic the Hedgehog 2",
     .short_name             = "Sonic2",
+    .boxart                 = "boxart.jpg",
 
     /* JUE REV01 (No-Intro "Sonic The Hedgehog 2 (World) (Rev A)"). The launcher
      * verifies this CRC32 of the raw ROM file and shows a MATCH badge. */
