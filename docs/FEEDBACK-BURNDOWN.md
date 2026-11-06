@@ -1114,8 +1114,9 @@ qualified changes; v0.9.10, its tag/archive and the deferred reports are preserv
 New owner-provided screenshots and an EHZ-through-ARZ1 Knuckles recording are
 available. The recording identifies the exact released v0.9.10 executable:
 BUILD `9a163e9c`, game `5a007d149d`, engine `61bbab13c1`, ROM CRC `7b905383`.
-Its header matches the retained qualified release recording. This establishes
-build identity and available evidence; replay/reproduction is still pending.
+Its header matches the retained qualified release recording. The explicitly
+completed prefix now reproduces all 89,338 recorded result hashes with its
+verified donor resources; the original interrupted report remains unchanged.
 The text contains 89,339 input records and 89,338 result hashes, ending with a
 pending input and no completion marker. Preserve the original and qualify its
 available prefix explicitly; do not call it a complete validated replay or
@@ -1130,18 +1131,18 @@ from a separate earlier session whose exact version/aspect is unknown.
 | ID | Report and acceptance | Status |
 | --- | --- | --- |
 | S2-33 | Launcher cover art is cropped/blurry. Preserve the cover's intended bounds and useful resolution. | P3 cosmetic; screenshot available, not runtime-qualified. |
-| S2-34 | Save-select background does not fill widescreen consistently. Extend both margins without disturbing cards, selection or fades. | P2; screenshot available. |
-| S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | P2; separate from optional importing of S3 music/sound timbres. |
-| S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | P2; reported, needs a real start/fade route. |
+| S2-34 | Save-select background does not fill widescreen consistently. Extend both margins without disturbing cards, selection or fades. | **Verified existing behavior** in v0.9.10 and the candidate: both 796-pixel margins contain background, selection leaves it fixed, and complete native/wide fades pass. No new fix is claimed. |
+| S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | **Fixed and runtime-validated**: dispatch native Teleport ($EC) through REV01 PlayMusic queue $FFFFE4 at the incoming level fade, including loading mode $8C. Nonzero generated PCM matches before start and changes at the actual event. |
+| S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | **Fixed and runtime-validated**: persist before departure while freezing the outgoing blank card from successful selection onward. Native/wide NEW regions match their pre-start image exactly; the released baseline changes to the saved thumbnail. |
 | S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | P2; zone-dependent report, not yet reproduced. |
 | S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
 | S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
 | S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
 | S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | P2 shared-launcher report; separate from unsupported revision rejection below. |
-| S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | P2; screenshot and current-release recording; follow-up to S2-08. |
+| S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | **Fixed and runtime-validated**: restore the final name column between live digit tiles 9/11. Native/wide/mixed original-art pixels and live counters pass; Sonic/Tails, RAM and VRAM unchanged. |
 | S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | P2; distinct from the large portrait checked in S2-16. |
-| S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | P1 core character assessment; several examples and recording. |
-| S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | P1 progression; screenshot and recording. |
+| S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Partly fixed/validated.** Actual Coconuts collisions now select hurt $8D/death $AB instead of retaining standing $56. Real glide-release landing and slide/get-up retain recovery poses for 16 sampled ticks versus one in the baseline. Source ledge timing/left completion unit checks pass; real terrain climb-out remains open. |
+| S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | **Fixed and runtime-validated**: preserve scripted input during global control lock. Real signpost trigger advances EHZ1 to EHZ2 with no further input; opposing left/jump input cannot reclaim control. Released baseline stalls in the same setup. |
 | S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | P2 accuracy; separate from progression S2-45. |
 | S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
@@ -1150,7 +1151,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | P1 collision assessment; compare each route with original Knuckles-in-Sonic-2 before choosing substantial reuse or local repairs. Screenshots and recording available; suspected original-game quirks are not presumed port defects. |
 | S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | P2 accuracy; screenshot and recording. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
-| S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | P2 accuracy; comparison screenshots and recording. |
+| S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Partly implemented; qualification in progress.** Source KiS2 CPZ/ARZ underwater actor palettes use the native per-line water split and target fade envelope. CPZ2/ARZ1 have 449/675 exact source-palette pixels, unchanged dry head and identical canonical RAM/VRAM; the separate red water-surface treatment remains open. |
 | S2-55 | Special-stage entry fade ends white rather than the expected grey. Establish original-game/capture behavior before changing the endpoint. | Reference question; Kega provenance and the proposed relation to S2-47 are unverified. |
 | S2-56 | Slight Knuckles glide jitter is reported again, now during the recorded native-aspect HRR session. Assess the recorded pose/camera cadence before attributing it to missing interpolation. | P2; related new evidence for S2-12; the old widescreen-only occurrence remains unqualified. |
 
@@ -1196,3 +1197,67 @@ interpolation, and configurable sound-driver/music tooling in the feature
 backlog. No such feature is started by this assessment. Reports from the
 Sonic 1 or S3-family host remain with those products even when the zone name
 also appears in Sonic 2.
+
+### First follow-up qualification batch (2026-11-05)
+
+Two of the 24 new groups have built-runtime acceptance: S2-42 and S2-45.
+They are candidate fixes, not a published release. The current candidate also
+contains the save-start cue and blank-card departure correction (focused menu
+checks pass), a `.68k` picker override using the existing launcher ABI, and a
+combat animation restoration correction under qualification. Remaining groups
+stay open; no broad character/collision or widescreen pass is inferred.
+
+The frozen release prefix matches all 89,338 executions on SERVER. A separate
+read-only local observation of the same prefix also matches every hash while
+capturing 148 bounded RAM/image samples. These identify real locked signpost
+state and some death states retaining a standing animation, without weakening
+build identity or editing the original report. Source comparison rejects an
+animation-ID remap: the original Knuckles and S3&K tables already align.
+
+Candidate `6bd242b03ae477f65f0b3fee11bbc141f08105a208a859c8ad5c033fadb5c5da`
+passes 10 paired HUD gameplay cases (five rosters/viewports, three/seven lives)
+and the actual signpost transition A/B. The baseline is the frozen v0.9.10 EXE
+`f41022e8ead4dfd0fd3d6e9f149eb7ed20352c587894e7812e2c9404d1f973d8`.
+Evidence: `followups-20261105/{qualification-results.json,observed-prefix/
+results.json,hud-runtime/results.json,signpost-results.json,focused-local-tests.log}`
+under the existing task workspace. Later candidate changes require their own
+affected acceptance; this does not claim the pending combat fix passed.
+
+### Follow-up decisions (2026-11-06 UTC)
+
+**5/24 groups meet current-build acceptance:** S2-34 (existing behavior),
+S2-35, S2-36, S2-42 and S2-45. **19 groups remain open**, including the
+unqualified parts of S2-44/S2-54. This is not a released build or a completed
+character/collision audit. The original intake's deferred findings are separate.
+
+The native and 796-pixel save-menu routes retain fixed, populated backgrounds
+on both margins and complete fades. NEW-card interior comparison is exact
+(RMSE 0); the released baseline changes composition (RMSE 102.61). Blank cards
+are held from selection, including the interval before the native mode changes.
+The start cue uses the actual supported ROM's $136A dispatch address/queue and
+loading-mode bit. Generated, nonzero 223,721 Hz PCM is identical for the first
+1,000,000 bytes and first differs at 30.192150 s on the real start route. The
+initial silent dispatch attempts are not counted as sound acceptance.
+
+Knuckles collision outcomes preserve native hurt/death animation writes while
+restoring only the temporary attack classification. Explicit native enemy
+collisions reproduce the old standing-pose error and verify both corrected
+poses. Recovery transports the original 15-tick movement lock to native state;
+128-tick real glide/release and slide samples show 16 visible recovery samples
+versus one in the baseline. RAM observations may occur inside the temporary
+combat classification; pose and lock observations carry the recovery decision.
+
+Evidence remains in the existing `followups-20261105` workspace:
+`menu-runtime-final/{results,card-results}.json`,
+`menu-start-audio-loading-bit/results.json`, `save-wide-background-results.json`,
+`combat-results.json`, `glide-recovery-results.json` and the focused test logs.
+The CPZ2 palette fixture positions/freezes an isolated actor, then uses actual
+native water and H-int updates; it does not claim a natural route, collision
+clearance or the water-surface fix. Retain the frozen release baseline.
+
+The source-palette actor qualification also passes ARZ1: 675 changed body
+pixels match the original palette exactly, while dry head pixels and canonical
+RAM/VRAM remain unchanged. Both captures use candidate
+`b55a68764eefbc8986437781f2ac7e97600fae8ad29bcbd535a71164c5a3f21e`.
+The native water line is 89/76 in CPZ2/ARZ1 respectively; changed actor pixels
+start on that line. This qualifies the actor half of S2-54 only.

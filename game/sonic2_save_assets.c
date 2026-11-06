@@ -274,7 +274,13 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
     if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
         !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
         !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor)) return 0;
-    for (unsigned i=0;i<16;++i) candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
+    for (unsigned i=0;i<16;++i) {
+        candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
+        /* c336fede Pal_CPZ_U/Pal_ARZ_U explicitly contain Knuckles' colours.
+         * Read from the verified owner image, never embed donor palette data. */
+        candidate.water_palette[0][i]=(uint16_t)be16(r+0x3029BE+i*2);
+        candidate.water_palette[1][i]=(uint16_t)be16(r+0x302AFE+i*2);
+    }
     *out=candidate; return 1;
 }
 int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *error,size_t cap)
