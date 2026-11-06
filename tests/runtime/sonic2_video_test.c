@@ -121,6 +121,20 @@ static void private_water_palette_test(void)
 }
 int main(void)
 {
+    /* Attract end/skip selects Sega/title before the old world fades. Its
+     * display stays wide until incoming initialization retires the level;
+     * original loading/fade CPU timing remains unchanged. */
+    CHECK(sonic2_video.configure("32:9"));
+    for(unsigned destination=0;destination<=4;destination+=4) {
+        memset(g_ram,0,sizeof g_ram);g_ram[0xF600]=(uint8_t)destination;
+        g_ram[0xB000]=1;g_ram[0xF711]=1;
+        CHECK(outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
+        word(g_ram,0xFFD8,1);CHECK(outgoing_level() && !gameplay() && !competition());
+        g_ram[0xF711]=0;CHECK(!outgoing_level());
+        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!outgoing_level());
+    }
+    memset(g_ram,0,sizeof g_ram);
+    CHECK(sonic2_video.configure("off"));
 #if OWN_BACKEND
     /* Avoid palette work in ordinary play, but retain an expiring star's
      * palette until both queued and currently displayed SATs retire it. */

@@ -142,6 +142,12 @@ static int competition(void)
     int mode=g_ram[0xF600]&127;
     return ram16(0xFFD8) && (mode==8 || mode==12);
 }
+static int outgoing_level(void)
+{
+    int mode=g_ram[0xF600]&127;
+    return (mode==0 || mode==4) && g_ram[0xF711] &&
+        (g_ram[0xB000]==1 || g_ram[0xB000]==2);
+}
 static int stage_width(void)
 {
     int last = 1;
@@ -1127,7 +1133,8 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
     if(line==0 && !s_interpolating) {
         memcpy(&s_video_frame,v,sizeof s_video_frame);
         memcpy(s_world_frame,g_ram,sizeof s_world_frame);
-        s_frame_vs=competition();
+        int outgoing=outgoing_level();
+        s_frame_vs=competition() || (outgoing && ram16(0xFFD8));
         s_vs_ready=g_ram[0xF711]!=0;s_vs_world=s_vs_ready || ram16(0xB0BE)!=0;
         if (s_frame_vs) for (unsigned p=0;p<2;++p) {
             unsigned at=p?0xEE80:0xEE60;
@@ -1135,7 +1142,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
             s_vs_camera[p][2]=(int16_t)ram16(at+12);
             s_vs_camera[p][3]=view_left(s_vs_camera[p][0],width);
         }
-        s_frame_level=gameplay() && g_ram[0xF711];
+        s_frame_level=(gameplay() || (outgoing && !ram16(0xFFD8))) && g_ram[0xF711];
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=g_ram[0xFE10];
         s_frame_card=0;s_frame_card_leaving=ram16(0xB0BE)!=0;
