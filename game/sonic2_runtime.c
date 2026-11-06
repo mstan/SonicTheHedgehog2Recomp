@@ -751,10 +751,12 @@ static int update_player(unsigned p, uint32_t entry)
 int s2_runtime_hook(uint32_t pc)
 {
     if (pc==0xC680 && (g_ram[0xF600]&127)==12 && !g_ram[0xFE10] &&
-        !word(0xFFD8) && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
+        !word(0xFFD8) && !s2_roster_is_classic(&s2_party.roster)) {
         /* KiS2 Deform_EHZ appends the missing last two H-scroll rows using
          * the final D4/D3 pair. Stock REV01 returns here after only 222 rows.
-         * Keep the native Sonic/Tails treatment, and continue its real RTS. */
+         * Preserve only the original solo Sonic/Tails and native Sonic+Tails
+         * roles. Validated custom/expanded parties use the corrected rows,
+         * independent of which actor leads. Continue the real native RTS. */
         unsigned at=g_cpu.A[1]&65535u;
         if (at<=65528u) {
             for (unsigned n=0;n<2;++n) {
