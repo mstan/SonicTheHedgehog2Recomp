@@ -308,6 +308,29 @@ static void native_publish_sprites(void);
 static unsigned s_serial, s_scene_tick, s_spawned, s_pool_pressure;
 static int s_vs_other_lo,s_vs_other_hi;
 
+/* The native SAT remains authoritative for front-of-player UI. Keep only
+ * source-object classifications beside its completed publication; no guest
+ * marker, mapping, palette or sprite order is changed. */
+typedef struct {
+    uint8_t sat[2][640],kind[2][80];
+    unsigned serial,ui_mask;
+} FrontUIFrame;
+static FrontUIFrame s_front_build,s_front_history[3],s_front_display[2];
+static unsigned s_front_serial;
+static void front_ui_begin(void)
+{
+    memset(&s_front_build,0,sizeof s_front_build);
+}
+static void front_ui_publish(void)
+{
+    memcpy(s_front_build.sat[0],g_ram+0xF800,640);
+    memcpy(s_front_build.sat[1],g_ram+0xDD00,640);
+    for(unsigned p=0;p<2;++p)for(unsigned i=0;i<80;++i)
+        if(s_front_build.kind[p][i]){s_front_build.ui_mask|=1u<<p;break;}
+    s_front_build.serial=++s_front_serial;
+    s_front_history[s_front_serial%3]=s_front_build;
+}
+
 static unsigned s_tick_samples,s_tick_updates,s_tick_lag,s_tick_multi;
 static unsigned s_publication_lag;
 void s2_video_vblank(void)
@@ -366,6 +389,17 @@ static void video_state(S2StateIO *io, int rollback)
     int display=s_display!=NULL;
     if (!rollback) { S2_STATE(io,s_display_frame); S2_STATE(io,display); }
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
+    /* This SAT classification is presentation metadata, like s_display.
+     * Disk states keep the exact picture; rollback rebuilds it from the next
+     * native sprite publication instead of hashing renderer activity. */
+    if(!rollback) {
+        S2_STATE(io,s_front_build);S2_STATE(io,s_front_history);S2_STATE(io,s_front_serial);
+        S2_STATE(io,s_front_display);
+    } else if(io->mode==2) {
+        memset(&s_front_build,0,sizeof s_front_build);
+        memset(s_front_history,0,sizeof s_front_history);
+        memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
+    }
     S2_STATE(io,s_placements); S2_STATE(io,s_placement_count); S2_STATE(io,s_placement_base);
     S2_STATE(io,s_loader_active); S2_STATE(io,s_visible_objects); S2_STATE(io,s_visible_count);
     S2_STATE(io,s_active_cells); S2_STATE(io,s_streaming_pressure);
@@ -614,7 +648,8 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(!vs && !s2_runtime_campaign_online() && (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
-        q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);q->hud=(uint8_t)anchor;
+        q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
+        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
@@ -778,6 +813,11 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 if(!read_only && s_visible_count<144)s_visible_objects[s_visible_count++]=o;
             } else {
                 x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
+                /* The drowning number has become native screen-space, but
+                 * still belongs to that camera viewport. At a clamped edge
+                 * its horizontal origin differs from centered menu text. */
+                if(g_ram[o]==0x0A && !vs)
+                    x+=cam-left-(render_width-320)/2;
                 /* The red serrated edge follows its widened plane boundary;
                  * text keeps its original glyph size and centered layout. */
                 if (g_ram[0xF600]==0 && g_ram[o]==0xB0)
@@ -795,6 +835,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
+            if(g_ram[o]==0x3A || g_ram[o]==0x0A)flags|=0x400;
             if(multi) {
                 if(g_ram[o+0xB])add_mapping(dst,keys,o<<16,map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
@@ -851,7 +892,8 @@ static void publish_sprites(void)
 }
 int s2_video_hook(uint32_t pc)
 {
-    if (pc==0x16604) s2_video_prepare_knuckles_items();
+    if (pc==0x16604) {s2_video_prepare_knuckles_items();front_ui_begin();}
+    if(pc==0x16712 || pc==0x1671A || pc==0x16B90 || pc==0x16B98)front_ui_publish();
     if (pc==0x1684E || pc==0x1688E || pc==0x168E6 || pc==0x16938 ||
         pc==0x16DEE || pc==0x16E40 || pc==0x16E9C || pc==0x16F00) {
         /* REV01 normal/interlace DrawSprite DBFs, after a complete SAT piece.
@@ -865,6 +907,10 @@ int s2_video_hook(uint32_t pc)
             /* REV01 P2 builds at DD00; H-int uploads it over the same VRAM
              * SAT halfway through the frame (LEA at $16A80). */
             unsigned tile=ram16(next-4)&2047u;
+            unsigned p=next>=0xDD08 && next<=0xDF80;
+            unsigned slot=(next-(p?0xDD00:0xF800))/8-1;
+            if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
+                s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:g_ram[o]==0x0A?3:0;
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
@@ -927,7 +973,17 @@ int s2_video_hook(uint32_t pc)
 }
 
 static uint8_t *s_priority;
+static uint32_t *s_front_rgb;
 static int s_priority_capacity;
+static int reserve_sprite_row(int width)
+{
+    if(width<=s_priority_capacity && s_priority && s_front_rgb)return 1;
+    uint8_t *p=(uint8_t *)realloc(s_priority,(size_t)width);
+    uint32_t *f=(uint32_t *)realloc(s_front_rgb,(size_t)width*sizeof *f);
+    if(p)s_priority=p;if(f)s_front_rgb=f;
+    if(!p || !f)return 0;
+    s_priority_capacity=width;return 1;
+}
 static void select_scene(const GVDP *v)
 {
     s_display=NULL;
@@ -977,13 +1033,14 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
     for(unsigned n=0;n<s_display->count;++n) {
         const SceneSprite *s=&s_display->sprites[n];
         int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
-        int world=!s->hud && (s_display->scene==1 || s_display->scene==3);
+        unsigned anchor=s->hud&3u;
+        int world=!anchor && (s_display->scene==1 || s_display->scene==3);
         int cell_height=(v->reg[12]&6)==6?16:8;
         int sx=s->x,sy=s->y;
         if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
         int y=sy+(world?s_display->camera_y-s_camera_y:0);
         if(line<y || line>=y+ch*cell_height)continue;
-        int base=sx+(s->hud==1?0:s->hud==2?(width-320)/2:origin);
+        int base=sx+(anchor==1?0:anchor==2?(width-320)/2:origin);
         /* Native camera scroll may advance while a completed host frame is
          * retained. Reproject its world coordinates, not its old screen
          * coordinates; otherwise stationary rings jitter with the camera. */
@@ -997,7 +1054,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
             uint32_t custom=0;
-            int knux=!s_interpolating && s->hud==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+            int knux=!s_interpolating && anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):pattern_pixel(v,cell,ix,iy);
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
@@ -1013,7 +1070,10 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 knux=1;
             }
             s_priority[x]|=2;
-            if(s->hud || (s->attr&0x8000) || !(s_priority[x]&1))out[x]=knux?custom:palette[p];
+            if(anchor || (s->attr&0x8000) || !(s_priority[x]&1)) {
+                out[x]=knux?custom:palette[p];
+                if((s->hud&128) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
+            }
         }
     }
 }
@@ -1182,10 +1242,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         s_terrain_checks=s_terrain_errors=s_bg_checks=s_bg_errors=s_bg_unstreamed=0;
         s_uninitialized_scroll_lines=s_terrain_unstreamed=0;
         s_bad_x=s_bad_y=-1;s_bad_attr=s_bad_expected=0;
-        if(width>s_priority_capacity) {
-            uint8_t *p=(uint8_t *)realloc(s_priority,(size_t)width);
-            if(p){s_priority=p;s_priority_capacity=width;}
-        }
+        reserve_sprite_row(width);
         select_scene(v);
         s_frame_campaign_view=0;
 #if GENESIS_HAS_RECOMP_NET
@@ -1491,11 +1548,7 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
             if(!next)return;
             f->image=next;f->capacity=need;
         }
-        if(width>s_priority_capacity) {
-            uint8_t *next=(uint8_t*)realloc(s_priority,(size_t)width);
-            if(!next)return;
-            s_priority=next;s_priority_capacity=width;
-        }
+        if(!reserve_sprite_row(width))return;
         f->render=s_real_render;
         if(!enabled()) {
             memset(&f->render,0,sizeof f->render);
@@ -1544,7 +1597,7 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     for(unsigned i=0;i<b->scene.count;++i) {
         const SceneSprite *p=&a->scene.sprites[i],*q=&b->scene.sprites[i];
         if(a->keys[i]!=b->keys[i] || p->attr!=q->attr || p->size!=q->size || p->hud!=q->hud ||
-           (!q->hud && (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
+                       (!(q->hud&3) && (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
                        abs(p->y+a->scene.camera_y-q->y-b->scene.camera_y)>48)))return 0;
     }
     if(phase==0 || phase==1) {
@@ -1634,8 +1687,78 @@ void s2_video_actor_origin(const GVDP *v, int line, int width, int *left, int *t
 int s2_video_actor_pixel_visible(const GVDP *v, int wx, int wy, int high, const unsigned char *world)
 {
     if (high) return 1;
+    if(enabled() && s_frame_level && wx>=s_left && wx<s_left+s_width &&
+       s_priority_capacity>=s_width)return !(s_priority[wx-s_left]&1);
     uint16_t attr=(v->reg[12]&6)==6?world_attr_2p(world,wx,wy,0):world_attr(world,wx,wy,0);
-    return !(attr&0x8000) || !pattern_pixel(v,attr,wx,wy);
+    if((attr&0x8000) && pattern_pixel(v,attr,wx,wy))return 0;
+    if((v->reg[12]&6)==6)return 1;
+    int mode=v->reg[11]&3,cy=(int16_t)((world[0xEE64]<<8)|world[0xEE65]);
+    int line=wy-unwrap(v->vsram[0],cy),row=mode==0?0:mode==2?line&~7:line;
+    unsigned scroll=(v->reg[13]&63u)<<10;
+    int camera=unwrap(-(int16_t)vram16(v,scroll+row*4),(world[0xEE60]<<8)|world[0xEE61]);
+    int bx=wx-camera-(int16_t)vram16(v,scroll+row*4+2),by=line+v->vsram[1];
+    attr=plane_attr(v,(v->reg[4]&7u)<<13,bx,by);
+    return !(attr&0x8000) || !pattern_pixel(v,attr,bx,by);
+}
+
+void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
+{
+    if(enabled() && s_priority_capacity>=width && s_front_rgb && (s_frame_level || s_frame_vs)) {
+        for(int x=0;x<width;++x)if(s_priority[x]&4)out[x]=s_front_rgb[x];
+        return;
+    }
+    int vs=ram16(0xFFD8)!=0;unsigned p=vs && line>=224;
+    FrontUIFrame *front=&s_front_display[p];
+    unsigned table=(v->reg[5]&127u)<<9;
+    if(line==0 || (vs && line==224)) {
+        const FrontUIFrame *best=NULL;
+        for(unsigned n=0;n<4;++n) {
+            const FrontUIFrame *f=n==3?front:&s_front_history[n];
+            if(!f->serial || f->serial>s_front_serial || (best && f->serial<=best->serial))continue;
+            unsigned slot=0;int match=1;
+            for(unsigned i=0;i<80;++i) {
+                if(slot>=80){match=0;break;}
+                for(unsigned j=0;j<8;++j)if(f->sat[p][slot*8+j]!=v->vram[(table+slot*8+j)&65535]){match=0;break;}
+                if(!match)break;
+                slot=v->vram[(table+slot*8+3)&65535]&127;if(!slot)break;
+            }
+            if(match)best=f;
+        }
+        if(best && best!=front)*front=*best;
+        else if(!best)front->serial=0;
+    }
+    if(!front->serial || !(front->ui_mask&(1u<<p)))return;
+    int cell=(v->reg[12]&6)==6?16:8,slot=0;uint8_t covered[320]={0};
+    for(unsigned i=0;i<80 && slot<80;++i) {
+        unsigned at=table+(unsigned)slot*8,kind=front->kind[p][slot];
+        unsigned attr=vram16(v,at+4),size=v->vram[(at+2)&65535],cw=((size>>2)&3)+1,ch=(size&3)+1;
+        int x=(vram16(v,at+6)&511)-128,y=(vram16(v,at)&1023)-(cell==16?256:128);
+        {
+            if(line>=y && line<y+(int)ch*cell) {
+                int iy=line-y;if(attr&0x1000)iy=(int)ch*cell-1-iy;
+                for(unsigned px=0;px<cw*8;++px) {
+                    int dx=x+(int)px,ix=(attr&0x800)?(int)cw*8-1-(int)px:(int)px;
+                    if(dx<0 || dx>=320 || covered[dx])continue;
+                    unsigned tile=(attr&0xE000u)|((attr+(unsigned)(ix/8)*ch+(unsigned)iy/cell)&2047u);
+                    unsigned ink=pattern_pixel(v,(uint16_t)tile,ix,iy);
+                    if(size&0x80) {
+                        unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(size,&bytes);
+                        unsigned address=(tile&2047u)*(unsigned)(cell*4)+(unsigned)(iy&(cell-1))*4+(unsigned)(ix&7)/2;
+                        if(patterns && address<bytes) {
+                            unsigned n=(ix&1)?patterns[address]&15:patterns[address]>>4;
+                            ink=n?((tile>>9)&48)|n:0;
+                        }
+                    }
+                    if(ink) {
+                        covered[dx]=1;
+                        int target=dx+(width-320)/2;
+                        if(kind && target>=0 && target<width)out[target]=genesis_dac_cram_to_argb(v->cram[ink],GENESIS_DAC_NORMAL);
+                    }
+                }
+            }
+        }
+        slot=v->vram[(at+3)&65535]&127;if(!slot)break;
+    }
 }
 int s2_video_intro_pixel_visible(const GVDP *v,int x,int line,int high)
 {

@@ -1439,6 +1439,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
                 out[dx]=genesis_dac_cram_to_argb(v->cram[((s->art>>9)&48)+ink],GENESIS_DAC_NORMAL);
         }
     }
+    s2_video_front_ui(v,line,out,width);
     knuckles_hud(v,line,out,width,1);
     competition_hud(v,line,out,width,1);
 }
