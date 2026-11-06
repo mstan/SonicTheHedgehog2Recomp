@@ -429,7 +429,8 @@ int s2_runtime_state_at_boundary(void)
     /* Byte-matched REV01 listing: Level_MainLoop, both half-pipe loops,
      * and Pause_Loop. Fades/loading/results intentionally do not qualify. */
     if (mode==12 && g_ram[0xF711]) return caller==0x436E || caller==0x13BC;
-    if (mode==16) return caller==0x5220 || caller==0x5268 || caller==0x13BC;
+    if (mode==16) return caller==0x13BC ||
+        (g_ram[0xF62A]==0x0A && (caller==0x5220 || caller==0x5268));
     return 0;
 }
 int s2_runtime_state_save(void *data,size_t size)

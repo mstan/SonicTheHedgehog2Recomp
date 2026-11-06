@@ -1146,14 +1146,14 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | **Fixed/validated candidate.** Original 24-tile KiS2 signpost patch, 1,461 exact source pixels in native output and matching 796-wide changes. Native art, progression and other characters remain unchanged. |
 | S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | **Partly fixed/qualified.** Native H32 now fills the same logical display as H40, and widescreen track/HUD samples expand to matching proportions. Host-overlay/entry-exit visual handoff remains pending. |
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | **Expected original behavior; no change.** The original PSG3 noise track begins with six $30-duration rests, then starts percussion. The reported later arrival agrees with that sequence. |
-| S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
+| S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | **Fixed/qualified candidate.** Natural frame-boundary capture repairs partial track buffers. Three native stage points match uninterrupted images after alignment to the actual saved tick; native/wide warm/cold restoration and all 23 existing quickstate fixtures pass. Integration/release pending. |
 | S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
 | S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route. The recorded EHZ2 boss-arena fall is also fixed and qualified below; ARZ floor/wall and CPZ block/loop routes remain open. |
 | S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | **Fixed/validated candidate.** Real native capsule button press releases eight initial animals and subsequent groups; 48,620 original-palette pixels across 80 visible paired samples. Enemy-released animals also qualify. Simulation and native pattern/plane VRAM unchanged. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
 | S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Fixed/validated candidate.** Original Knuckles CPZ/ARZ actor and surface palettes; real native palette timing also controls the boundary row. CPZ2 native/wide and ARZ1 native surface checks, original actor pixels, unchanged dry head away from the boundary and native Sonic control pass. |
 | S2-55 | Special-stage entry fade ends white rather than the expected grey. Establish original-game/capture behavior before changing the endpoint. | **Original behavior confirmed; no change.** The source fades to $EEE before enabling H32 shadow/highlight. Native entry captures reach white as specified; the Kega grey reference does not justify recoloring this endpoint. |
-| S2-56 | Slight Knuckles glide jitter is reported again, now during the recorded native-aspect HRR session. Assess the recorded pose/camera cadence before attributing it to missing interpolation. | P2; related new evidence for S2-12; the old widescreen-only occurrence remains unqualified. |
+| S2-56 | Slight Knuckles glide jitter is reported again, now during the recorded native-aspect HRR session. Assess the recorded pose/camera cadence before attributing it to missing interpolation. | **Deferred, not a fix.** The supplied recorded glide segment has 84 consecutive aligned body samples at screen X=160 with the same pose/pixel offset. No independent body jitter reproduced. Raw tick images do not establish HRR host presentation pacing; reopen on a reproducing route/capture. The older widescreen-only report remains deferred. |
 
 The first qualification action is to replay the available build-matching prefix
 with its donor resources, retain the exact failing locations and distinguish
@@ -1225,10 +1225,10 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**19/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
+**20/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
 S2-35, S2-36, S2-37, S2-38, S2-39, S2-40 (existing behavior), S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-48 (original music sequence), S2-50, S2-52, S2-54 and
-S2-55 (original fade endpoint).
-**5 groups remain open**, including the
+S2-55 (original fade endpoint), plus S2-49 (natural-boundary save/load repair).
+**3 groups remain open** (S2-47, S2-51 and S2-53); **S2-56 is deferred** after the recorded-segment assessment. Open work includes the
 unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1534,3 +1534,37 @@ The remaining five groups are S2-47 (combined overlay/transition acceptance),
 S2-49 (save/load graphics), S2-51 (remaining collision subcases), S2-53 (donor
 layering) and S2-56 (recorded native-HRR glide jitter). Expected-behavior
 decisions above are separate from implemented fixes; no release is claimed.
+
+
+### Natural-boundary special-stage saves and recorded glide assessment (2026-11-06 UTC)
+
+S2-49 now meets candidate acceptance. The supplied recording's actual load
+prefix matches all48,900 execution hashes. An independent decoder of all56
+original track maps identifies an incomplete active track bank after the
+recorded load; the issue is not inferred from a generic screenshot alone.
+The old quicksave path froze guest work after its first WaitForVint while
+interrupts continued advancing the track phase. Engine4b8030c permits normal
+guest work and revalidates a naturally parked completed boundary. The special-
+stage adapter additionally requires the native $0A V-int phase.
+
+At three actual native stage points, saved RAM equals immediate warm and cold
+restore; warm/cold continuations match. The first two points match all nine
+comparable uninterrupted images. The third request waits eleven ticks for a
+safe capture and then matches all28 comparable images. All sampled active
+track banks match complete original maps. Native/widescreen restoration and
+all23 existing quickstate fixtures pass, including paused/cold/competition,
+invalid-file rejection and campaign-save preservation. Evidence:
+`followups-20261105/special-state-acceptance.json` and its linked raw records.
+This is candidate qualification, not a merged or released fix.
+
+S2-56 is deferred after a bounded assessment of the supplied recording. All
+15,720 prefix execution hashes match. In84 consecutive aligned glide samples,
+the Knuckles body remains at screen X160 with the same(-24,+3) pose/pixel
+offset and29 source-red body pixels. There is no reproduced independent body
+oscillation in that segment. These tick images cannot settle host HRR
+presentation pacing, so no new interpolation/pacing fix is claimed. Evidence:
+`followups-20261105/recorded-glide-observer/aligned-pixel-follow-results.json`.
+
+Current disposition is20 accepted groups, one explicit deferral and three
+open groups: combined special-stage overlay/transition validation(S2-47), the
+remaining CPZ/ARZ collision subcases(S2-51), and donor layering(S2-53).
