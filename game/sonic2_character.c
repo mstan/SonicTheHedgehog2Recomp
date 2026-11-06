@@ -62,6 +62,20 @@ static void amy_before(S2CharacterState *s, S2Motion *m)
     /* Amy's hack does not bind a down-held native Sonic spindash. */
     if (s->special==AMY_GIANT || s->special==AMY_HAMMER_JUMP) s->native_held&=~DOWN;
 }
+static void knuckles_ledge_step(S2CharacterState *s, S2Motion *m)
+{
+    /* KiS2 Knuckles_ClimbLedge_PositionArray: apply the first pose/position
+     * on entry, then advance every seven ticks (duration byte 6). */
+    static const int8_t dx[]={3,8,-8,8},dy[]={-3,-10,-12,-5};
+    static const uint8_t frames[]={0xBD,0xBE,0xBF,0xD2};
+    m->x+=direction(m)*dx[s->ledge]*65536; m->y+=dy[s->ledge]*65536;
+    s->frame=frames[s->ledge++];
+    if (s->ledge==4) {
+        if (m->status&FACE) m->x-=65536;
+        s->special=S2_SK_NORMAL; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+        m->jumping=0; m->radius_x=9; m->radius_y=19; m->animation=5;
+    }
+}
 static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
     if (!(m->status&AIR) && s->special!=S2_SK_SLIDE && s->special!=S2_SK_LEDGE) s->special=S2_SK_NORMAL;
@@ -100,7 +114,11 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
         s->move=S2_MOVE_GROUND;
         if (!(s->held&JUMP) || absword(m->vx)<=0x20 || c->floor>=14) {
             if (c->floor>=14) { s->special=S2_SK_FALL; m->status|=AIR; }
-            else { s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0; m->animation=0x22; }
+            else {
+                s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
+                m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+                m->jumping=0; m->move_lock=15; m->animation=0x22;
+            }
             m->radius_x=9; m->radius_y=19;
         } else { m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx; }
         break;
@@ -111,7 +129,10 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
             m->status^=FACE; m->status|=AIR|ROLL; m->jumping=1;
             m->vx=(int16_t)(direction(m)*0x400); m->vy=-0x380;
             m->radius_y=14; m->radius_x=7; m->animation=2; s->special=S2_SK_NORMAL;
-        } else if ((s->held&UP) && c->wall>=4) { s->special=S2_SK_LEDGE; s->ledge=0; s->age=0; }
+        } else if ((s->held&UP) && c->wall>=4) {
+            s->special=S2_SK_LEDGE; s->ledge=0; s->age=0;
+            knuckles_ledge_step(s,m);
+        }
         else if ((s->held&UP) && !c->wall && c->ceiling>=0) m->y-=65536;
         else if (s->held&DOWN) {
             if (c->wall>0) s->special=S2_SK_FALL;
@@ -119,17 +140,10 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
             else m->y+=65536;
         }
         break;
-    case S2_SK_LEDGE: {
-        static const int8_t dx[]={3,8,-8,8}, dy[]={-3,-10,-12,-5};
-        static const uint8_t frames[]={0xBD,0xBE,0xBF,0xD2};
+    case S2_SK_LEDGE:
         s->move=S2_MOVE_FIXED;
-        if (!(s->age%7) && s->ledge<4) {
-            m->x+=direction(m)*dx[s->ledge]*65536; m->y+=dy[s->ledge]*65536;
-            s->frame=frames[s->ledge++];
-            if (s->ledge==4) { s->special=S2_SK_NORMAL; m->status&=~(AIR|ROLL); m->radius_x=9; m->radius_y=19; m->animation=5; }
-        }
+        if (!(s->age%7) && s->ledge<4) knuckles_ledge_step(s,m);
         break;
-    }
     default: break;
     }
 }
@@ -183,7 +197,9 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
                 m->vx=m->vy=m->inertia=0; s->frame=0xB7;
             }
         } else if (s->special==S2_SK_FALL && !(m->status&AIR)) {
-            s->special=0; m->vx=m->vy=m->inertia=0; m->animation=0x23;
+            s->special=0; m->vx=m->vy=m->inertia=0;
+            m->status&=~(AIR|ROLL|ROLLJUMP|PUSH); m->jumping=0;
+            m->move_lock=15; m->animation=0x23;
         }
     }
 }

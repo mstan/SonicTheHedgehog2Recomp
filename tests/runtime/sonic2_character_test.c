@@ -46,6 +46,25 @@ int main(void)
     s2_character_before(&s,&m,1,0,&c); assert(m.y==-65536);
     s2_character_before(&s,&m,0x20,0x20,&c);
     assert(s.special==S2_SK_NORMAL && m.vx==-0x400 && m.vy==-0x380 && (m.status&4));
+    /* Source get-up/landing lock keeps native ground steering from replacing
+     * the recovery animation on its very next tick. */
+    s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+    s.special=S2_SK_FALL; m.jumping=1; m.vx=0x200;
+    s2_character_after(&s,&m,&c);
+    assert(m.animation==0x23 && m.move_lock==15 && !m.jumping && !m.vx);
+    s.special=S2_SK_SLIDE; m.radius_y=m.radius_x=10; m.y=0; c.floor=0;
+    s2_character_before(&s,&m,0,0,&c);
+    assert(m.animation==0x22 && m.move_lock==15 && m.y==-9*65536 && m.radius_y==19);
+    for (unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+        s.special=S2_SK_CLIMB; m.status=(uint8_t)(2|face); m.jumping=1;
+        s.wall_x=m.x; c.wall=4;
+        s2_character_before(&s,&m,1,0,&c);
+        assert(s.special==S2_SK_LEDGE && s.frame==0xBD && m.y==-3*65536);
+        for (unsigned tick=0;tick<21;++tick) s2_character_before(&s,&m,1,0,&c);
+        assert(s.special==S2_SK_NORMAL && m.animation==5 && !m.jumping);
+        assert(m.x==(face?-12:11)*65536 && m.y==-30*65536 && !(m.status&2));
+    }
     S2DonorBank bank={0}; bank.count=253; bank.animation_count=6;
     bank.animation_length[5]=5; memcpy(bank.animations[5],(uint8_t[]){1,10,11,0xFE,1},5);
     s2_character_reset(&s,S2_CHAR_AMY); m=standing();

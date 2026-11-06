@@ -153,6 +153,12 @@ int main(void)
     CHECK(s2_video_knuckles_hud_pixel(&hud,0x87D4,0,0,&colour) && !colour);
     memset(hud.vram+0x7DD*32,0x33,32); /* the native counter, not static donor digits */
     CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFFFF0000);
+    /* The E column sits between the two live digit tiles in column-major
+     * VRAM. A contiguous static-prefix assumption corrupts just this glyph. */
+    memset(hud_art.life+10*32,0x33,32);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DE,0,0,&colour) && colour==0xFFFF0000);
+    memset(hud.vram+0x7DF*32,0x33,32);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DF,0,0,&colour) && colour==0xFFFF0000);
     hud.cram[6]=0; CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF000000);
     strcpy(s2_party.roster.character[0],"sonic");
     CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour));

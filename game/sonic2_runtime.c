@@ -133,9 +133,11 @@ static S2Motion motion(unsigned o)
     m.animation=g_ram[o+0x1C]; m.frame=g_ram[o+0x1A]; m.jumping=g_ram[o+0x3C];
     m.flip_angle=g_ram[o+0x27];
     m.hurt=g_ram[o+0x24]>=4; m.boosted=word(o+0x34)!=0 || (o==0xB000 && g_ram[0xFE19]);
-    m.control_locked=!!(g_ram[o+0x2A]&1);
+    /* Stage scripts (notably signposts) retain Ctrl_1_Logical while the
+     * global lock is set, independently of an object's movement lock. */
+    m.control_locked=!!((g_ram[o+0x2A]&1) || g_ram[0xF7CC]);
     m.rings=word(ring_address()); m.super=actor==0 && !word(0xFFD8) && g_ram[0xFE19];
-    m.physics_top=word(0xF760);
+    m.physics_top=word(0xF760); m.move_lock=word(o+0x2E);
     m.speed_shoes=word(o+0x34)!=0;
     m.invincible_monitor=word(o+0x32)>1 || (actor>=0 && characters[actor].shadow_monitor_ticks!=0);
     return m;
@@ -145,6 +147,7 @@ static void store_motion(unsigned o, const S2Motion *m)
     putfixed(o+8,m->x); putfixed(o+12,m->y); putword(o+0x10,m->vx); putword(o+0x12,m->vy); putword(o+0x14,m->inertia);
     g_ram[o+0x22]=m->status; g_ram[o+0x26]=m->angle; g_ram[o+0x16]=m->radius_y; g_ram[o+0x17]=m->radius_x;
     g_ram[o+0x1C]=m->animation; g_ram[o+0x1A]=m->frame; g_ram[o+0x3C]=m->jumping;
+    putword(o+0x2E,m->move_lock);
 }
 static M68KState native_helper(uint32_t pc)
 {
@@ -660,7 +663,8 @@ static int update_player(unsigned p, uint32_t entry)
     if (imported() && g_ram[object+0x24]==2) {
         S2Motion m=motion(object); S2Contacts c=contacts(object);
         shadow_contacts(object,&c);
-        s2_character_before(&characters[p],&m,g_ram[0xF604],g_ram[0xF605],&c);
+        unsigned input=g_ram[0xF7CC]?0xF602:0xF604;
+        s2_character_before(&characters[p],&m,g_ram[input],g_ram[input+1],&c);
         store_motion(object,&m);
         shadow_effects(p,object,&m);
         g_ram[0xF604]=g_ram[0xF602]=characters[p].native_held;
@@ -1041,10 +1045,14 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x3F554) {
         /* Native combat outcomes, actor-specific attack predicate. Donor Amy
          * deliberately cannot damage enemies with her ordinary unarmed jump. */
-        S2Motion m=motion(o); uint8_t animation=g_ram[o+0x1C];
-        g_ram[o+0x1C]=s2_character_attacking(&characters[actor],&m)?2:0;
+        S2Motion m=motion(o); uint8_t animation=g_ram[o+0x1C],routine=g_ram[o+0x24];
+        unsigned attack=s2_character_attacking(&characters[actor],&m)?2:0;
+        g_ram[o+0x1C]=(uint8_t)attack;
         if (s_combat) { g_ram[o+0x1C]=animation; return 0; }
-        s_combat=1; recomp_call_addr(pc); s_combat=0; g_ram[o+0x1C]=animation;
+        s_combat=1; recomp_call_addr(pc); s_combat=0;
+        /* Restore only the temporary attack classification. TouchResponse's
+         * hurt/death/other animation transition is an actual combat outcome. */
+        if (g_ram[o+0x24]==routine && g_ram[o+0x1C]==attack) g_ram[o+0x1C]=animation;
         return 1;
     }
     return 0;
@@ -1325,8 +1333,30 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         const PartySprite *s=&frame_sprites[index];
         if (!s->visible) continue;
         const S2DonorBank *b=bank(p); unsigned frame=s->frame;
-        int shadow=kind(p)==S2_CHAR_SHADOW;
-        if (kind(p)==S2_CHAR_MIGHTY) frame=s2_mighty_frame(frame);
+        unsigned actor_kind=kind(p);
+        int shadow=actor_kind==S2_CHAR_SHADOW;
+        if (actor_kind==S2_CHAR_MIGHTY) frame=s2_mighty_frame(frame);
+        const S2KnucklesArt *original=actor_kind==S2_CHAR_KNUCKLES?s2_resource_knuckles_art():NULL;
+        unsigned zone=frame_world[0xFE10];
+        /* Native H-int split, including a partly submerged body. The physics
+         * underwater flag describes the center, not the current scanline. */
+        int wet=!frame_vs && frame_world[0xF64C] &&
+            (frame_world[0xF64E] || line>frame_world[0xF625]);
+        const uint16_t *knux_water=original && wet && (zone==13 || zone==15)?
+            original->water_palette[zone==15]:NULL;
+        unsigned fade_full=42;
+        if (knux_water) {
+            /* Underwater target colours have their own lower maximum. Their
+             * tint is already in the donor palette; preserve the actual fade
+             * envelope without treating that tint as an additional fade. */
+            fade_full=0;
+            for (unsigned i=0;i<16;++i) {
+                unsigned at=0xF000+i*2,w=(frame_world[at]<<8)|frame_world[at+1];
+                unsigned value=(w&14)+((w>>4)&14)+((w>>8)&14);
+                if (value>fade_full) fade_full=value;
+            }
+            if (!fade_full) fade_full=42;
+        }
         const S2DonorFrame *f=b && frame<b->count?&b->frames[frame]:NULL;
         if (!f) continue;
         int x=s->x-origin_x,y=s->y-origin_y;
@@ -1347,11 +1377,12 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             uint32_t rgb;
             if (shadow) rgb=genesis_dac_cram_to_argb(s2_shadow_color(b,color,s->wet,phase,super_frame),GENESIS_DAC_NORMAL);
             else {
-                uint16_t shade=kind(p)<S2_CHAR_AMY?v->cram[color]:b->palette[color];
+                uint16_t shade=actor_kind<S2_CHAR_AMY?v->cram[color]:
+                    knux_water?knux_water[color]:b->palette[color];
                 if (phase) shade=s2_super_color(kind(p),color,shade,phase,super_frame,b);
                 rgb=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
             }
-            if (fade<42) rgb=0xFF000000|((((rgb>>16)&255)*fade/42)<<16)|((((rgb>>8)&255)*fade/42)<<8)|((rgb&255)*fade/42);
+            if (fade<fade_full) rgb=0xFF000000|((((rgb>>16)&255)*fade/fade_full)<<16)|((((rgb>>8)&255)*fade/fade_full)<<8)|((rgb&255)*fade/fade_full);
             out[dx]=rgb;
         }
     }
