@@ -1042,6 +1042,22 @@ static int ehz_parallax(int camera,int line)
     int step=(((n>>1)-(n>>3))*256)/48;
     return -((n>>3)+((step*row)>>8));
 }
+/* SwScrl_EHZ_2P emits one scroll word for each pair of IM2 output rows.
+ * Its bands differ from 1P, and the lower gradient advances every two rows. */
+static int ehz_2p_parallax(int camera,int line)
+{
+    int n=-camera;
+    if(line<22 || (line>=102 && line<112))return 0;
+    if(line<102)return -(n>>6);
+    if(line<128)return -(n>>4);
+    if(line<144){int a=n>>4;return -(a+(a>>1));}
+    int step=(((n>>1)-(n>>3))*256)/48;
+    return -((n>>3)+((step*((line-144)/2))>>8));
+}
+/* SwScrl_CPZ uses BG1 at one-eighth speed through row18 (including its
+ * animated ripple), then BG2 at one-half speed. Keep the live ripple. */
+static int cpz_parallax(int camera,int background_y)
+{ return camera>>((background_y&1023)<304?3:1); }
 
 /* Native IM2 remains two independent224-row world views. Reuse the world
  * maps and completed sprite publication; the native SAT still owns each HUD.
@@ -1088,8 +1104,11 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
     int plane_y=unwrap(v->vsram[0]+line,cy+y);
     if (world) for (int col=0;col<128;++col)
         if(s_world_frame[0x8080+(((by>>7)&15)*256)+col])bg_width=(col+1)*128;
+    int bg_base=-origin-hs_b;
+    if(world && s_frame_zone==0)
+        bg_base=-margin-hs_b+ehz_2p_parallax(left+margin,y)-ehz_2p_parallax(camera,y);
     for(int x=0;x<width;++x) {
-        int wx=left+x,wy=plane_y,bx=x-origin-hs_b;
+        int wx=left+x,wy=plane_y,bx=x+bg_base;
         if(bg_width){bx%=bg_width;if(bx<0)bx+=bg_width;}
         uint16_t a,b;unsigned ap,bp;
         if(world) {
@@ -1116,7 +1135,7 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
     } else competition_hud_sprites(v,line,out,width,palette);
     return 1;
 }
-static void render_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
+static void render_source_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
                             uint32_t *out, int width,
                             GameVideoNativeRow native_row, void *native_ctx)
 {
@@ -1251,6 +1270,9 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
     if(level && s_frame_zone==0) {
         int margin=(width-nw)/2;
         bg_base=-margin-hs_b+ehz_parallax(s_left+margin,line)-ehz_parallax(native_camera,line);
+    } else if(level && s_frame_zone==13 && !s_frame_campaign_view) {
+        int margin=(width-nw)/2;
+        bg_base=-margin-hs_b+cpz_parallax(s_left+margin,by)-cpz_parallax(native_camera,by);
     } else if(level && s_frame_campaign_view) bg_base+=(camera-native_camera)/2;
     int background_x=bg_base;
     if(bg_width>0) {
@@ -1356,6 +1378,23 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
         if (!native) native = native_row(native_ctx);
         int first=origin<0?-origin:0,last=origin+nw>width?width-origin:nw;
         if(last>first)memcpy(out+origin+first,native+first,(size_t)(last-first)*sizeof(uint32_t));
+    }
+}
+
+static void render_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
+                            uint32_t *out, int width,
+                            GameVideoNativeRow native_row, void *native_ctx)
+{
+    /* The H32 half-pipe has 256 horizontal samples across the same display
+     * span as H40's 320. Extend in H32 sample space, then expand the complete
+     * row so the track, HUD and extra scenery share the proper pixel shape.
+     * Native aspect keeps its untouched 256-pixel image for the runner. */
+    int source_width=nw==256 && (g_ram[0xF600]&127)==16 && width>=320 ?
+        (int)((int64_t)width*4/5):width;
+    render_source_scanline(v,line,native,nw,out,source_width,native_row,native_ctx);
+    if(source_width!=width) {
+        for(int x=width-1;x>=0;--x)out[x]=out[(int)((int64_t)x*source_width/width)];
+        s_width=width;s_native_x=(width-320)/2;
     }
 }
 

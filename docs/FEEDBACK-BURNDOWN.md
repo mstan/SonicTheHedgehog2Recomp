@@ -1135,8 +1135,8 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-35 | Starting/loading from the save menu lacks the expected warp/start cue. Check the actual event and select the source-backed cue under the existing audio policy. | **Fixed and runtime-validated**: dispatch native Teleport ($EC) through REV01 PlayMusic queue $FFFFE4 at the incoming level fade, including loading mode $8C. Nonzero generated PCM matches before start and changes at the actual event. |
 | S2-36 | A new save visibly appears while the blank card is fading out to EHZ1. Preserve the blank visual through departure while safely persisting the campaign. | **Fixed and runtime-validated**: persist before departure while freezing the outgoing blank card from successful selection onward. Native/wide NEW regions match their pre-start image exactly; the released baseline changes to the saved thumbnail. |
 | S2-37 | Ending/skipping attract demos collapses to 4:3 or exposes corrupt side graphics during fade. Preserve the selected viewport through complete transitions. | **Fixed/validated candidate.** Keep the outgoing displayed level through the native fade after mode changes to Sega/title. EHZ 2P and CPZ 1P, natural end and Start-to-skip: 520 paired snapshots retain full-width margins and byte-identical RAM. |
-| S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | P2; extends the earlier bounded competition audit. |
-| S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | P2; separate normal-stage route. |
+| S2-38 | Left-edge background scroll is broken in EHZ1 2P. Check both competition viewports and their independent cameras at the actual left boundary. | **Fixed/validated.** The source 2P parallax bands follow each clamped viewport independently; both cloud bands stay stationary at the left edge. |
+| S2-39 | Left-edge CPZ background scroll is broken. Preserve valid margin/parallax content while respecting the native camera boundary. | **Fixed/validated.** BG1/BG2 retain the original eighth/half-speed split while projecting from the visible camera; the live ripple remains intact. |
 | S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | **Verified existing behavior.** All eleven non-EHZ title-card families fill the 796-pixel canvas and complete their exits. See the qualification below. |
 | S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | **Fixed/validated candidate.** Genesis picker explicitly permits .68k with the existing UI ABI. Actual hidden launcher verifies the supported image under an uppercase .68K filename and Play opens the native audio device; an altered .68k image is shown as ROM not recognized and Play remains blocked. Revision validation retained. |
 | S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | **Fixed and runtime-validated**: restore the final name column between live digit tiles 9/11. Native/wide/mixed original-art pixels and live counters pass; Sonic/Tails, RAM and VRAM unchanged. |
@@ -1144,7 +1144,7 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Fixed/validated candidate.** Native Coconuts hurt/death select original $8D/$AB, glide-release/slide recovery retains the native lock and visible poses. Real EHZ terrain climb removes seven extra hover ticks, follows all three original visible seven-tick poses and settles on the ledge with normal radius 19. The source intentionally never displays final $D2; left/right completion also has source/unit coverage. |
 | S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | **Fixed and runtime-validated**: preserve scripted input during global control lock. Real signpost trigger advances EHZ1 to EHZ2 with no further input; opposing left/jump input cannot reclaim control. Released baseline stalls in the same setup. |
 | S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | **Fixed/validated candidate.** Original 24-tile KiS2 signpost patch, 1,461 exact source pixels in native output and matching 796-wide changes. Native art, progression and other characters remain unchanged. |
-| S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
+| S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | **Partly fixed/qualified.** Native H32 now fills the same logical display as H40, and widescreen track/HUD samples expand to matching proportions. Host-overlay/entry-exit visual handoff remains pending. |
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
 | S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
 | S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
@@ -1225,9 +1225,9 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**15/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
-S2-35, S2-36, S2-37, S2-40 (existing behavior), S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
-**9 groups remain open**, including the
+**17/24 groups meet current-build acceptance:** S2-33, S2-34 (existing behavior),
+S2-35, S2-36, S2-37, S2-38, S2-39, S2-40 (existing behavior), S2-41, S2-42, S2-43, S2-44, S2-45, S2-46, S2-50, S2-52 and S2-54.
+**7 groups remain open**, including the
 unqualified parts of S2-51. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1457,3 +1457,54 @@ normal radii and a clean grounded finish. This qualifies the boss-floor
 subcase only; CPZ and ARZ collision reports remain open. Evidence:
 `followups-20261105/{boss-floor-acceptance.json,
 floor-qualified-glide-recovery-results.json}`. Candidate EXE SHA256: `522f50eb1c73daf8fa82ef263a5fd46222643373e2d16197a5558b7a2c156a11`.
+
+### EHZ competition and CPZ left-edge backgrounds (2026-11-06 UTC)
+
+S2-38/S2-39 are qualified on native initialized stages with independent human
+input for both competition slots, plus CPZ right/left movement through the
+clamped camera boundary. Each route has sixty paired RAM, VRAM and image
+samples. All 120 RAM and 120 VRAM pairs are byte-identical. Once the camera
+leaves the clamped edge, the compared frames are visually unchanged.
+
+The renderer projects only the camera-dependent component from the visible
+viewport. Original EHZ 2P uses different band boundaries and one gradient step
+per pair of interlace rows; CPZ uses one-eighth speed through background row18
+and one-half speed below it. Live water/ripple phase is retained. Source band
+boundaries and gradient values also pass the focused video test.
+
+Background feature checks at the stationary edge measure baseline horizontal
+cloud drift of189px (P1) and200px (P2), versus0px in the candidate. CPZ's
+background-building feature moves74px in the baseline and0px in the candidate
+while its background Y remains unchanged. These are cropped background
+correlations, not an assertion that foreground, characters or animations stop.
+Full images were inspected. Evidence: `followups-20261105/{edge-parallax-acceptance.json,
+edge-baseline-results.json,edge-candidate-results.json,edge-ehz-vs-comparison.png,
+edge-cpz-comparison.png}`. Candidate EXE SHA256: `0650503dc612a844af6438588d678527a972c9f7900e6d39751aec3324688ad8`.
+
+S2-49 remains open. Asynchronous saving occurs after the request frame;
+comparing against the pre-request dump was rejected as a harness alignment
+error. Actual serialized RAM equals immediate warm and cold restore, and warm
+and cold branches match each other, but one later point diverges from an
+uninterrupted run. A direct post-WaitForVint resume experiment made continuation
+worse and was reverted. The supplied recording contains six real special-stage
+loads; a read-only observer reproduces their prefix with all48,900 execution
+hashes matching and retains78 adjacent images. That concrete evidence, rather
+than a broader capture matrix, is the next basis for the graphics decision.
+
+### Special-stage aspect candidate (2026-11-06 UTC)
+
+Engine `d6b39340ab03b0328dd864b16fe7656233198265` keeps raw H32 captures at
+256x224 but presents them on the same320x224 logical canvas as H40. Actual
+SDL software-renderer observations report raw256x224, logical320x224,
+output640x448 and viewport0,0,320,224. The fullscreen texture therefore keeps
+the same physical span as the preceding H40 frame. The quickstate panel uses
+logical dimensions, and runtime host UI composes after the H32 sample expansion
+so text retains its ordinary proportions.
+
+The game expands special-stage widescreen rows from H32 sample space to the
+selected output width. A focused native/lazy-row test verifies all256 original
+samples remain visible across a320-pixel central span at16:9, with unchanged
+RAM and an untouched native256-pixel output. Actual native and398-pixel stage
+images were inspected. S2-47 remains open for the combined host-overlay and
+entry/exit visual handoff; no generic framebuffer image is claimed as a screen
+capture. Existing save/load timing findings remain separate from this change.
