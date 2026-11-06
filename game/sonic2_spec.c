@@ -296,6 +296,7 @@ const GameSpec g_game_spec = {
     .state_save = s2_runtime_state_save,
     .state_load = s2_runtime_state_load,
     .state_at_boundary = s2_runtime_state_at_boundary,
+    .state_boundary_at_frame_end = 1,
     .main_cpu_divisor       = s2_video_main_cpu_divisor,
     .display_name           = "Sonic the Hedgehog 2",
     .short_name             = "Sonic2",
