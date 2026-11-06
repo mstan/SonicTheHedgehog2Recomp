@@ -1646,3 +1646,15 @@ The new combined engine head is08464b88c13b9ee121448ee5725d0cfc21091fc3.
 Earlier raw acceptance records retain their exact producer identities; they
 are not claimed as qualification of this new combined head. Current-source
 production, state/replay and affected presentation gates remain required.
+
+
+### Shared consumer resume contract (2026-11-06 UTC)
+
+Representative rebuilding exposed a pre-existing master API break: released
+Sonic 1 source still supplies GameSpec.call_resume to finish an interrupted
+native ending fade before its saved loop. The optional callback and its original
+runtime dispatch are restored; consumers without a callback keep the generic
+resume path. This preserves a current-build continuation contract, not backward
+compatibility with old save files. Engine39d5e63 is now pinned for the final
+combined gate. Earlier engine08464b8 production evidence remains identified as
+such; affected state/consumer gates and the final release binary are pending.
