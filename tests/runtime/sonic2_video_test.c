@@ -92,6 +92,33 @@ static void native_interpolation_test(void)
     free(before);free(after);
 }
 
+static void private_water_palette_test(void)
+{
+    static GVDP v;
+    uint8_t original[65536];GVDPRasterRow captured;
+    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
+    g_ram[0xF600]=12;g_ram[0xFE10]=13;g_ram[0xF64C]=1;hud_available=1;
+    for(unsigned c=0;c<16;++c) {
+        word(g_ram,0xFB00+c*2,0xEEE);word(g_ram,0xF080+c*2,0xAEE);
+        word(g_ram,0xF000+c*2,0xAEE);v.cram[c]=0xEEE;
+        hud_art.palette[c]=0xE;hud_art.water_palette[0][c]=0xE00;
+    }
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[13]=0x3F;
+    word(v.vram,0xF800,228);word(v.vram,0xF804,0x400);word(v.vram,0xF806,128);
+    v.vram[0xF802]=GVDP_SPRITE_PALETTE_ONLY;memset(v.vram+0x400*32,0x11,32);
+    /* A next-frame RAM split must not recolour the current native row. */
+    g_ram[0xF625]=0;s2_video_prepare_knuckles_items();memcpy(original,g_ram,sizeof original);
+    CHECK(!s2_video_water_palette(&v));
+    CHECK(gvdp_capture_presented_scanline(&v,100,&captured)==320);
+    CHECK(captured.host_palette[17]==0xFFFF0000u && !memcmp(original,g_ram,sizeof original));
+    g_ram[0xF625]=223;for(unsigned c=0;c<16;++c)v.cram[c]=0xAEE;
+    CHECK(s2_video_water_palette(&v));
+    CHECK(gvdp_capture_presented_scanline(&v,100,&captured)==320);
+    CHECK(captured.host_palette[17]==0xFF0000FFu);
+    s_item_water_enabled=0;gvdp_set_host_sprites(NULL,NULL);
+    gvdp_set_sprite_patterns(NULL,0,NULL);gvdp_set_ext_tiles(NULL);
+}
 int main(void)
 {
 #if OWN_BACKEND
@@ -118,11 +145,16 @@ int main(void)
     CHECK(knuckles_item_tile(0x6AC) && knuckles_item_tile(0x6B3));
     CHECK(!knuckles_item_tile(0x4BD) && !knuckles_item_tile(0x500));
     CHECK(!knuckles_item_tile(0x6AB) && !knuckles_item_tile(0x6B4));
-    hud_available=1; hud_art.shield_stars[0]=0x67; hud_art.monitor[0]=0x98;
+    hud_available=1; hud_art.shield_stars[0]=0x67; hud_art.monitor[0]=0x98;hud_art.signpost[0]=0xAB;
     s2_video_prepare_knuckles_items();
     const uint8_t *patterns=gvdp_sprite_patterns(0x80,&pattern_bytes);
     CHECK(patterns && pattern_bytes==65536);
     CHECK(patterns[0x4BE*32]==0x67 && patterns[0x6AC*32]==0x98);
+    CHECK(patterns[0x456*32]==0xAB);
+    CHECK(knuckles_item_tile(0x456) && knuckles_item_tile(0x46D) && !knuckles_item_tile(0x46E));
+    CHECK(gvdp_sprite_palette_line(0x80,0x456,0)==2);
+    CHECK(gvdp_sprite_palette_line(GVDP_SPRITE_PALETTE_ONLY,0x580,0)==2);
+    CHECK(!gvdp_sprite_palette_line(0,0x580,0) && !gvdp_sprite_palette_line(GVDP_SPRITE_PALETTE_ONLY,0x580,1));
     CHECK(!gvdp_sprite_patterns(0,&pattern_bytes));
     unsigned sites[]={0x1684E,0x1688E,0x168E6,0x16938};
     g_cpu.A[0]=0xFFFFD180; g_cpu.A[2]=0xFFFFF810; item_owner=1;
@@ -421,6 +453,7 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
+    private_water_palette_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }

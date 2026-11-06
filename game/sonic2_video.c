@@ -447,7 +447,12 @@ static void scene_mode_changed(int was_enabled)
 }
 static int knuckles_item_tile(unsigned tile)
 {
-    return (tile>=0x4BE && tile<0x500) || (tile>=0x6AC && tile<0x6B4);
+    return (tile>=0x456 && tile<0x46E) || (tile>=0x4BE && tile<0x500) ||
+        (tile>=0x6AC && tile<0x6B4);
+}
+static int knuckles_palette_tile(unsigned tile)
+{
+    return (tile>=0x400 && tile<0x434) || (tile>=0x580 && tile<0x5A8);
 }
 #if OWN_BACKEND
 static int shadow_sprite_tagged(const uint8_t *data,unsigned base)
@@ -478,22 +483,51 @@ static int shadow_palette_needed(void)
     return 1; /* Legacy backend keeps the always-available presentation path. */
 #endif
 }
+/* The guest can prepare the next H-int split while the current scanline is
+ * still being presented. Follow the live native palette, not that future RAM
+ * split, for private world colours and donor actors on the boundary row. */
+int s2_video_water_palette(const GVDP *v)
+{
+    if (!g_ram[0xF64C] || competition()) return 0;
+    unsigned dry=0,wet=0;
+    for (unsigned c=0;c<16;++c) {
+        dry+=v->cram[c]==ram16(0xFB00+c*2);
+        wet+=v->cram[c]==ram16(0xF080+c*2);
+    }
+    return wet>dry;
+}
+static uint16_t s_item_top[GVDP_EXT_LINES*16],s_item_bottom[GVDP_EXT_LINES*16];
+static int s_item_water_enabled,s_item_water_selected=-1;
+static void item_palette_row(void *user,const GVDP *v,const GVDPSpriteLayer *layer)
+{
+    (void)user;(void)layer;
+    if (!s_item_water_enabled) return;
+    int wet=s2_video_water_palette(v);
+    if (wet!=s_item_water_selected) {
+        gvdp_set_ext_colors(s_item_top,s_item_bottom,wet?0:1<<20);
+        s_item_water_selected=wet;
+    }
+}
 void s2_video_prepare_knuckles_items(void)
 {
     static const S2KnucklesArt *cached;
     static uint8_t patterns[65536];
-    static uint8_t shadow_patterns[65536],shadow_lines[2048],no_plane_lines[2048];
+    static uint8_t shadow_patterns[65536],shadow_lines[2048],world_lines[2048],item_lines[2048];
     static int shadow_ready;
     const S2KnucklesArt *art=s2_resource_knuckles_art();
     if (art && art!=cached) {
         memset(patterns,0,sizeof patterns);
         memcpy(patterns+0x4BE*32,art->shield_stars,sizeof art->shield_stars);
         memcpy(patterns+0x6AC*32,art->monitor,sizeof art->monitor);
+        memcpy(patterns+0x456*32,art->signpost,sizeof art->signpost);
+        for (unsigned t=0x456;t<0x46E;++t) item_lines[t]=2;
+        for (unsigned t=0x400;t<0x434;++t) item_lines[t]=2;
+        for (unsigned t=0x580;t<0x5A8;++t) item_lines[t]=2;
     }
     cached=art;
-    /* These original replacement tiles use only shared palette inks. Keep
-     * live CRAM so native fades and underwater palettes retain their timing. */
-    gvdp_set_sprite_patterns_bank(0,art?patterns:NULL,art?sizeof patterns:0,NULL);
+    /* Original grey items keep live CRAM. The signpost patch and tagged
+     * world objects select a separate, native-timed Knuckles palette. */
+    gvdp_set_sprite_patterns_bank(0,art?patterns:NULL,art?sizeof patterns:0,item_lines);
     const S2DonorBank *shadow=s2_party.shadow_enabled?s2_resource_shadow_bank():NULL;
     int selected=0;
     for (unsigned p=0;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p)
@@ -503,10 +537,17 @@ void s2_video_prepare_knuckles_items(void)
         if (shadow_ready) for (unsigned t=0x4DE;t<0x500;++t)
             shadow_lines[t]=GVDP_EXT_SPRITE_FORCE|1;
     }
-    if (!shadow || !selected || !shadow_ready || !shadow_palette_needed()) {
-        gvdp_set_sprite_patterns_bank(1,NULL,0,NULL);
-        gvdp_set_ext_tiles(NULL);return;
-    }
+    int shadow_active=shadow && selected && shadow_ready && shadow_palette_needed();
+    int knux_world=art && !competition() && (g_ram[0xF600]&127)==12 &&
+        !strcmp(s2_party.roster.character[0],"knuckles");
+    memset(world_lines,0,sizeof world_lines);
+    /* The active colour table is shared, but only object-tagged pieces use
+     * its Knuckles line. Planes and unmarked sprites keep native CRAM. */
+    s_item_water_enabled=knux_world && g_ram[0xF64C];
+    s_item_water_selected=-1;
+    gvdp_set_host_sprites(s_item_water_enabled?item_palette_row:NULL,NULL);
+    if (!shadow_active) gvdp_set_sprite_patterns_bank(1,NULL,0,NULL);
+    if (!shadow_active && !knux_world) {gvdp_set_ext_tiles(NULL);return;}
     uint16_t top[GVDP_EXT_LINES*16]={0},bottom[GVDP_EXT_LINES*16]={0};
     unsigned fade=0,water_fade=0;
     for (unsigned c=0;c<16;++c) {
@@ -519,7 +560,7 @@ void s2_video_prepare_knuckles_items(void)
      * private line; native CRAM, world monitors and Knuckles stay unchanged. */
     unsigned phase=!competition() && !strcmp(s2_party.roster.character[0],"shadow")?g_ram[0xF65F]:0;
     unsigned frame=ram16(0xF65C);
-    for (unsigned c=0;c<16;++c) {
+    for (unsigned c=0;shadow_active && c<16;++c) {
         uint16_t dry=s2_shadow_color(shadow,c,0,phase,frame);
         uint16_t wet=s2_shadow_color(shadow,c,1,phase,frame);
         for (unsigned shift=0;shift<12;shift+=4) {
@@ -527,12 +568,26 @@ void s2_video_prepare_knuckles_items(void)
             bottom[c]|=(uint16_t)((((wet>>shift)&14)*water_fade/42u)&14)<<shift;
         }
     }
+    if (knux_world) {
+        unsigned zone=g_ram[0xFE10],wet_full=0;
+        const uint16_t *wet=(zone==13 || zone==15)?art->water_palette[zone==15]:art->palette;
+        for (unsigned c=0;c<16;++c) {
+            unsigned v=ram16(0xF000+c*2),gain=(v&14)+((v>>4)&14)+((v>>8)&14);
+            if (gain>wet_full) wet_full=gain;
+        }
+        if (!wet_full) wet_full=42;
+        for (unsigned c=0;c<16;++c) for (unsigned shift=0;shift<12;shift+=4) {
+            top[16+c]|=(uint16_t)((((art->palette[c]>>shift)&14)*fade/42u)&14)<<shift;
+            bottom[16+c]|=(uint16_t)((((wet[c]>>shift)&14)*water_fade/wet_full)&14)<<shift;
+        }
+    }
     int split=1<<20;
     if (!competition() && g_ram[0xF64C])
         split=g_ram[0xF64E]?0:g_ram[0xF625]+1;
-    gvdp_set_ext_tiles(no_plane_lines);
+    gvdp_set_ext_tiles(world_lines);
+    memcpy(s_item_top,top,sizeof s_item_top);memcpy(s_item_bottom,bottom,sizeof s_item_bottom);
     gvdp_set_ext_colors(top,bottom,split);
-    gvdp_set_sprite_patterns_bank(1,shadow_patterns,sizeof shadow_patterns,shadow_lines);
+    if (shadow_active) gvdp_set_sprite_patterns_bank(1,shadow_patterns,sizeof shadow_patterns,shadow_lines);
 }
 static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned map,unsigned frame,unsigned gfx,unsigned flags,
                         int x,int y,int anchor,int static_mapping)
@@ -555,6 +610,7 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);q->hud=(uint8_t)anchor;
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
+        if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
             (attr&2047)*(vs?2u:1u)<0x500) q->size|=0xC0;
     }
@@ -806,6 +862,7 @@ int s2_video_hook(uint32_t pc)
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
+            if (s2_runtime_knuckles_item(o) && knuckles_palette_tile(tile)) g_ram[next-6]|=GVDP_SPRITE_PALETTE_ONLY;
             if (s2_runtime_shadow_star(o) && tile>=0x4DE && tile<0x500) g_ram[next-6]|=0xC0;
         }
         return 0;
@@ -942,15 +999,13 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 if (patterns && at<bytes) p=(ix&1)?patterns[at]&15:patterns[at]>>4;
                 p=(uint8_t)((cell>>9&48)|p); /* native palette, including water/fades */
                 if (!(p&15)) p=0;
-                if (p) {
-                    int extra=gvdp_sprite_palette_line(s->size,cell&2047,(cell>>13)&3);
-                    if (extra) {
-                        custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
-                        knux=1;
-                    }
-                }
             }
             if(!p)continue;
+            int extra=gvdp_sprite_palette_line(s->size,cell&2047,(cell>>13)&3);
+            if (extra) {
+                custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
+                knux=1;
+            }
             s_priority[x]|=2;
             if(s->hud || (s->attr&0x8000) || !(s_priority[x]&1))out[x]=knux?custom:palette[p];
         }
@@ -1059,6 +1114,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
                             uint32_t *out, int width,
                             GameVideoNativeRow native_row, void *native_ctx)
 {
+    item_palette_row(NULL,v,NULL);
     /* Publish one immutable art/scroll snapshot per frame. Palettes stay
      * live so water-line HBlank colour changes are retained. */
     uint32_t palette[64],shadow[64];

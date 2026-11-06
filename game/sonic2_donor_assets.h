@@ -31,7 +31,7 @@ typedef struct S2DonorBank {
     uint16_t water_palette[16], cycle_palette[2][16][4];
 } S2DonorBank;
 typedef struct S2KnucklesArt {
-    uint8_t life[12*32],shield_stars[66*32],monitor[8*32];
+    uint8_t life[12*32],shield_stars[66*32],monitor[8*32],signpost[24*32];
     uint16_t palette[16],water_palette[2][16]; /* KiS2 CPZ and ARZ */
 } S2KnucklesArt;
 /* Immutable native competition HUD sources from the verified REV01 ROM. */

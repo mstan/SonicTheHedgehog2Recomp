@@ -1143,15 +1143,15 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | **Fixed/validated candidate.** Original Sonic/Tails/Knuckles counter mappings select by P1; native/wide Knuckles and Tails icon-only pixel changes, unchanged digits, campaign bytes and RAM/VRAM. Sonic output unchanged. Distinct from S2-16's large portrait. |
 | S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Partly fixed/validated.** Actual Coconuts collisions now select hurt $8D/death $AB instead of retaining standing $56. Real glide-release landing and slide/get-up retain recovery poses for 16 sampled ticks versus one in the baseline. Source ledge timing/left completion unit checks pass; real terrain climb-out remains open. |
 | S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | **Fixed and runtime-validated**: preserve scripted input during global control lock. Real signpost trigger advances EHZ1 to EHZ2 with no further input; opposing left/jump input cannot reclaim control. Released baseline stalls in the same setup. |
-| S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | P2 accuracy; separate from progression S2-45. |
+| S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | **Fixed/validated candidate.** Original 24-tile KiS2 signpost patch, 1,461 exact source pixels in native output and matching 796-wide changes. Native art, progression and other characters remain unchanged. |
 | S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
 | S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
 | S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
 | S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route; boss/floor/wall/CPZ routes remain open. |
-| S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | P2 accuracy; screenshot and recording. |
+| S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | **Fixed/validated candidate.** Real native capsule button press releases eight initial animals and subsequent groups; 48,620 original-palette pixels across 80 visible paired samples. Enemy-released animals also qualify. Simulation and native pattern/plane VRAM unchanged. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
-| S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Partly implemented; qualification in progress.** Source KiS2 CPZ/ARZ underwater actor palettes use the native per-line water split and target fade envelope. CPZ2/ARZ1 have 449/675 exact source-palette pixels, unchanged dry head and identical canonical RAM/VRAM; the separate red water-surface treatment remains open. |
+| S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Fixed/validated candidate.** Original Knuckles CPZ/ARZ actor and surface palettes; real native palette timing also controls the boundary row. CPZ2 native/wide and ARZ1 native surface checks, original actor pixels, unchanged dry head away from the boundary and native Sonic control pass. |
 | S2-55 | Special-stage entry fade ends white rather than the expected grey. Establish original-game/capture behavior before changing the endpoint. | Reference question; Kega provenance and the proposed relation to S2-47 are unverified. |
 | S2-56 | Slight Knuckles glide jitter is reported again, now during the recorded native-aspect HRR session. Assess the recorded pose/camera cadence before attributing it to missing interpolation. | P2; related new evidence for S2-12; the old widescreen-only occurrence remains unqualified. |
 
@@ -1225,8 +1225,9 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**7/24 groups meet current-build acceptance:** S2-34 (existing behavior),
-S2-35, S2-36, S2-42, S2-43, S2-45 and S2-50. **17 groups remain open**, including the
+**10/24 groups meet current-build acceptance:** S2-34 (existing behavior),
+S2-35, S2-36, S2-42, S2-43, S2-45, S2-46, S2-50, S2-52 and S2-54.
+**14 groups remain open**, including the
 unqualified parts of S2-44/S2-54. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1293,3 +1294,51 @@ Evidence: `followups-20261105/icons-scroll-results.json`,
 seven passing focused checks (save draw/menu, characters, video, Shadow,
 Mighty, resources). The frozen preceding candidate is retained outside the
 release directory for these A/B decisions. No release has been cut yet.
+
+
+### Knuckles world-art qualification (2026-11-06 UTC)
+
+S2-46, S2-52 and S2-54 now meet acceptance. Candidate EXE SHA-256:
+`4c3a7691cffcd8c1d818ce2b7e9e97719611c67a70977b73554ecc50ea35074b`.
+Original signpost patch bytes are read privately from verified owner image
+$33AF4C (530 compressed bytes, 24 decoded tiles), replacing only the original
+face tiles $456-$46D. Native source-pixel checks cover 1,461 opaque pixels;
+the widescreen route changes the same 1,141 pixels without altering progression.
+
+The shared VDP supports palette-only object tags: an unused size bit selects
+an existing private palette bank while retaining native VRAM art. Sonic 2 tags
+only the relevant Knuckles-themed native water/animal objects. Planes and
+unmarked sprites retain their original colours. Scalar and batched compositor
+checks pass H32, H40 and interlace, with unchanged VRAM, source-palette isolation,
+water colours, sprite limits and captured-row composition. Seven game checks
+also pass, including a boundary-row test with deliberately disagreeing RAM and
+live CRAM. No performance improvement is claimed.
+
+The first world-colour candidate exposed a one-row timing disagreement in the
+water fixture. It is superseded: the native CPU can already prepare the next
+H-int split while the displayed row still belongs to the previous palette.
+Private world colours and Knuckles actors now follow the actual live native
+palette. Acceptance compares the displayed unmodified surface palette as well
+as the original Knuckles source. CPZ2's observed palette edge is row 88 while
+the next RAM split is 89; ARZ1's edge is 76. Native CPZ2/ARZ1 change 724/736
+source-palette pixels, and widescreen CPZ2 changes 669. Native Sonic images and
+RAM are unchanged. The earlier actor-only RAM-split qualification is retained
+as historical evidence; the live-palette check supersedes that boundary rule.
+
+A native jump attack frees an enemy's animal without setting its outcome.
+A separate positioned native capsule fixture uses its real initializer,
+SolidObject button collision and release timer: the button becomes depressed
+and eight original Obj28 animals are created by the game. Its 100-sample A/B
+run changes 48,620 original-palette pixels over 80 visible samples. This checks
+the requested capsule route; it does not claim boss completion or stage access.
+Outside the intended SAT presentation markers and EHZ scroll-tail bytes,
+canonical RAM remains identical; native pattern and plane VRAM are identical.
+The capsule fixture uses EXE
+`ce5b67300d96f135dcf5d67bb77a866d9300dc20fc3dd607d09206e65b52b6db`;
+the subsequent water-only timing correction does not affect this dry route.
+
+Evidence: `followups-20261105/theme-{baseline,candidate}-results.json`,
+`theme-pixel-results.json`, `capsule-{baseline,candidate}-results.json` and
+bounded native images/RAM/VRAM in their existing task directories. Source
+checkpoints before this wave are game `9c55933` and engine `097a396`.
+These remain candidate fixes pending integration/release qualification.
