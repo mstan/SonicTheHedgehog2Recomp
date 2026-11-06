@@ -748,6 +748,22 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if (pc==0xC680 && (g_ram[0xF600]&127)==12 && !g_ram[0xFE10] &&
+        !word(0xFFD8) && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
+        /* KiS2 Deform_EHZ appends the missing last two H-scroll rows using
+         * the final D4/D3 pair. Stock REV01 returns here after only 222 rows.
+         * Keep the native Sonic/Tails treatment, and continue its real RTS. */
+        unsigned at=g_cpu.A[1]&65535u;
+        if (at<=65528u) {
+            for (unsigned n=0;n<2;++n) {
+                putword(at+n*4,g_cpu.D[4]); putword(at+n*4+2,g_cpu.D[3]);
+            }
+            g_cpu.A[1]+=8;
+            unsigned last=(uint16_t)g_cpu.D[3];
+            g_cpu.SR=(g_cpu.SR&~(SR_N|SR_Z|SR_V|SR_C))|
+                (!last?SR_Z:0)|((last&0x8000u)?SR_N:0);
+        }
+    }
     if(pc==0x1DAAC && level()) {
         /* Obj35 has already checked the parent's invincibility flag. Its
          * original Player_mode==2 shortcut selects E600 for every star when
@@ -1025,6 +1041,15 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;
     unsigned o=g_cpu.A[0]&0xFFFF;
+    if (pc==0x3F5A0 && kind(actor)==S2_CHAR_KNUCKLES &&
+        g_ram[o+0x1A]==0x9C && (g_cpu.A[1]&0xFFFF)==0xB400) {
+        /* KiS2 TouchResponse recognizes Knuckles' final duck frame $9C,
+         * rather than Sonic's $4D. Apply its reduced box once, before the
+         * original object loop; native collision and damage still decide. */
+        g_cpu.D[3]=(g_cpu.D[3]&0xFFFF0000u)|(uint16_t)(g_cpu.D[3]+12);
+        g_cpu.D[5]=20;
+        return 0;
+    }
     if ((pc==0x3F5A0 || pc==0x3F69C) && kind(actor)==S2_CHAR_AMY && characters[actor].animation==0x23 &&
         (g_cpu.A[1]&0xFFFF)==0xB400) {
         /* Amy donor TouchResponse $41964: grounded hammer's forward 34x50 box. */

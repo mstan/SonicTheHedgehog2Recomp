@@ -28,6 +28,12 @@ int main(void)
     }
     memset(assets,0,sizeof *assets);
     /* Synthetic donor font and counter art; no ROM required. */
+    static const uint16_t icons[3][15]={
+        {0x6E,0x70,0x5A,0x6F,0x71,0x5B,0x5C,0x5F,0,0x5D,0x60,0x5A,0x5E,0x61,0x5B},
+        {0x72,0x74,0x5A,0x73,0x75,0x5B,0x62,0x65,0,0x63,0x66,0x5A,0x64,0x67,0x5B},
+        {0x76,0x78,0x5A,0x77,0x79,0x5B,0x68,0x6B,0,0x69,0x6C,0x5A,0x6A,0x6D,0x5B}
+    };
+    memcpy(assets->counter_icons,icons,sizeof icons);
     assets->palette[17]=0x00E;
     for (unsigned glyph=16;glyph<56;++glyph)
         memset(assets->tiles+(0x552+glyph)*32,0x11,32);
@@ -50,6 +56,21 @@ int main(void)
         }
         assert(caption_pixels==6*64 && counter_pixels>0); /* ZONE + two digits */
     }
+    /* Only the selected primary character's indicator changes. Live digits
+     * and the roster-independent slot data must remain identical. */
+    assets->palette[18]=0xE00;
+    for (unsigned i=0;i<15;++i) if (i%3<2 && icons[2][i])
+        memset(assets->tiles+(0x454+icons[2][i])*32,0x22,32);
+    uint32_t sonic[320],knuckles[320];
+    S2CampaignData saved_counters=filled.data;
+    for (int y=144;y<=160;y+=16) {
+        filled.counter_character=0; s2_save_draw_line(assets,&filled,y,sonic,320);
+        filled.counter_character=2; s2_save_draw_line(assets,&filled,y,knuckles,320);
+        assert(sonic[128]==0xFFFF0000 && knuckles[128]==0xFF0000FF);
+        assert(!memcmp(sonic+152,knuckles+152,16*sizeof *sonic));
+    }
+    assert(!memcmp(&saved_counters,&filled.data,sizeof saved_counters));
+    filled.counter_character=0;
     /* Character-selection arrows must never appear, picked or unpicked. */
     memset(assets->tiles+0x100*32,0x11,4*32);
     assets->frames[15].count=2;

@@ -1140,15 +1140,15 @@ from a separate earlier session whose exact version/aspect is unknown.
 | S2-40 | Non-EHZ title cards remain 4:3 and slide away incorrectly. Check each affected zone's coverage and complete exit rather than generalizing the accepted EHZ case. | P2; follow-up to S2-19/20; exact affected-zone list unknown. |
 | S2-41 | Windows ROM picker excludes Steam `.68K` images unless renamed. Permit selection of that extension or All Files while retaining the supported-ROM validation. | P2 shared-launcher report; separate from unsupported revision rejection below. |
 | S2-42 | Knuckles' HUD name is corrupt with the supplied original-art resource. Match the verified original glyphs with this resource/session. | **Fixed and runtime-validated**: restore the final name column between live digit tiles 9/11. Native/wide/mixed original-art pixels and live counters pass; Sonic/Tails, RAM and VRAM unchanged. |
-| S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | P2; distinct from the large portrait checked in S2-16. |
+| S2-43 | Knuckles' save-card life/continue icons still use Sonic art. Use the selected character's appropriate indicators without changing campaign progress or roster-independent saves. | **Fixed/validated candidate.** Original Sonic/Tails/Knuckles counter mappings select by P1; native/wide Knuckles and Tails icon-only pixel changes, unchanged digits, campaign bytes and RAM/VRAM. Sonic output unchanged. Distinct from S2-16's large portrait. |
 | S2-44 | Knuckles misses hurt/stumble, death and glide-landing poses, and hovers during climb-out. Check each native state/transition independently against the original donor. | **Partly fixed/validated.** Actual Coconuts collisions now select hurt $8D/death $AB instead of retaining standing $56. Real glide-release landing and slide/get-up retain recovery poses for 16 sampled ticks versus one in the baseline. Source ledge timing/left completion unit checks pass; real terrain climb-out remains open. |
 | S2-45 | Signposts do not take control/finish the level until the player manually walks right; input can continue through results. Restore actual end-of-act control and progression. | **Fixed and runtime-validated**: preserve scripted input during global control lock. Real signpost trigger advances EHZ1 to EHZ2 with no further input; opposing left/jump input cannot reclaim control. Released baseline stalls in the same setup. |
 | S2-46 | Knuckles still receives Sonic's signpost face. Compare the original Knuckles-in-Sonic-2 art and select the appropriate theme. | P2 accuracy; separate from progression S2-45. |
 | S2-47 | Special stages change native presentation to a near-square aspect; host overlays inherit the distortion. Preserve intended stage and overlay proportions across entry/exit. | P1 presentation; screenshots and recording. |
 | S2-48 | Special-stage PSG percussion seems absent initially, then becomes audible. Compare the original sound-driver sequence at the reported points before changing audio. | P2 intermittent report; later hearing the percussion is retained as a caveat. |
 | S2-49 | Special-stage save/load can briefly corrupt graphics. Restore complete current-build presentation at several actual stage points. | P1 state correctness; recording available, no still image. |
-| S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | P2; character-specific follow-up to the original EHZ fidelity note. |
-| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | P1 collision assessment; compare each route with original Knuckles-in-Sonic-2 before choosing substantial reuse or local repairs. Screenshots and recording available; suspected original-game quirks are not presumed port defects. |
+| S2-50 | Native EHZ bottom-edge corruption remains for Knuckles although the original lock-on corrects it. Apply the source-backed Knuckles treatment while retaining intended native-character fidelity. | **Fixed/validated candidate.** Original KiS2 appends the missing two H-scroll rows at the native EHZ return. Three moving-camera samples change only rows 222-223 and the eight missing scroll bytes. Sonic output/state and already-correct widescreen pixels remain unchanged. |
+| S2-51 | Knuckles can fall through the EHZ boss arena or ARZ1 floor/wall, go OOB after gliding into a CPZ block, halt on a boosted CPZ loop, and be hit while ducking under ARZ arrows. | **Partly fixed/validated.** Native Obj22 arrows hit standing Knuckles in both builds and hit ducking Knuckles only in the baseline. Candidate applies the original KiS2 $9C duck-frame hitbox and keeps all five rings. This is an isolated native-object fixture, not a natural ARZ route; boss/floor/wall/CPZ routes remain open. |
 | S2-52 | Freed capsule animals use blue where the original Knuckles variant uses red. Compare source palettes and preserve other characters' colours. | P2 accuracy; screenshot and recording. |
 | S2-53 | Donor characters draw over act-clear graphics, drowning digits and foreground layers. Respect the source layering at each reported mechanic, including non-Knuckles donors. | P1 rendering; screenshots/current Knuckles recording; other-donor occurrence is an additional reported case. |
 | S2-54 | Knuckles appears unaffected by underwater palettes; original lock-on red water-surface treatment differs too. Check actor palette and surface effect separately against source. | **Partly implemented; qualification in progress.** Source KiS2 CPZ/ARZ underwater actor palettes use the native per-line water split and target fade envelope. CPZ2/ARZ1 have 449/675 exact source-palette pixels, unchanged dry head and identical canonical RAM/VRAM; the separate red water-surface treatment remains open. |
@@ -1225,8 +1225,8 @@ affected acceptance; this does not claim the pending combat fix passed.
 
 ### Follow-up decisions (2026-11-06 UTC)
 
-**5/24 groups meet current-build acceptance:** S2-34 (existing behavior),
-S2-35, S2-36, S2-42 and S2-45. **19 groups remain open**, including the
+**7/24 groups meet current-build acceptance:** S2-34 (existing behavior),
+S2-35, S2-36, S2-42, S2-43, S2-45 and S2-50. **17 groups remain open**, including the
 unqualified parts of S2-44/S2-54. This is not a released build or a completed
 character/collision audit. The original intake's deferred findings are separate.
 
@@ -1261,3 +1261,35 @@ RAM/VRAM remain unchanged. Both captures use candidate
 `b55a68764eefbc8986437781f2ac7e97600fae8ad29bcbd535a71164c5a3f21e`.
 The native water line is 89/76 in CPZ2/ARZ1 respectively; changed actor pixels
 start on that line. This qualifies the actor half of S2-54 only.
+
+
+The next candidate qualifies S2-43 and S2-50. Save-card counter mappings are
+read from the original verified S3&K image ($DAAA/$DACA/$DAEA), without copying
+ROM bytes into source. Four paired menu setups verify icon-only changes for
+Knuckles (native/796-wide) and Tails, unchanged live numbers, campaign bytes,
+canonical RAM/VRAM, and unchanged Sonic pixels. Icon candidate EXE SHA-256:
+`70f6e1fab8e26dd63c342f733641ba7a2d564d1ca613a135c598190747d91486`.
+
+The native EHZ correction uses the original KiS2 final D4/D3 pair, preserving
+Sonic/Tails fidelity. The first generated candidate failed to contain the new
+hook because its configuration used the wrong table; it is rejected. The
+corrected candidate explicitly emits the game hook. Three moving-camera A/B
+samples (cameras 536, 613, 685) change only the missing eight bytes $E378-$E37F
+and image rows 222-223. Three wide Knuckles samples retain identical pixels,
+and three Sonic samples retain identical images and RAM. Accepted EXE SHA-256:
+`0380690a350477bde88cebceb639fcb810228772e797bf9455e3e37e454b2ee3`.
+
+That candidate also qualifies the duck-arrow subcase of S2-51. The fixture
+uses the real native Obj22 arrow initializer/movement/touch response at the EHZ
+start, rather than setting damage or success state. Both standing controls
+lose their rings and enter hurt routine 4. The baseline also hurts fully
+ducking Knuckles; the candidate remains in routine 2, frame $9C, with five
+rings after the arrow passes. This ports the original Knuckles duck-frame box
+at the first object-loop iteration; native collision decisions remain active.
+It does not close the other S2-51 collision routes.
+
+Evidence: `followups-20261105/icons-scroll-results.json`,
+`arrow-{baseline,candidate}-results.json`, their isolated native captures, and
+seven passing focused checks (save draw/menu, characters, video, Shadow,
+Mighty, resources). The frozen preceding candidate is retained outside the
+release directory for these A/B decisions. No release has been cut yet.
