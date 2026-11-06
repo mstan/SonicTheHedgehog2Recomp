@@ -1658,3 +1658,18 @@ resume path. This preserves a current-build continuation contract, not backward
 compatibility with old save files. Engine39d5e63 is now pinned for the final
 combined gate. Earlier engine08464b8 production evidence remains identified as
 such; affected state/consumer gates and the final release binary are pending.
+
+
+### Per-game capture policy qualification (2026-11-06 UTC)
+
+The combined consumer gate found that globally revalidating the capture at
+raster end prevented published Sonic 3 widescreen saves from completing. The
+same exact route saves once/loads twice on the frozen current-base control;
+the candidate did neither. Native Sonic 3 and native/wide Sonic 1 current-build
+restoration had passed, so those results did not cover the failing wide route.
+
+Completed-raster capture is now an explicit game-adapter contract. Sonic 2
+always requests it in its compiled spec, preserving the special-stage fix by
+default. Other adapters retain their existing yield-and-hold contract. There
+is no player toggle. Affected cross-consumer and Sonic 2 state gates must pass
+on this corrected integration before final release qualification.
