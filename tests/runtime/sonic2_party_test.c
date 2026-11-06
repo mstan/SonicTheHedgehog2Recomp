@@ -7,8 +7,32 @@ static int available = 1;
 static int mod_available(void) { return available; }
 static const S2Character amy = {"amy","AMY",0,mod_available};
 static const S2Character knuckles = {"knuckles","KNUCKLES",0,mod_available};
+static void classic_roster_policy(void)
+{
+    const char *ids[]={"sonic","tails","knuckles","amy","shadow","mighty"};
+    S2Roster r={0}; r.slots=1;
+    for(unsigned p=0;p<S2_MAX_PLAYERS;++p)strcpy(r.character[p],"none");
+    for(unsigned a=0;a<6;++a) {
+        strcpy(r.character[0],ids[a]); r.slots=1;
+        CHECK(s2_roster_is_classic(&r)==(a<2));
+        for(unsigned b=0;b<6;++b)if(a!=b) {
+            r.slots=2;strcpy(r.character[1],ids[b]);
+            CHECK(s2_roster_is_classic(&r)==(a==0 && b==1));
+        }
+    }
+    strcpy(r.character[0],"sonic");strcpy(r.character[1],"tails");r.slots=6;
+    CHECK(s2_roster_is_classic(&r)); /* unused seats do not change the duo */
+    strcpy(r.character[5],"sonic");CHECK(!s2_roster_is_classic(&r));
+    strcpy(r.character[5],"none");strcpy(r.character[1],"none");
+    CHECK(s2_roster_is_classic(&r));
+    strcpy(r.character[2],"tails");CHECK(!s2_roster_is_classic(&r)); /* host P3 */
+    r.slots=0;CHECK(!s2_roster_is_classic(&r));
+    r.slots=S2_MAX_PLAYERS+1;CHECK(!s2_roster_is_classic(&r));
+    CHECK(!s2_roster_is_classic(NULL));
+}
 int main(void)
 {
+    classic_roster_policy();
     s2_party_load("party-test-settings.ini");
     s2_party_defaults();
     S2Roster *r = &s2_party.roster;
@@ -44,6 +68,7 @@ int main(void)
     CHECK(s2_roster_validate(r));
     CHECK(!strcmp(r->character[2],"none") && !strcmp(r->character[3],"none"));
     CHECK(!s2_roster_set(r,0,"amy"));
+    CHECK(s2_roster_is_classic(r)); /* unavailable donors were removed */
     s2_roster_slots(r,1);
     CHECK(!s2_roster_vs_ready(r) && !strcmp(r->character[1],"none"));
     s2_roster_slots(r,2);

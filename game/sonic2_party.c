@@ -120,6 +120,18 @@ int s2_roster_vs_ready(const S2Roster *roster)
         selectable(roster, 1, roster->character[1]);
 }
 
+int s2_roster_is_classic(const S2Roster *roster)
+{
+    if (!roster || !roster->slots || roster->slots > S2_MAX_PLAYERS) return 0;
+    int sonic = !strcmp(roster->character[0], "sonic");
+    if (!sonic && strcmp(roster->character[0], "tails")) return 0;
+    for (unsigned p = 1; p < roster->slots; ++p) {
+        if (!strcmp(roster->character[p], "none")) continue;
+        if (p != 1 || !sonic || strcmp(roster->character[p], "tails")) return 0;
+    }
+    return 1;
+}
+
 void s2_party_load(const char *settings_path)
 {
     s2_party_defaults();

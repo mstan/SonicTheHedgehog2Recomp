@@ -42,6 +42,8 @@ int s2_roster_cycle(S2Roster *roster, unsigned player, int direction);
 void s2_roster_slots(S2Roster *roster, unsigned slots);
 int s2_roster_validate(S2Roster *roster);
 int s2_roster_vs_ready(const S2Roster *roster);
+/* Validated original P1/P2 roles; inactive capacity does not add players. */
+int s2_roster_is_classic(const S2Roster *roster);
 void s2_party_load(const char *settings_path);
 int s2_party_save(void);
 const char *s2_party_error(void);
