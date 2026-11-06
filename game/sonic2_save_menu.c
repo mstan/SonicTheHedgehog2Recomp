@@ -11,7 +11,8 @@
 #endif
 
 static const S2CampaignStore *store;
-static S2SaveView view;
+static S2SaveView view,departure_view;
+static int departure_ready;
 static uint32_t menu_portrait[S2_SAVE_PORTRAIT_WIDTH*S2_SAVE_PORTRAIT_HEIGHT];
 static int menu,menu_ready,exit_action,session=-1,dirty;
 static unsigned replay_stage; /* S2_CAMPAIGN_STAGES is the unpicked CLEAR card. */
@@ -40,7 +41,7 @@ void s2_save_menu_state(S2StateIO *io)
     }
     S2_STATE(io,saved);
     if (io->mode==2 && io->ok) {
-        session=saved.session; menu=menu_ready=exit_action=0;
+        session=saved.session; menu=menu_ready=exit_action=departure_ready=0;
         view.data=store->data; view.read_only=store->read_only; view.notice=NULL;
         dirty=session>=0;
         if (session>=0) view.data.slots[session]=saved.slot;
@@ -62,7 +63,7 @@ void s2_save_menu_load(const char *settings)
 }
 void s2_save_menu_restore_context(void)
 {
-    menu=menu_ready=exit_action=dirty=0; session=-1;
+    menu=menu_ready=exit_action=dirty=departure_ready=0; session=-1;
     memset(&view,0,sizeof view);
     store=s2_campaign_file_store();
     view.data=store->data; view.read_only=store->read_only;
@@ -106,13 +107,15 @@ static void begin_menu(void)
 {
     if (!s2_resources_prepare_stage_images(g_rom,0x100000))
         fprintf(stderr,"[NOTE] Sonic 2 stage thumbnail decoding failed.\n");
-    menu=1; menu_ready=exit_action=0; session=-1;
+    menu=1; menu_ready=exit_action=departure_ready=0; session=-1;
     /* The launcher may have selected a different file after settings loaded. */
     if (!dirty) view.data=store->data;
     view.read_only=store->read_only;
     view.selection=1; view.scroll=0; view.frame=0; view.erase=view.confirm=0;
     view.cursor=144; view.delete_x=968; view.delete_frame=0;
     view.portrait=NULL;
+    view.counter_character=!strcmp(s2_party.roster.character[0],"knuckles")?2:
+        !strcmp(s2_party.roster.character[0],"tails")?1:0;
     unsigned count=0; const char *ids[6];
     for (unsigned p=0;p<s2_party.roster.slots && p<6;++p)
         if (strcmp(s2_party.roster.character[p],"none")) ids[count++]=s2_party.roster.character[p];
@@ -247,10 +250,13 @@ static void controls(void)
         view.confirm=1; navigation_sound(0xA1);
         return;
     }
-    if (!view.selection) { session=-1; exit_action=2; g_ram[0xF605]|=128; return; }
+    if (!view.selection) {
+        session=-1; exit_action=2; g_ram[0xF605]|=128; return;
+    }
     if (!store->ready) return;
     unsigned selected=view.selection-1;
     S2CampaignData before=view.data;
+    int was_dirty=dirty;
     if (!view.data.slots[selected].state) {
         if (store->read_only) return;
         s2_campaign_new(&view.data,selected); dirty=1;
@@ -258,7 +264,14 @@ static void controls(void)
         s2_campaign_select_stage(&view.data.slots[selected],replay_stage);
         if (!store->read_only && memcmp(&before,&view.data,sizeof before)) dirty=1;
     }
-    if (!store->read_only && !flush()) return;
+    if (!store->read_only && !flush()) {
+        /* A failed new-file write must remain a blank card on retry. Preserve
+         * any progress that was already pending before this start attempt. */
+        view.data=before; dirty=was_dirty; return;
+    }
+    /* Persist before leaving, but retain the pre-start card composition for
+     * the native departure fade. A new file must not pop into the blank card. */
+    departure_view=view; departure_view.data=before; departure_ready=1;
     session=(int)selected; exit_action=2; g_ram[0xF605]|=128;
 }
 int s2_save_menu_hook(uint32_t pc)
@@ -269,6 +282,11 @@ int s2_save_menu_hook(uint32_t pc)
      * entry hook cannot recurse. No extra fade or black-frame wait is added. */
     if (menu==2 && pc==0x246A) { /* Pal_FadeToBlack, REV01 */
         menu=3;
+        /* Queue after the incoming mode's sound reset, before its fade's
+         * first V-int. Native teleport monitors dispatch EC via PlayMusic's
+         * priority queue ($FFFFE4 at REV01 $136A); queuing during selection
+         * is discarded on departure. */
+        if ((g_ram[0xF600]&0x7F)==12) glue_poke8(0xFFFFE4,0xEC);
         recomp_call_addr(pc);
         menu=menu_ready=exit_action=0;
         return 1;
@@ -321,7 +339,7 @@ int s2_save_menu_overlay(int line,uint32_t *out,int width)
         if (dirty && view.notice && session>=0) s2_save_draw_notice(s2_resource_save_assets(),"CAMPAIGN SAVE FAILED",line,out,width);
         return 0;
     }
-    S2SaveView display=view;
+    S2SaveView display=departure_ready?departure_view:view;
     display.replay_selected=0;
     if (!view.erase && replay_stage<S2_CAMPAIGN_STAGES && view.selection>=1 && view.selection<=8 &&
         display.data.slots[view.selection-1].state==S2_SAVE_COMPLETE)

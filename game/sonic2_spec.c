@@ -259,6 +259,8 @@ static int s2_instruction_hook(uint32_t pc)
     case 0xF77A: case 0xF810: case 0xF872:
     case 0x18888: case 0x3F5A0:
     case 0x3F73C: case 0x3F69C:
+    case 0xC680: /* original Knuckles EHZ H-scroll tail */
+    case 0x1AF2C: /* original Knuckles glide floor acceptance */
     case 0x12768:
     case 0x1296A: case 0x129E0: case 0x12A2C: case 0x12A5C:
         return s2_runtime_hook(pc);
@@ -294,9 +296,11 @@ const GameSpec g_game_spec = {
     .state_save = s2_runtime_state_save,
     .state_load = s2_runtime_state_load,
     .state_at_boundary = s2_runtime_state_at_boundary,
+    .state_boundary_at_frame_end = 1,
     .main_cpu_divisor       = s2_video_main_cpu_divisor,
     .display_name           = "Sonic the Hedgehog 2",
     .short_name             = "Sonic2",
+    .boxart                 = "boxart.jpg",
 
     /* JUE REV01 (No-Intro "Sonic The Hedgehog 2 (World) (Rev A)"). The launcher
      * verifies this CRC32 of the raw ROM file and shows a MATCH badge. */

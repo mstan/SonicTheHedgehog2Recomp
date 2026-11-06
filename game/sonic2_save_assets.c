@@ -273,8 +273,15 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
      * and S2. Its artwork uses S&K's original KiS2 palette at $60BEA. */
     if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
         !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
+        !nemesis(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
         !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor)) return 0;
-    for (unsigned i=0;i<16;++i) candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
+    for (unsigned i=0;i<16;++i) {
+        candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
+        /* c336fede Pal_CPZ_U/Pal_ARZ_U explicitly contain Knuckles' colours.
+         * Read from the verified owner image, never embed donor palette data. */
+        candidate.water_palette[0][i]=(uint16_t)be16(r+0x3029BE+i*2);
+        candidate.water_palette[1][i]=(uint16_t)be16(r+0x302AFE+i*2);
+    }
     *out=candidate; return 1;
 }
 int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *error,size_t cap)
@@ -293,6 +300,14 @@ int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *
         !nemesis(r+0xCA5E0,1396,a->tiles+0xAC40,sizeof a->tiles-0xAC40)) goto failure;
     for (unsigned i=0;i<16;++i) a->palette[i]=(uint16_t)be16(r+0x39D262+i*2);
     for (unsigned i=0;i<32;++i) a->palette[16+i]=(uint16_t)be16(r+0xCA78+i*2);
+    /* Map_DataSelect_Player_LivesContinues has three 32-byte blocks. Keep
+     * the original character art and shared counter/multiply tiles. */
+    for (unsigned character=0;character<3;++character) for (unsigned i=0;i<15;++i) {
+        unsigned tile=be16(r+0xDAAA+character*32+i*2)&2047;
+        if (!tile) continue;
+        if (tile<0x454 || tile>0x4CD) goto failure;
+        a->counter_icons[character][i]=(uint16_t)(tile-0x454);
+    }
     for (unsigned i=0;i<70;++i) a->new_card[i]=(uint16_t)be16(r + 0x3A20DE + i*2);
     for (unsigned frame=0;frame<4;++frame) {
         uint32_t p=be32(r+0x3A216A+frame*4)+0x200000;

@@ -319,7 +319,12 @@ _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
 set(RECOMP_UI_ENABLE_MODS ON CACHE BOOL "Expose Sonic 2's opt-in built-in mods")
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 recomp_target_launcher_ui(SonicTheHedgehog2Recomp CONSOLE genesis
-    BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
+    BOXART ${CMAKE_SOURCE_DIR}/boxart.jpg BOXART_NAME boxart.jpg)
+# The shared prototype asset set also contains Sonic 1's fallback cover. The
+# game has its own full JPEG above; keep only that cover in the staged build.
+add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+        "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/assets/img/boxart_sonic1.tga")
 add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/game/assets/megamix"

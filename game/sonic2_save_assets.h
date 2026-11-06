@@ -8,6 +8,7 @@ typedef struct S2SaveAssets {
     uint8_t tiles[65536];
     uint16_t palette[64], background[40*28], layout[405];
     uint16_t new_card[70], static_card[4][70];
+    uint16_t counter_icons[3][15]; /* native Sonic/Tails/Knuckles life/continue cells */
     S2MenuFrame frames[S2_MENU_MAP_FRAMES];
     /* Stock Sonic 2 REV01 terrain thumbnails, one per campaign act. Native
      * CRAM colours; generated privately from the running game's ROM. */

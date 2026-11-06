@@ -92,8 +92,139 @@ static void native_interpolation_test(void)
     free(before);free(after);
 }
 
+static void private_water_palette_test(void)
+{
+    static GVDP v;
+    uint8_t original[65536];GVDPRasterRow captured;
+    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
+    g_ram[0xF600]=12;g_ram[0xFE10]=13;g_ram[0xF64C]=1;hud_available=1;
+    for(unsigned c=0;c<16;++c) {
+        word(g_ram,0xFB00+c*2,0xEEE);word(g_ram,0xF080+c*2,0xAEE);
+        word(g_ram,0xF000+c*2,0xAEE);v.cram[c]=0xEEE;
+        hud_art.palette[c]=0xE;hud_art.water_palette[0][c]=0xE00;
+    }
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[13]=0x3F;
+    word(v.vram,0xF800,228);word(v.vram,0xF804,0x400);word(v.vram,0xF806,128);
+    v.vram[0xF802]=GVDP_SPRITE_PALETTE_ONLY;memset(v.vram+0x400*32,0x11,32);
+    /* A next-frame RAM split must not recolour the current native row. */
+    g_ram[0xF625]=0;s2_video_prepare_knuckles_items();memcpy(original,g_ram,sizeof original);
+    CHECK(!s2_video_water_palette(&v));
+    CHECK(gvdp_capture_presented_scanline(&v,100,&captured)==320);
+    CHECK(captured.host_palette[17]==0xFFFF0000u && !memcmp(original,g_ram,sizeof original));
+    g_ram[0xF625]=223;for(unsigned c=0;c<16;++c)v.cram[c]=0xAEE;
+    CHECK(s2_video_water_palette(&v));
+    CHECK(gvdp_capture_presented_scanline(&v,100,&captured)==320);
+    CHECK(captured.host_palette[17]==0xFF0000FFu);
+    s_item_water_enabled=0;gvdp_set_host_sprites(NULL,NULL);
+    gvdp_set_sprite_patterns(NULL,0,NULL);gvdp_set_ext_tiles(NULL);
+}
+static void special_stage_pixel_shape_test(void)
+{
+    static GVDP v;
+    uint32_t native[256],out[398],lazy[398];uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);
+    memset(&s_build,0,sizeof s_build);memset(s_history,0,sizeof s_history);
+    s_display=NULL;g_ram[0xF600]=16;
+    v.reg[1]=64;v.reg[12]=8;v.cram[1]=0xE;
+    for(unsigned x=0;x<256;++x)native[x]=0xFF010000u+x;
+    CHECK(sonic2_video.configure("16:9"));memcpy(ram,g_ram,sizeof ram);
+    sonic2_video.scanline(&v,0,native,256,out,398);
+    CHECK(s_width==398 && s_native_x==39);
+    int populated=0;unsigned seen[256]={0};
+    for(int x=0;x<398;++x) {
+        int sample=x*318/398,local=sample-31;
+        CHECK(out[x]==(local>=0 && local<256?native[local]:0xFF000000u));
+        if(local>=0 && local<256){++populated;++seen[local];}
+    }
+    CHECK(populated>=319 && populated<=321);
+    for(unsigned x=0;x<256;++x)CHECK(seen[x]);
+    native_fetches=0;sonic2_video.scanline_lazy(&v,0,256,lazy,398,fetch_native,native);
+    CHECK(native_fetches==1 && !memcmp(out,lazy,sizeof out));
+    sonic2_video.scanline(&v,0,native,256,out,256);
+    CHECK(!memcmp(out,native,sizeof native));
+    CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
+}
+
+static void front_ui_and_background_priority_test(void)
+{
+    static GVDP v;uint32_t out[398];uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    presentation_configure(0);CHECK(sonic2_video.configure("off"));
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB800]=0x3A;
+    v.reg[1]=64;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;v.cram[1]=0xEEE;
+    memset(v.vram+32,0x10,32); /* real ink followed by transparent donor-visible holes */
+    word(g_ram,0xF800,128);word(g_ram,0xF804,0x8001);word(g_ram,0xF806,128);
+    s2_video_hook(0x16604);g_cpu.A[0]=0xFFFFB800;g_cpu.A[2]=0xFFFFF808;
+    s2_video_hook(0x1684E);s2_video_hook(0x16712);
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);memcpy(ram,g_ram,sizeof ram);
+    for(unsigned x=0;x<320;++x)out[x]=0xFFFF0000;
+    s2_video_front_ui(&v,0,out,320);
+    CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
+    CHECK(!memcmp(ram,g_ram,sizeof ram));
+    /* A disk state restores the matching publication/classification, while
+     * rollback invalidates this presentation-only cache for the next build. */
+    S2StateIO len={0};s2_video_state(&len);
+    uint8_t *saved=malloc(len.pos);CHECK(saved);
+    S2StateIO state={0};state.data=saved;state.size=len.pos;state.ok=1;
+    s2_video_state(&state);CHECK(state.ok);
+    memset(s_front_history,0,sizeof s_front_history);
+    memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
+    state.pos=0;state.mode=2;s2_video_state(&state);CHECK(state.ok);
+    CHECK(s_front_serial && s_front_history[s_front_serial%3].kind[0][0]==2);
+    out[0]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);CHECK(out[0]==0xFFFFFFFF);
+    free(saved);
+    S2StateIO rb_len={0};s2_video_rb_state(&rb_len);
+    saved=malloc(rb_len.pos);CHECK(saved);
+    state=(S2StateIO){0};state.data=saved;state.size=rb_len.pos;state.ok=1;
+    s2_video_rb_state(&state);CHECK(state.ok);
+    state.pos=0;state.mode=2;s2_video_rb_state(&state);CHECK(state.ok);
+    CHECK(!s_front_serial && !s_front_display[0].serial);free(saved);
+    /* A background plane with priority also hides low-priority actors. */
+    word(v.vram,0xE000,0x8001);
+    CHECK(!s2_video_actor_pixel_visible(&v,0,0,0,g_ram));
+    CHECK(s2_video_actor_pixel_visible(&v,0,0,1,g_ram));
+    /* The complete wide scene already knows which opaque UI pixels win.
+     * Restore precisely those after a donor, including extended card edges. */
+    CHECK(sonic2_video.configure("16:9"));CHECK(reserve_sprite_row(398));
+    memset(s_priority,0,398);memset(&s_display_frame,0,sizeof s_display_frame);
+    s_display=&s_display_frame;s_display_frame.scene=1;s_display_frame.count=1;
+    s_display_frame.sprites[0]=(SceneSprite){0,0,0x8001,0,130};
+    s_frame_level=1;s_frame_vs=0;s_camera=s_camera_y=0;
+    uint32_t palette[64]={0};palette[1]=0xFFFFFFFF;
+    for(unsigned x=0;x<398;++x)out[x]=0xFFFF0000;
+    draw_scene_sprites(&v,0,out,398,0,palette);
+    CHECK(out[39]==0xFFFFFFFF && out[40]==0xFFFF0000);
+    out[39]=0xFFFF0000;s2_video_front_ui(&v,0,out,398);
+    CHECK(out[39]==0xFFFFFFFF && out[40]==0xFFFF0000);
+    CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
+}
+
 int main(void)
 {
+    /* Byte-matched SwScrl_EHZ_2P band boundaries and fixed-point gradient;
+     * CPZ's row18 ripple stays in BG1 before the half-speed BG2 band. */
+    CHECK(ehz_2p_parallax(64,21)==0 && ehz_2p_parallax(64,22)==1);
+    CHECK(ehz_2p_parallax(64,101)==1 && ehz_2p_parallax(64,102)==0);
+    CHECK(ehz_2p_parallax(64,112)==4 && ehz_2p_parallax(64,128)==6);
+    CHECK(ehz_2p_parallax(64,144)==8 && ehz_2p_parallax(64,146)==9);
+    CHECK(ehz_2p_parallax(64,222)==28);
+    CHECK(cpz_parallax(80,288)==10 && cpz_parallax(80,303)==10);
+    CHECK(cpz_parallax(80,304)==40);
+    /* Attract end/skip selects Sega/title before the old world fades. Its
+     * display stays wide until incoming initialization retires the level;
+     * original loading/fade CPU timing remains unchanged. */
+    CHECK(sonic2_video.configure("32:9"));
+    for(unsigned destination=0;destination<=4;destination+=4) {
+        memset(g_ram,0,sizeof g_ram);g_ram[0xF600]=(uint8_t)destination;
+        g_ram[0xB000]=1;g_ram[0xF711]=1;
+        CHECK(outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
+        word(g_ram,0xFFD8,1);CHECK(outgoing_level() && !gameplay() && !competition());
+        g_ram[0xF711]=0;CHECK(!outgoing_level());
+        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!outgoing_level());
+    }
+    memset(g_ram,0,sizeof g_ram);
+    CHECK(sonic2_video.configure("off"));
 #if OWN_BACKEND
     /* Avoid palette work in ordinary play, but retain an expiring star's
      * palette until both queued and currently displayed SATs retire it. */
@@ -118,11 +249,16 @@ int main(void)
     CHECK(knuckles_item_tile(0x6AC) && knuckles_item_tile(0x6B3));
     CHECK(!knuckles_item_tile(0x4BD) && !knuckles_item_tile(0x500));
     CHECK(!knuckles_item_tile(0x6AB) && !knuckles_item_tile(0x6B4));
-    hud_available=1; hud_art.shield_stars[0]=0x67; hud_art.monitor[0]=0x98;
+    hud_available=1; hud_art.shield_stars[0]=0x67; hud_art.monitor[0]=0x98;hud_art.signpost[0]=0xAB;
     s2_video_prepare_knuckles_items();
     const uint8_t *patterns=gvdp_sprite_patterns(0x80,&pattern_bytes);
     CHECK(patterns && pattern_bytes==65536);
     CHECK(patterns[0x4BE*32]==0x67 && patterns[0x6AC*32]==0x98);
+    CHECK(patterns[0x456*32]==0xAB);
+    CHECK(knuckles_item_tile(0x456) && knuckles_item_tile(0x46D) && !knuckles_item_tile(0x46E));
+    CHECK(gvdp_sprite_palette_line(0x80,0x456,0)==2);
+    CHECK(gvdp_sprite_palette_line(GVDP_SPRITE_PALETTE_ONLY,0x580,0)==2);
+    CHECK(!gvdp_sprite_palette_line(0,0x580,0) && !gvdp_sprite_palette_line(GVDP_SPRITE_PALETTE_ONLY,0x580,1));
     CHECK(!gvdp_sprite_patterns(0,&pattern_bytes));
     unsigned sites[]={0x1684E,0x1688E,0x168E6,0x16938};
     g_cpu.A[0]=0xFFFFD180; g_cpu.A[2]=0xFFFFF810; item_owner=1;
@@ -153,6 +289,12 @@ int main(void)
     CHECK(s2_video_knuckles_hud_pixel(&hud,0x87D4,0,0,&colour) && !colour);
     memset(hud.vram+0x7DD*32,0x33,32); /* the native counter, not static donor digits */
     CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFFFF0000);
+    /* The E column sits between the two live digit tiles in column-major
+     * VRAM. A contiguous static-prefix assumption corrupts just this glyph. */
+    memset(hud_art.life+10*32,0x33,32);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DE,0,0,&colour) && colour==0xFFFF0000);
+    memset(hud.vram+0x7DF*32,0x33,32);
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DF,0,0,&colour) && colour==0xFFFF0000);
     hud.cram[6]=0; CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF000000);
     strcpy(s2_party.roster.character[0],"sonic");
     CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour));
@@ -415,6 +557,9 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
+    private_water_palette_test();
+    special_stage_pixel_shape_test();
+    front_ui_and_background_priority_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }
