@@ -851,14 +851,15 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if (pc==0x4F64) {
-        /* Special stages ALWAYS use stock Sonic + Tails, even for a solo
-         * campaign roster. Native controllers, art, shadows and CPU follow
-         * run unmodified. Keep the persisted roster untouched: level init
-         * restores it after the native special-stage return. */
+        /* Stock solo roles and original Knuckles use the native solo
+         * half-pipe controller. The campaign roster survives the round trip;
+         * unsupported imported half-pipe roles still use the stock duo. */
         inside_player=0; actor=-1;
         gvdp_set_unlimited_sprites(0);
         memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
-        putword(0xFF70,0);
+        unsigned primary=kind(0),solo=s2_party.roster.slots==1;
+        putword(0xFF70,solo && primary==S2_CHAR_TAILS?2:
+            solo && (primary==S2_CHAR_SONIC || primary==S2_CHAR_KNUCKLES)?1:0);
         return 0;
     }
     if (pc==0x4450) { /* Level_SetPlayerMode: attract demos remain byte-identical */
@@ -1409,6 +1410,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         }
     }
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
+    s2_video_special_actor(v,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
     int overlay_drawn=frame_green_card;
