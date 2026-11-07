@@ -819,32 +819,30 @@ static int special_primary_ui_sat(const GVDP *v,GVDP *copy,int line)
     if(!knuckles && (strcmp(s2_party.roster.character[0],"amy") || line<16 || line>=24))return 0;
     unsigned table=(v->reg[5]&127u)<<9,slot=0;int changed=0;
     for(unsigned n=0;n<64 && slot<80;++n) {
-        unsigned at=table+slot*8,size=v->vram[(at+2)&65535];
-        int y=(((v->vram[at&65535]<<8)|v->vram[(at+1)&65535])&1023)-128;
-        int height=(int)((size&3)+1)*8;
-        if(!(size&0x80) && line>=y && line<y+height) {
-            unsigned attr=(v->vram[(at+4)&65535]<<8)|v->vram[(at+5)&65535],tile=attr&2047;
-            unsigned cells=(((size>>2)&3)+1)*((size&3)+1);
-            if((attr&0xE000)==0xA000 && tile>=0x1FA &&
-               tile+cells<=0x1FF && line>=16 && line<24 && line<y+8) {
-                if(!copy)return 1;
+        unsigned at=table+slot*8;uint8_t p[8];
+        for(unsigned i=0;i<8;++i)p[i]=v->vram[(at+i)&65535];
+        unsigned attr=(p[4]<<8)|p[5],tile=attr&2047;
+        unsigned cells=(((p[2]>>2)&3)+1)*((p[2]&3)+1);
+        int y=(((p[0]<<8)|p[1])&1023)-128;
+        if(!(p[2]&0x80) && (attr&0xE000)==0xA000 && tile>=0x1FA &&
+           tile+cells<=0x1FF && line>=16 && line<24 && line>=y && line<y+8) {
+            if(copy) {
                 if(knuckles) {
                     copy->vram[at&65535]=0;copy->vram[(at+1)&65535]=0;
                 } else {
                     attr=(attr&0xF800)|(SPECIAL_HUD_NAME+tile-0x1FA);
-                    copy->vram[(at+2)&65535]=(uint8_t)(size|0x80);
+                    copy->vram[(at+2)&65535]=p[2]|0x80;
                     copy->vram[(at+4)&65535]=(uint8_t)(attr>>8);
                     copy->vram[(at+5)&65535]=(uint8_t)attr;
                 }
-                changed=1;
-            } else if(knuckles && (attr&0x6000)==0x2000 &&
-                      tile>=0x1BC && tile+cells<=0x1FA) {
-                if(!copy)return 1;
-                copy->vram[(at+2)&65535]=(uint8_t)(size|GVDP_SPRITE_PALETTE_ONLY);
-                changed=1;
             }
+            changed=1;
+        } else if(knuckles && !(p[2]&0x80) && (attr&0x6000)==0x2000 &&
+                  tile>=0x1BC && tile+cells<=0x1FA && line>=y && line<y+((p[2]&3)+1)*8) {
+            if(copy)copy->vram[(at+2)&65535]=p[2]|GVDP_SPRITE_PALETTE_ONLY;
+            changed=1;
         }
-        slot=v->vram[(at+3)&65535]&127;if(!slot)break;
+        slot=p[3]&127;if(!slot)break;
     }
     return changed;
 }
