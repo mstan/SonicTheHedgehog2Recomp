@@ -2103,8 +2103,10 @@ int s2_video_competition_divider(const GVDP *v,int line,uint32_t *out,int width)
     int mode=g_ram[0xF600]&127;
     /* P1's final HUD row is215; P2's view starts at224 (HUD at232).
      * The larger P1 SAT mask is retired by H-int, not a global 32-row bar.
-     * Keep both planes and host/native actors out of the actual gap. */
-    if (!ram16(0xFFD8) || (mode!=8 && mode!=12) || (v->reg[12]&6)!=6 ||
+     * Keep both planes and host/native actors out of the actual gap.
+     * Demo exit selects Sega/title before the outgoing IM2 image fades;
+     * the divider retires when that display mode is replaced. */
+    if (!ram16(0xFFD8) || (mode!=0 && mode!=4 && mode!=8 && mode!=12) || (v->reg[12]&6)!=6 ||
         line<216 || line>=224) return 0;
     for(int x=0;x<width;++x) out[x]=0xFF000000u;
     return 1;

@@ -981,6 +981,24 @@ int main(void)
     for(unsigned x=0;x<796;++x) CHECK(out[x]==0xFF000000);
     CHECK(s2_video_competition_divider(&v,223,out,320));
     CHECK(!s2_video_competition_divider(&v,224,out,320));
+    /* Automatic demo end selects Sega; Start selects title. The old
+     * interlaced display still owns its gap throughout either fade. */
+    for(unsigned mode=0;mode<=4;mode+=4) {
+        g_ram[0xF600]=(uint8_t)mode;
+        for(unsigned width=320;width<=796;width+=476) {
+            for(unsigned x=0;x<796;++x)out[x]=0xFF123456;
+            CHECK(s2_video_competition_divider(&v,216,out,(int)width));
+            for(unsigned x=0;x<796;++x)
+                CHECK(out[x]==(x<width?0xFF000000:0xFF123456));
+        }
+        v.reg[12]=1;out[0]=0xFF123456;
+        CHECK(!s2_video_competition_divider(&v,216,out,320));
+        CHECK(out[0]==0xFF123456); /* incoming non-interlaced title/logo */
+        v.reg[12]=6;
+    }
+    g_ram[0xF600]=0x24;
+    CHECK(!s2_video_competition_divider(&v,216,out,320));
+    g_ram[0xF600]=8;
     word(g_ram,0xFFD8,0);CHECK(!s2_video_competition_divider(&v,216,out,320));
     /* Cross-check the actual native VDP's IM2 cell shape. A block is a
      * horizontal pair of8x16 cells; its second map pair is not another row. */
