@@ -3,6 +3,31 @@
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(c) do { if (!(c)) { fprintf(stderr,"line %d: %s\n",__LINE__,#c); exit(1); } } while (0)
+static void putword(uint8_t *p,unsigned at,unsigned word){p[at]=(uint8_t)(word>>8);p[at+1]=(uint8_t)word;}
+static void amy_special_bounds_test(void)
+{
+    uint8_t *rom=calloc(1,0x200000);CHECK(rom);
+    static S2SpecialStageArt art,before;
+    unsigned mp=0x36490+36,dp=0x36878+36;
+    for(unsigned f=0;f<18;++f){putword(rom,0x36490+f*2,36);putword(rom,0x36878+f*2,36);}
+    putword(rom,mp,6);putword(rom,dp,1);putword(rom,dp+2,0x5000);
+    for(unsigned i=0;i<6;++i) {
+        rom[mp+2+i*8]=0xFC;putword(rom,mp+4+i*8,i);putword(rom,mp+8+i*8,i*8);
+    }
+    memset(rom+0x106DC2,0x67,6*32);putword(rom,0x3162+4,0x0E0);
+    CHECK(s2_amy_special_decode(rom,0x200000,&art));
+    CHECK(art.frames[17].count==6 && art.frames[17].pieces[5].x==40);
+    CHECK(art.frames[17].tiles[5*32]==0x67 && art.palette[2]==0x0E0);
+    memcpy(&before,&art,sizeof before);
+    putword(rom,dp,3);for(unsigned i=0;i<3;++i)putword(rom,dp+2+i*2,0xF000);
+    CHECK(!s2_amy_special_decode(rom,0x200000,&art) && !memcmp(&art,&before,sizeof art));
+    putword(rom,dp,1);putword(rom,dp+2,0x5000);putword(rom,mp+4+5*8,6);
+    CHECK(!s2_amy_special_decode(rom,0x200000,&art) && !memcmp(&art,&before,sizeof art));
+    putword(rom,mp+4+5*8,5);putword(rom,mp,7);
+    CHECK(!s2_amy_special_decode(rom,0x200000,&art) && !memcmp(&art,&before,sizeof art));
+    CHECK(!s2_amy_special_decode(rom,0x1FFFFF,&art) && !memcmp(&art,&before,sizeof art));
+    free(rom);
+}
 int main(void)
 {
     uint8_t rom[256]={0}; char error[160]; S2DonorBank bank={0};
@@ -51,6 +76,7 @@ int main(void)
     CHECK(!s2_donor_decode(rom,sizeof rom,&layout,&bank,error,sizeof error));
     CHECK(bank.frames[0].pixels==previous);
     s2_donor_free(&bank);
+    amy_special_bounds_test();
     puts("sonic2_donor: mapping/DPLC bounds, flip, geometry and transactional failure OK");
     return 0;
 }

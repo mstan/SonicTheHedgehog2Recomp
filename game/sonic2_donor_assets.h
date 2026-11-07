@@ -32,7 +32,7 @@ typedef struct S2DonorBank {
     uint16_t water_palette_alt[16]; /* optional second native water zone */
     unsigned water_palette_count;
 } S2DonorBank;
-enum { S2_SPECIAL_FRAMES=18,S2_SPECIAL_PIECES=5,S2_SPECIAL_TILES=32 };
+enum { S2_SPECIAL_FRAMES=18,S2_SPECIAL_PIECES=6,S2_SPECIAL_TILES=32 };
 enum { S2_SS_RESULT_FRAMES=30,S2_SS_RESULT_PIECES=16 };
 typedef struct S2SpecialPiece {
     int16_t x;
@@ -49,6 +49,13 @@ typedef struct S2SpecialResultArtFrame {
     uint8_t count;
     S2SpecialPiece pieces[S2_SS_RESULT_PIECES];
 } S2SpecialResultArtFrame;
+
+typedef struct S2SpecialStageArt {
+    S2SpecialArtFrame frames[S2_SPECIAL_FRAMES];
+    uint16_t palette[16];
+    S2SpecialResultArtFrame results[S2_SS_RESULT_FRAMES];
+    uint8_t result_name[8*32],font_y[4*32],hud_name[5*32];
+} S2SpecialStageArt;
 typedef struct S2KnucklesArt {
     uint8_t life[12*32],shield_stars[66*32],monitor[8*32],signpost[24*32];
     uint8_t continue_icons[12*32],font_k[4*32];
@@ -67,6 +74,10 @@ int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out)
 int s2_native_stars_decode(const uint8_t *rom,size_t size,uint8_t out[34*32]);
 /* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
 int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
+/* Original Amy 1.7.1 half-pipe mappings and standard ROM DPLCs. */
+int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
+/* Completes an already decoded Amy half-pipe bank transactionally. */
+int s2_amy_special_ui_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
 extern const S2DonorLayout s2_amy_171_layout;
 extern const S2DonorLayout s2_sk_knuckles_layout;
 extern const S2DonorLayout s2_megamix_mighty_layout;

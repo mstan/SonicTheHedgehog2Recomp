@@ -265,6 +265,39 @@ int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
     return r && out && size==0x100000 && (be16(r+0x71F14)&0x7FFF)==34 &&
         nemesis(r+0x71F14,231,out,34*32);
 }
+int s2_amy_special_ui_decode(const uint8_t *r,size_t size,S2SpecialStageArt *out)
+{
+    if(!r || !out || size!=0x200000)return 0;
+    S2SpecialResultArtFrame frames[S2_SS_RESULT_FRAMES]={0};
+    uint8_t font[76*32],hud[62*32];
+    /* Original Obj6F selects $15262. Frame29 is an unused empty mapping;
+     * all 29 live frames retain the source's eight-byte piece geometry. */
+    for(unsigned frame=0;frame<29;++frame) {
+        unsigned mp=0x15262+be16(r+0x15262+frame*2);
+        if(mp>size-2)return 0;
+        unsigned pieces=be16(r+mp);
+        if(!pieces || pieces>S2_SS_RESULT_PIECES || pieces*8>size-mp-2)return 0;
+        frames[frame].count=(uint8_t)pieces;
+        for(unsigned i=0;i<pieces;++i) {
+            const uint8_t *p=r+mp+2+i*8;S2SpecialPiece *piece=&frames[frame].pieces[i];
+            piece->y=(int8_t)p[0];piece->size=p[1];
+            piece->attr=(uint16_t)be16(p+2);piece->x=(int16_t)be16(p+6);
+            unsigned cells=(((piece->size>>2)&3)+1)*((piece->size&3)+1);
+            if(piece->size>15 || (piece->attr&2047)+cells>2048 ||
+               piece->x < -256 || piece->x>255)return 0;
+        }
+    }
+    /* The original result font changes eight HUD-name tiles and adds Y.
+     * The half-pipe HUD keeps the stock mappings with five changed tiles. */
+    if((be16(r+0x9BDEA)&0x7FFF)!=76 || (be16(r+0x1053C6)&0x7FFF)!=62 ||
+       !nemesis(r+0x9BDEA,901,font,sizeof font) ||
+       !nemesis(r+0x1053C6,731,hud,sizeof hud))return 0;
+    memcpy(out->results,frames,sizeof frames);
+    memcpy(out->result_name,font+(0x5B0-0x590)*32,sizeof out->result_name);
+    memcpy(out->font_y,font+72*32,sizeof out->font_y);
+    memcpy(out->hud_name,hud,sizeof out->hud_name);
+    return 1;
+}
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {
     if (!r || !out || size!=0x340000) return 0;
