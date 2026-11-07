@@ -240,6 +240,37 @@ static void front_ui_and_background_priority_test(void)
     s2_video_front_ui(&v,0,out,320);
     CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
     CHECK(!memcmp(ram,g_ram,sizeof ram));
+    /* Native zone-title sprites are Obj34, separate from Obj0A bubbles. */
+    g_ram[0xB800]=0x34;g_cpu.A[1]=0;
+    s2_video_hook(0x16604);s2_video_hook(0x1684E);s2_video_hook(0x16712);
+    CHECK(s_front_build.kind[0][0]==3);
+    out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);
+    CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
+    g_ram[0xB800]=0x3A;
+    /* BuildHUD has no object in A0: its direct native mapping must still
+     * cover a donor body, while transparent glyph holes expose that body. */
+    g_cpu.A[0]=0;g_cpu.A[1]=0x40AAA;
+    s2_video_hook(0x16604);s2_video_hook(0x1684E);s2_video_hook(0x16712);
+    CHECK(s_front_build.kind[0][0]==1);
+    out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);
+    CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
+    /* The native second viewport uses the same direct mapping path. */
+    word(g_ram,0xFFD8,1);g_cpu.A[2]=0xFFFFDD08;g_cpu.A[1]=0x40C88;
+    s2_video_hook(0x16604);s2_video_hook(0x16DEE);
+    CHECK(s_front_build.kind[1][0]==1);
+    word(g_ram,0xFFD8,0);g_cpu.A[0]=0xFFFFB800;g_cpu.A[1]=0;
+    g_cpu.A[2]=0xFFFFF808;
+    /* The separate KiS2 HUD pass owns the entire old Sonic name footprint,
+     * including places where the replacement glyph is transparent. */
+    strcpy(s2_party.roster.character[0],"knuckles");hud_available=1;
+    word(g_ram,0xF804,0xA7D8);memset(v.vram+0x7D8*32,0x11,32);
+    g_cpu.A[0]=0;g_cpu.A[1]=0x40ABA;
+    s2_video_hook(0x16604);s2_video_hook(0x1684E);s2_video_hook(0x16712);
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);
+    CHECK(out[0]==0xFFFF0000 && out[1]==0xFFFF0000);
+    hud_available=0;s2_party.roster.character[0][0]=0;word(g_ram,0xF804,0x8001);
+    g_cpu.A[0]=0xFFFFB800;g_cpu.A[1]=0;
     /* Front UI retains a tagged piece's private palette as well as its art. */
     static uint8_t patterns[65536],lines[2048];uint16_t colors[GVDP_EXT_LINES*16]={0};
     memset(patterns+32,0x10,32);lines[1]=2;colors[17]=0xE;

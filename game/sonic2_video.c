@@ -863,7 +863,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
-            if(g_ram[o]==0x3A || g_ram[o]==0x0A)flags|=0x400;
+            if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
             if(multi) {
                 if(g_ram[o+0xB])add_mapping(dst,keys,o<<16,map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
@@ -947,8 +947,15 @@ int s2_video_hook(uint32_t pc)
             unsigned tile=ram16(next-4)&2047u;
             unsigned p=next>=0xDD08 && next<=0xDF80;
             unsigned slot=(next-(p?0xDD00:0xF800))/8-1;
-            if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
-                s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:g_ram[o]==0x0A?3:0;
+            /* BuildHUD submits its mappings directly, without an object in
+             * A0. Include both normal and interlaced text/number mappings;
+             * A1 points just past the completed piece in this ROM interval. */
+            unsigned mapping=g_cpu.A[1]&0xFFFFFFu;
+            if(slot<80 && mapping>0x40A9A && mapping<=0x40D06)
+                s_front_build.kind[p][slot]=1;
+            else if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
+                s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:
+                    (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:0;
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
@@ -1766,13 +1773,19 @@ void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
         else if(!best)front->serial=0;
     }
     if(!front->serial || !(front->ui_mask&(1u<<p)))return;
+    int donor_hud=!vs && !strcmp(s2_party.roster.character[0],"knuckles") &&
+        s2_resource_knuckles_art()!=NULL;
     int cell=(v->reg[12]&6)==6?16:8,slot=0;uint8_t covered[320]={0};
     for(unsigned i=0;i<80 && slot<80;++i) {
         unsigned at=table+(unsigned)slot*8,kind=front->kind[p][slot];
         unsigned attr=vram16(v,at+4),size=v->vram[(at+2)&65535],cw=((size>>2)&3)+1,ch=(size&3)+1;
         int x=(vram16(v,at+6)&511)-128,y=(vram16(v,at)&1023)-(cell==16?256:128);
+        /* The original KiS2 HUD replacement owns both its ink and its
+         * transparent silhouette; do not put Sonic's old name back under it. */
+        int replaced=donor_hud && kind==1 &&
+            ((attr&2047)==0x7D4 || (attr&2047)==0x7D8);
         {
-            if(line>=y && line<y+(int)ch*cell) {
+            if(!replaced && line>=y && line<y+(int)ch*cell) {
                 int iy=line-y;if(attr&0x1000)iy=(int)ch*cell-1-iy;
                 for(unsigned px=0;px<cw*8;++px) {
                     int dx=x+(int)px,ix=(attr&0x800)?(int)cw*8-1-(int)px:(int)px;

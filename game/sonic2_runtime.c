@@ -1411,6 +1411,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
+    int overlay_drawn=frame_green_card;
     knuckles_hud(v,line,out,width,0);
     competition_hud(v,line,out,width,0);
     s2_video_results_name(v,line,out,width,0);
@@ -1464,7 +1465,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             if (!frame_world[0xF711]) {
                 if (!s2_video_intro_pixel_visible(&frame_vdp,dx-(width-320)/2,line,s->art&0x8000)) continue;
             } else if (!s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) continue;
-            out[dx]=palette[color];
+            out[dx]=palette[color];overlay_drawn=1;
         }
     }
     for (unsigned n=0;n<DUST_SLOTS;++n) {
@@ -1479,11 +1480,16 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             unsigned tile=(s->frame-17)*4+(fx/8)*2+fy/8;
             unsigned byte=g_rom[0x7373C+tile*32+(fy&7)*4+(fx&7)/2];
             unsigned ink=fx&1?byte&15:byte>>4;
-            if (ink && s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world))
+            if (ink && s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) {
                 out[dx]=genesis_dac_cram_to_argb(v->cram[((s->art>>9)&48)+ink],GENESIS_DAC_NORMAL);
+                overlay_drawn=1;
+            }
         }
     }
-    s2_video_front_ui(v,line,out,width);
+    /* Native UI is already in out. Reapply it on modified rows and retain
+     * each viewport's first-row selection of the displayed SAT publication. */
+    if(overlay_drawn || !line || (frame_vs && line==224))
+        s2_video_front_ui(v,line,out,width);
     s2_video_results_name(v,line,out,width,1);
     knuckles_hud(v,line,out,width,1);
     competition_hud(v,line,out,width,1);
