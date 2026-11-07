@@ -12,5 +12,6 @@ const S2SaveAssets *s2_resource_save_assets(void);
 const S2DonorBank *s2_resource_bank(unsigned resource);
 const S2DonorBank *s2_resource_shadow_bank(void);
 const S2KnucklesArt *s2_resource_knuckles_art(void);
+const S2SpecialStageArt *s2_resource_amy_special(void);
 const char *s2_resource_error(unsigned resource);
 void s2_resources_shutdown(void);

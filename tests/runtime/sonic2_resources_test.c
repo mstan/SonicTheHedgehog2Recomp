@@ -5,6 +5,7 @@
 #include "recomp_launcher.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 static int delegated;
 static int playback, online;
@@ -62,6 +63,7 @@ int main(int argc, char **argv)
     assert(!strcmp(resource.id,"original-knuckles-art") && !resource.required && !resource.verified);
     assert(!p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles",resource.id,"missing-kis2.bin"));
     assert(!s2_resource_knuckles_art() && !s2_party.kis2_path[0]);
+    assert(!s2_resource_amy_special());
     assert(!p->feature_resource_set_path(p->ctx,"sonic2.s3k","save-menu","campaign-sram","missing-campaign.srm"));
     assert(*p->last_error(p->ctx) && !s2_party.campaign_path[0]);
     assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","save-menu","campaign-sram",""));
@@ -91,6 +93,23 @@ int main(int argc, char **argv)
         assert(s2_resource_set(S2_RESOURCE_SK,argv[3]));
         assert(s2_resource_bank(S2_RESOURCE_AMY)->count==253);
         assert(s2_resource_bank(S2_RESOURCE_AMY)->animation_count==44);
+        const S2SpecialStageArt *special=s2_resource_amy_special();
+        assert(special && special->frames[11].count==6 && special->palette[2]==0x00C);
+        for(unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame)
+            assert(special->frames[frame].count>=3 && special->frames[frame].count<=6);
+        assert(special->results[1].count==7 && special->results[13].count==5 && !special->results[29].count);
+        assert(special->results[1].pieces[6].x==-24 && special->results[1].pieces[6].attr==0x5D8);
+        S2SpecialStageArt special_before;memcpy(&special_before,special,sizeof special_before);
+        uint8_t *rom=malloc(0x200000);assert(rom);FILE *donor=fopen(argv[2],"rb");assert(donor);
+        assert(fread(rom,1,0x200000,donor)==0x200000);fclose(donor);
+        S2SpecialStageArt unchanged;memcpy(&unchanged,special,sizeof unchanged);
+        assert(!s2_amy_special_ui_decode(rom,0x1FFFFF,&unchanged));
+        unsigned mp=0x15262+((unsigned)rom[0x15264]<<8|rom[0x15265]);
+        uint8_t count=rom[mp];rom[mp]=1;
+        assert(!s2_amy_special_ui_decode(rom,0x200000,&unchanged));rom[mp]=count;
+        uint8_t header=rom[0x9BDEB];rom[0x9BDEB]=1;
+        assert(!s2_amy_special_ui_decode(rom,0x200000,&unchanged));rom[0x9BDEB]=header;
+        assert(!memcmp(&unchanged,special,sizeof unchanged));free(rom);
         assert(s2_resource_bank(S2_RESOURCE_SK)->count==251);
         assert(s2_resource_bank(S2_RESOURCE_SK)->animation_count==37);
         assert(s2_resource_owner_verified(S2_RESOURCE_SK) && s2_resource_save_assets());
@@ -101,6 +120,7 @@ int main(int argc, char **argv)
         uint8_t *pixels=before->frames[1].pixels;
         assert(!s2_resource_set(S2_RESOURCE_AMY,argv[3]));
         assert(s2_resource_verified(S2_RESOURCE_AMY) && before->frames[1].pixels==pixels);
+        assert(!memcmp(&special_before,s2_resource_amy_special(),sizeof special_before));
         assert(!strcmp(s2_party.amy_path,argv[2]));
         assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles",1));
         assert(s2_party.s3k_enabled);
@@ -123,6 +143,7 @@ int main(int argc, char **argv)
     s2_resources_shutdown();
     assert(!s2_resource_verified(0) && !s2_resource_verified(1));
     assert(!s2_resource_owner_verified(1) && !s2_resource_save_assets());
+    assert(!s2_resource_amy_special());
     puts("Owner-resource identity, atomic replacement and composed Mods provider passed");
     return 0;
 }

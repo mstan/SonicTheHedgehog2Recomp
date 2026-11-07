@@ -8,6 +8,9 @@ GenesisMachine g_machine;
 #endif
 S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
+static S2SpecialStageArt amy_special;
+static int amy_special_available;
+const S2SpecialStageArt *s2_resource_amy_special(void) {return amy_special_available?&amy_special:NULL;}
 const S2DonorBank *s2_resource_bank(unsigned id) { (void)id;return NULL; }
 const S2DonorBank *s2_resource_shadow_bank(void) { return NULL; }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
@@ -113,6 +116,25 @@ static void special_actor_test(void)
         }
     }
     CHECK(!memcmp(g_ram,ram_before,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    /* Amy needs no KiS2 resource and her original frame can have six pieces.
+     * The last piece must survive beyond the native Sonic silhouette. */
+    memset(&amy_special,0,sizeof amy_special);
+    amy_special.frames[0]=hud_art.special[0];amy_special.frames[0].count=6;
+    for(unsigned i=1;i<6;++i)
+        amy_special.frames[0].pieces[i]=(S2SpecialPiece){(int16_t)(16+i*8),-8,0,(uint16_t)(0x8000|5+i)};
+    memset(amy_special.frames[0].tiles+6*32,0x44,5*32);
+    amy_special.palette[2]=0x0E0;amy_special.palette[4]=0xE0E;
+    hud_available=0;amy_special_available=1;strcpy(s2_party.roster.character[0],"amy");
+    front_ui_begin();s2_video_hook(0x1684E);front_ui_publish();
+    s2_video_prepare_knuckles_items();CHECK(configure("off"));
+    s2_video_special_actor(&v,0,out,256);s2_video_special_actor(&v,32,out,256);
+    CHECK(out[48]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    CHECK(out[96]==genesis_dac_cram_to_argb(0xE0E,GENESIS_DAC_NORMAL));
+    CHECK(!memcmp(g_ram,ram_before,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    amy_special_available=0;s2_video_prepare_knuckles_items();out[96]=0x12345678;
+    s2_video_special_actor(&v,0,out,256);s2_video_special_actor(&v,32,out,256);
+    CHECK(out[96]==0x12345678);
+    hud_available=1;strcpy(s2_party.roster.character[0],"knuckles");s2_video_prepare_knuckles_items();
     S2StateIO length={0};s2_video_rb_state(&length);uint8_t *saved=malloc(length.pos);CHECK(saved);
     S2StateIO state={0};state.data=saved;state.size=length.pos;state.ok=1;
     s2_video_rb_state(&state);CHECK(state.ok);
@@ -230,6 +252,67 @@ static void special_results_identity_test(void)
     strcpy(s2_party.roster.character[0],"knuckles");hud_available=0;s2_video_prepare_knuckles_items();
     s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);CHECK(out[56]==0x12345678);
     s2_video_hook(0x4F64);CHECK(!s_special_serial && !s_ss_result_serial);
+}
+
+static void amy_special_ui_test(void)
+{
+    static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&amy_special,0,sizeof amy_special);
+    s2_video_hook(0x4F64);hud_available=amy_special_available=0;
+    strcpy(s2_party.roster.character[0],"amy");s2_party.roster.slots=1;
+    s2_video_prepare_knuckles_items();amy_special_available=1;
+    g_ram[0xF600]=16;
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=8;v.reg[16]=1;
+    amy_special.palette[4]=0xE0E;memset(amy_special.hud_name,0x44,sizeof amy_special.hud_name);
+    amy_special.hud_name[0]=0x40;memset(v.vram+0x1FA*32,0x11,5*32);v.cram[17]=0xE00;
+    word(v.vram,0xF800,144);v.vram[0xF802]=12;
+    word(v.vram,0xF804,0xA1FA);word(v.vram,0xF806,160);
+    s2_video_prepare_knuckles_items();memcpy(original_ram,g_ram,sizeof g_ram);before=v;
+    CHECK(!s_special_serial); /* Native blink/no-body publication still has a HUD. */
+    for(unsigned wide=0;wide<2;++wide) {
+        CHECK(configure(wide?"16:9":"off"));int width=wide?398:256,source=wide?318:256;
+        for(int x=0;x<width;++x)out[x]=0xFF123456;
+        s2_video_special_actor(&v,0,out,width);s2_video_special_actor(&v,16,out,width);
+        for(int x=0;x<width;++x) {
+            int nx=x*source/width-(source-256)/2;
+            if(nx==32)CHECK(out[x]==genesis_dac_cram_to_argb(0xE0E,GENESIS_DAC_NORMAL));
+            if(nx==33)CHECK(out[x]==0xFF000000);
+        }
+    }
+    CHECK(!memcmp(g_ram,original_ram,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    /* Original Amy result mappings use their native anchors, a new Y glyph,
+     * and eight changed HUD-name tiles, without the optional KiS2 resource. */
+    g_ram[0xFFB0]=255;g_ram[0xB800]=g_ram[0xB840]=0x6F;
+    word(g_ram,0xB804,1);word(g_ram,0xB806,0x4ED0);
+    word(g_ram,0xB844,1);word(g_ram,0xB846,0x4ED0);g_ram[0xB85A]=1;
+    word(g_ram,0xB848,288);word(g_ram,0xB84A,152);
+    word(g_ram,0xF800,152);g_ram[0xF802]=5;word(g_ram,0xF804,0x800A);word(g_ram,0xF806,216);
+    v.reg[12]=1;memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    memset(v.vram+10*32,0x22,128);memset(v.vram+2*32,0x44,128);
+    memset(v.vram+0x5B0*32,0x11,8*32);memset(v.vram+0x5D8*32,0x22,128);
+    memset(amy_special.font_y,0x33,sizeof amy_special.font_y);
+    memset(amy_special.result_name,0x55,sizeof amy_special.result_name);
+    amy_special.results[1].count=3;
+    amy_special.results[1].pieces[0]=(S2SpecialPiece){0,0,5,0x8002};
+    amy_special.results[1].pieces[1]=(S2SpecialPiece){-64,0,5,0x05D8};
+    amy_special.results[1].pieces[2]=(S2SpecialPiece){-32,0,5,0xA5B0};
+    v.cram[3]=0xE;v.cram[4]=0x0E0;v.cram[21]=0xEEE;
+    amy_special_available=0;s2_video_prepare_knuckles_items();amy_special_available=1;
+    front_ui_begin();g_cpu.A[0]=0xFFFFB840;g_cpu.A[1]=0x14ED8;g_cpu.A[2]=0xFFFFF808;
+    s2_video_hook(0x1684E);front_ui_publish();s2_video_prepare_knuckles_items();
+    memcpy(original_ram,g_ram,sizeof g_ram);before=v;
+    for(unsigned wide=0;wide<2;++wide) {
+        int width=wide?398:320,origin=(width-320)/2;
+        s2_video_special_results(&v,0,out,width);s2_video_special_results(&v,24,out,width);
+        CHECK(out[88+origin]==0xFF000000);
+        CHECK(out[96+origin]==genesis_dac_cram_to_argb(0xE,GENESIS_DAC_NORMAL));
+        CHECK(out[128+origin]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+        CHECK(out[160+origin]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    }
+    CHECK(!memcmp(g_ram,original_ram,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    amy_special_available=0;s2_video_prepare_knuckles_items();out[96]=0x12345678;
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
+    CHECK(out[96]==0x12345678);s2_video_hook(0x4F64);
 }
 
 static void native_interpolation_test(void)
@@ -849,6 +932,7 @@ int main(void)
     special_stage_pixel_shape_test();
     special_actor_test();
     special_results_identity_test();
+    amy_special_ui_test();
     front_ui_and_background_priority_test();
     competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
