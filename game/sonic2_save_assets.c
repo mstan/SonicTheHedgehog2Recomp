@@ -304,6 +304,21 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
                 (piece->attr&2047)+cells>tiles || piece->x < -128 || piece->x>127) return 0;
         }
     }
+    for(unsigned frame=0;frame<S2_SS_RESULT_FRAMES;++frame) {
+        unsigned mp=0x311D22+be16(r+0x311D22+frame*2);
+        if(mp>size-2)return 0;
+        unsigned pieces=be16(r+mp);
+        if(!pieces || pieces>S2_SS_RESULT_PIECES || pieces*6>size-mp-2)return 0;
+        S2SpecialResultArtFrame *f=&candidate.special_results[frame];f->count=(uint8_t)pieces;
+        for(unsigned i=0;i<pieces;++i) {
+            const uint8_t *p=r+mp+2+i*6;S2SpecialPiece *piece=&f->pieces[i];
+            piece->y=(int8_t)p[0];piece->size=p[1];
+            piece->attr=(uint16_t)be16(p+2);piece->x=(int16_t)be16(p+4);
+            unsigned cells=(((piece->size>>2)&3)+1)*((piece->size&3)+1);
+            if(piece->size>15 || (piece->attr&2047)+cells>2048 ||
+               piece->x < -256 || piece->x>255)return 0;
+        }
+    }
     memcpy(candidate.font_k,r+0x312096,sizeof candidate.font_k);
     for (unsigned i=0;i<16;++i) {
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);

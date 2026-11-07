@@ -192,6 +192,45 @@ static void results_identity_test(void)
     CHECK(out[96]==0xFF00FF00 && !memcmp(original,g_ram,sizeof original));
     hud_available=0;CHECK(sonic2_video.configure("off"));
 }
+static void special_results_identity_test(void)
+{
+    static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    s2_video_hook(0x4F64);hud_available=0;s2_video_prepare_knuckles_items();hud_available=1;
+    s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
+    g_ram[0xF600]=16;g_ram[0xFFB0]=1;g_ram[0xB800]=g_ram[0xB840]=0x6F;
+    word(g_ram,0xB804,1);word(g_ram,0xB806,0x4ED0);
+    word(g_ram,0xB844,1);word(g_ram,0xB846,0x4ED0);g_ram[0xB85A]=1;
+    word(g_ram,0xB848,288);word(g_ram,0xB84A,152);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
+    v.cram[2]=0xE00;v.cram[3]=0xE;v.cram[4]=0x0E0;v.cram[6]=0xEEE;
+    memset(v.vram+10*32,0x22,128);memset(v.vram+2*32,0x44,128);memset(hud_art.font_k,0x33,128);
+    hud_art.special_results[1].count=1;
+    hud_art.special_results[1].pieces[0]=(S2SpecialPiece){-48,0,5,0x8002};
+    hud_art.special_results[29].count=1;
+    hud_art.special_results[29].pieces[0]=(S2SpecialPiece){-112,0,5,0x803E};
+    word(g_ram,0xF800,152);g_ram[0xF802]=5;word(g_ram,0xF804,0x800A);word(g_ram,0xF806,216);
+    front_ui_begin();g_cpu.A[0]=0xFFFFB840;g_cpu.A[1]=0x14ED8;g_cpu.A[2]=0xFFFFF808;
+    s2_video_hook(0x1684E);front_ui_publish();
+    CHECK(s_ss_result_build.count==2 && s_ss_result_build.owner[0]==2);
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);s2_video_prepare_knuckles_items();
+    memcpy(original_ram,g_ram,sizeof g_ram);before=v;
+    for(unsigned wide=0;wide<2;++wide) {
+        int width=wide?398:320,origin=(width-320)/2;
+        for(int x=0;x<width;++x)out[x]=0xFF123456;
+        s2_video_special_results(&v,0,out,width);s2_video_special_results(&v,24,out,width);
+        CHECK(out[56+origin]==genesis_dac_cram_to_argb(0xE,GENESIS_DAC_NORMAL));
+        CHECK(out[192+origin]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+        CHECK(out[88+origin]==0xFF000000); /* removed native name silhouette */
+        if(wide)CHECK(out[0]==0xFF123456);
+    }
+    CHECK(!memcmp(g_ram,original_ram,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    strcpy(s2_party.roster.character[0],"sonic");out[56]=0x12345678;
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);CHECK(out[56]==0x12345678);
+    strcpy(s2_party.roster.character[0],"knuckles");hud_available=0;s2_video_prepare_knuckles_items();
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);CHECK(out[56]==0x12345678);
+    s2_video_hook(0x4F64);CHECK(!s_special_serial && !s_ss_result_serial);
+}
 
 static void native_interpolation_test(void)
 {
@@ -809,6 +848,7 @@ int main(void)
     private_water_palette_test();
     special_stage_pixel_shape_test();
     special_actor_test();
+    special_results_identity_test();
     front_ui_and_background_priority_test();
     competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");

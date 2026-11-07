@@ -851,6 +851,7 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if (pc==0x4F64) {
+        s2_video_hook(pc);
         /* Stock solo roles and original Knuckles use the native solo
          * half-pipe controller. The campaign roster survives the round trip;
          * unsupported imported half-pipe roles still use the stock duo. */
@@ -1411,6 +1412,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     }
     if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
     s2_video_special_actor(v,line,out,width);
+    s2_video_special_results(v,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
     int overlay_drawn=frame_green_card;

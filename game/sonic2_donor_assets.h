@@ -33,6 +33,7 @@ typedef struct S2DonorBank {
     unsigned water_palette_count;
 } S2DonorBank;
 enum { S2_SPECIAL_FRAMES=18,S2_SPECIAL_PIECES=5,S2_SPECIAL_TILES=32 };
+enum { S2_SS_RESULT_FRAMES=30,S2_SS_RESULT_PIECES=16 };
 typedef struct S2SpecialPiece {
     int16_t x;
     int8_t y;
@@ -44,12 +45,17 @@ typedef struct S2SpecialArtFrame {
     S2SpecialPiece pieces[S2_SPECIAL_PIECES];
     uint8_t tiles[S2_SPECIAL_TILES*32];
 } S2SpecialArtFrame;
+typedef struct S2SpecialResultArtFrame {
+    uint8_t count;
+    S2SpecialPiece pieces[S2_SS_RESULT_PIECES];
+} S2SpecialResultArtFrame;
 typedef struct S2KnucklesArt {
     uint8_t life[12*32],shield_stars[66*32],monitor[8*32],signpost[24*32];
     uint8_t continue_icons[12*32],font_k[4*32];
     uint16_t palette[16],water_palette[2][16]; /* KiS2 CPZ and ARZ */
     S2SpecialArtFrame special[S2_SPECIAL_FRAMES];
     uint16_t special_palette[16];
+    S2SpecialResultArtFrame special_results[S2_SS_RESULT_FRAMES];
 } S2KnucklesArt;
 /* Immutable native competition HUD sources from the verified REV01 ROM. */
 typedef struct S2NativeHudArt {
