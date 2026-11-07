@@ -813,10 +813,9 @@ static void special_actor_compose(const GVDP *v,GVDP *copy,const uint16_t *palet
  * native mappings with her own name tiles. Checkpoint wings/hand share the
  * native art and geometry, but use Knuckles' original half-pipe colours.
  * A NULL destination only checks whether this scanline needs recomposition. */
-static int special_primary_ui_sat(const GVDP *v,GVDP *copy,int line)
+static int special_primary_ui_sat(const GVDP *v,GVDP *copy,int line,int knuckles)
 {
-    int knuckles=!strcmp(s2_party.roster.character[0],"knuckles");
-    if(!knuckles && (strcmp(s2_party.roster.character[0],"amy") || line<16 || line>=24))return 0;
+    if(!knuckles && (line<16 || line>=24 || strcmp(s2_party.roster.character[0],"amy")))return 0;
     unsigned table=(v->reg[5]&127u)<<9,slot=0;int changed=0;
     for(unsigned n=0;n<64 && slot<80;++n) {
         unsigned at=table+slot*8;uint8_t p[8];
@@ -915,13 +914,17 @@ void s2_video_special_actor(const GVDP *v,int line,uint32_t *out,int width)
         }
     }
     if(!art || !(v->reg[1]&64) || (v->reg[12]&15)!=8)return;
-    int ui=special_primary_ui_sat(v,NULL,line);
+    int knuckles=!strcmp(s2_party.roster.character[0],"knuckles");
+    /* Amy's name can only occupy these eight rows. Apply its single SAT
+     * walk directly to the private copy; Knuckles needs a checkpoint probe. */
+    int ui=knuckles?special_primary_ui_sat(v,NULL,line,1):
+        (line>=16 && line<24 && !strcmp(s2_party.roster.character[0],"amy"));
     GVDP copy;
     int body=valid?special_actor_sat(v,&picture,art,line,&copy):0;
     if(!body && !ui)return;
     if(!body)copy=*v;
-    if(ui)special_primary_ui_sat(&copy,&copy,line);
-    special_actor_compose(v,&copy,palette,line,out,width);
+    if(ui)ui=special_primary_ui_sat(&copy,&copy,line,knuckles);
+    if(body || ui)special_actor_compose(v,&copy,palette,line,out,width);
 }
 static void special_results_begin(void)
 {
