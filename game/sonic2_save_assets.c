@@ -274,7 +274,9 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
     if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
         !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
         !nemesis(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
-        !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor)) return 0;
+        !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor) ||
+        !nemesis(r+0x33AAF2,340,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
+    memcpy(candidate.font_k,r+0x312096,sizeof candidate.font_k);
     for (unsigned i=0;i<16;++i) {
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
         /* c336fede Pal_CPZ_U/Pal_ARZ_U explicitly contain Knuckles' colours.

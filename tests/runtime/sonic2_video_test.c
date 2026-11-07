@@ -15,6 +15,8 @@ int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 uint16_t s2_shadow_color(const S2DonorBank *b,unsigned i,int wet,unsigned phase,unsigned frame)
 { (void)b;(void)i;(void)wet;(void)phase;(void)frame;return 0; }
 static int hud_available;
+static uint8_t ui_font[88*32];
+const uint8_t *s2_runtime_ui_font(void) {return ui_font;}
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
 static int shadow_item_owner;
@@ -35,8 +37,84 @@ void cmd_send_response(const char *json){(void)json;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"line %d: %s\n",__LINE__,#c);exit(1);}}while(0)
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
 static unsigned native_fetches;
+static void donor_palette_fade_test(void)
+{
+    /* Explicit DAC values from REV01's four Pal_Fade routines. */
+    CHECK(donor_fade_color(0xEEE,(DonorFade){FADE_FROM_BLACK,7})==0xE00);
+    CHECK(donor_fade_color(0xEEE,(DonorFade){FADE_FROM_BLACK,14})==0xEE0);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_FROM_BLACK,4})==0x080);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_FROM_BLACK,11})==0x08E);
+    CHECK(donor_fade_color(0xEEE,(DonorFade){FADE_TO_BLACK,7})==0xEE0);
+    CHECK(donor_fade_color(0xEEE,(DonorFade){FADE_TO_BLACK,14})==0xE00);
+    CHECK(donor_fade_color(0xE0E,(DonorFade){FADE_TO_BLACK,7})==0xE00);
+    CHECK(donor_fade_color(0xE0E,(DonorFade){FADE_TO_BLACK,14})==0);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_FROM_WHITE,7})==0x0EE);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_FROM_WHITE,10})==0x08E);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_TO_WHITE,3})==0x0EE);
+    CHECK(donor_fade_color(0x08E,(DonorFade){FADE_TO_WHITE,10})==0xEEE);
+    s2_video_hook(0x2592);s2_video_vblank();
+    CHECK(s2_video_donor_color(0x08E)==0x08E);
+    for(unsigned n=0;n<3;++n)s2_video_hook(0x25B2);
+    CHECK(s2_video_donor_color(0x08E)==0x08E); /* wait for palette DMA */
+    s2_video_vblank();CHECK(s2_video_donor_color(0x08E)==0x0EE);
+    S2StateIO len={0};s2_video_rb_state(&len);
+    uint8_t *saved=malloc(len.pos);CHECK(saved);
+    S2StateIO state={0};state.data=saved;state.size=len.pos;state.ok=1;
+    s2_video_rb_state(&state);CHECK(state.ok);
+    s2_video_hook(0x246A);s2_video_vblank();
+    state.pos=0;state.mode=2;s2_video_rb_state(&state);CHECK(state.ok);
+    CHECK(s2_video_donor_color(0x08E)==0x0EE);
+    free(saved);
+    s2_video_hook(0x246A);for(unsigned n=0;n<22;++n)s2_video_hook(0x248A);
+    s2_video_vblank();CHECK(s2_video_donor_color(0x08E)==0);
+    /* Level title cards install fresh palettes without Pal_FadeFromBlack. */
+    s2_video_hook(0x4450);s2_video_vblank();CHECK(s2_video_donor_color(0x08E)==0x08E);
+    s_donor_fade=s_presented_fade=(DonorFade){0};
+}
 static const uint32_t *fetch_native(void *ctx)
 {++native_fetches;return (const uint32_t *)ctx;}
+static void results_identity_test(void)
+{
+    static GVDP v;uint32_t out[398];uint8_t original[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    g_ram[0xF600]=12;hud_available=1;strcpy(s2_party.roster.character[0],"knuckles");
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
+    v.cram[1]=v.cram[6]=0xEEE;v.cram[3]=0xE;
+    memset(hud_art.font_k,0x33,sizeof hud_art.font_k);memset(ui_font,0x22,sizeof ui_font);
+    static const unsigned tiles[]={0x5D0,0x588,0x584,0x5C0,0x5B4,0x5B8,0x588,0x5D4};
+    static const int offsets[]={-64,-48,-32,-16,-8,16,32,47};
+    for(unsigned n=0;n<8;++n) {
+        unsigned at=0xF800+n*8;word(v.vram,at,184);
+        v.vram[at+2]=n==3?1:5;v.vram[at+3]=n==7?0:(uint8_t)(n+1);
+        word(v.vram,at+4,0x8000|tiles[n]);word(v.vram,at+6,288+offsets[n]);
+        memset(v.vram+tiles[n]*32,0x11,(n==3?2:4)*32);
+    }
+    memcpy(original,g_ram,sizeof original);
+    for(unsigned wide=0;wide<2;++wide) {
+        CHECK(sonic2_video.configure(wide?"16:9":"off"));int width=wide?398:320,center=(width-320)/2;
+        for(int line=0;line<72;++line) {
+            for(int x=0;x<width;++x)out[x]=0xFF00FF00;
+            s2_video_results_name(&v,line,out,width,0);
+            s2_video_results_name(&v,line,out,width,1);
+            if(line==56) {
+                CHECK(out[40+center]==0xFFFF0000 && out[56+center]==0xFFFFFFFF);
+                CHECK(out[104+center]==0xFFFF0000 && out[176+center]==0xFFFFFFFF);
+                CHECK(out[24+center]==0xFF00FF00);
+            }
+        }
+    }
+    strcpy(s2_party.roster.character[0],"shadow");
+    for(int line=0;line<=56;++line) {
+        memset(out,0,sizeof out);s2_video_results_name(&v,line,out,398,0);
+        s2_video_results_name(&v,line,out,398,1);
+    }
+    CHECK(out[72+39]==0xFFFFFFFF && out[176+39]==0xFFFFFFFF);
+    strcpy(s2_party.roster.character[0],"sonic");
+    for(int x=0;x<320;++x)out[x]=0xFF00FF00;
+    s2_video_results_name(&v,0,out,320,0);s2_video_results_name(&v,56,out,320,1);
+    CHECK(out[96]==0xFF00FF00 && !memcmp(original,g_ram,sizeof original));
+    hud_available=0;CHECK(sonic2_video.configure("off"));
+}
 
 static void native_interpolation_test(void)
 {
@@ -162,6 +240,17 @@ static void front_ui_and_background_priority_test(void)
     s2_video_front_ui(&v,0,out,320);
     CHECK(out[0]==0xFFFFFFFF && out[1]==0xFFFF0000);
     CHECK(!memcmp(ram,g_ram,sizeof ram));
+    /* Front UI retains a tagged piece's private palette as well as its art. */
+    static uint8_t patterns[65536],lines[2048];uint16_t colors[GVDP_EXT_LINES*16]={0};
+    memset(patterns+32,0x10,32);lines[1]=2;colors[17]=0xE;
+    g_ram[0xF802]=0x80;s2_video_hook(0x16604);g_cpu.A[0]=0xFFFFB800;g_cpu.A[2]=0xFFFFF808;
+    s2_video_hook(0x1684E);s2_video_hook(0x16712);memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    CHECK(gvdp_set_sprite_patterns_bank(0,patterns,sizeof patterns,lines));
+    gvdp_set_ext_colors(colors,colors,1<<20);
+    s2_video_front_ui(&v,0,out,320);CHECK(out[0]==0xFFFF0000);
+    gvdp_set_sprite_patterns(NULL,0,NULL);memset(colors,0,sizeof colors);
+    gvdp_set_ext_colors(colors,colors,1<<20);
+    memcpy(ram,g_ram,sizeof ram);
     /* A disk state restores the matching publication/classification, while
      * rollback invalidates this presentation-only cache for the next build. */
     S2StateIO len={0};s2_video_state(&len);
@@ -295,7 +384,15 @@ int main(void)
     CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DE,0,0,&colour) && colour==0xFFFF0000);
     memset(hud.vram+0x7DF*32,0x33,32);
     CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DF,0,0,&colour) && colour==0xFFFF0000);
-    hud.cram[6]=0; CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF000000);
+    g_ram[0xF64C]=1;g_ram[0xFE10]=13;hud_art.water_palette[0][3]=0xE00;
+    for(unsigned i=0;i<16;++i) {
+        word(g_ram,0xFB00+i*2,0xEEE);word(g_ram,0xF080+i*2,0xAEE);hud.cram[i]=0xAEE;
+    }
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF0000FF);
+    s2_video_hook(0x246A);for(unsigned i=0;i<7;++i)s2_video_hook(0x248A);
+    s2_video_vblank();
+    CHECK(s2_video_knuckles_hud_pixel(&hud,0xA7DD,0,0,&colour) && colour==0xFF000000);
+    s_donor_fade=s_presented_fade=(DonorFade){0};g_ram[0xF64C]=0;g_ram[0xFE10]=0;
     strcpy(s2_party.roster.character[0],"sonic");
     CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour));
     hud_available=0;
@@ -557,6 +654,8 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
+    donor_palette_fade_test();
+    results_identity_test();
     private_water_palette_test();
     special_stage_pixel_shape_test();
     front_ui_and_background_priority_test();

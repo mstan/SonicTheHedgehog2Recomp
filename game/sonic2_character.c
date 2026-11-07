@@ -78,6 +78,14 @@ static void knuckles_ledge_step(S2CharacterState *s, S2Motion *m)
 }
 static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
+    /* KiS2 ResetOnFloor_Part3 ends a glide when a solid object catches the
+     * player. Solids run after the character tick, so consume that contact
+     * before choosing this tick's movement and animation. */
+    if (!(m->status&AIR) && (m->status&ON_OBJECT) &&
+        (s->special || m->animation>=0x20)) {
+        s->special=S2_SK_NORMAL; m->radius_x=9; m->radius_y=19;
+        m->jumping=0; m->animation=0;
+    }
     if (!(m->status&AIR) && s->special!=S2_SK_SLIDE && s->special!=S2_SK_LEDGE) s->special=S2_SK_NORMAL;
     s->jump_adjustment=(m->status&WATER)?0:0x80; /* stock normal Knuckles jump $600 */
     if (s->special==S2_SK_NORMAL && (m->status&AIR) && m->jumping &&
@@ -94,6 +102,7 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
             s->special=S2_SK_FALL; m->vx>>=2; m->radius_x=9; m->radius_y=19;
             m->animation=0x21; break;
         }
+        m->radius_x=m->radius_y=10;
         int speed=(uint16_t)m->inertia;
         if (speed<0x400) speed+=8; else if (speed<0x1800 && !(s->turn&0x7F)) speed+=4;
         m->inertia=(int16_t)speed;
@@ -112,6 +121,7 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
         m->animation=0x21; break; /* native airborne steering/gravity */
     case S2_SK_SLIDE:
         s->move=S2_MOVE_GROUND;
+        m->radius_x=m->radius_y=10;
         if (!(s->held&JUMP) || absword(m->vx)<=0x20 || c->floor>=14) {
             if (c->floor>=14) { s->special=S2_SK_FALL; m->status|=AIR; }
             else {
@@ -120,24 +130,38 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
                 m->jumping=0; m->move_lock=15; m->animation=0x22;
             }
             m->radius_x=9; m->radius_y=19;
-        } else { m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx; }
+        } else {m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx;}
         break;
     case S2_SK_CLIMB:
+        s->climb_delta=0;
         s->move=S2_MOVE_FIXED; m->vx=m->vy=m->inertia=0;
-        if (m->x!=s->wall_x || (m->status&ON_OBJECT) || c->wall<0) { s->special=S2_SK_FALL; break; }
+        if (m->x!=s->wall_x || (m->status&ON_OBJECT)) {
+            s->special=S2_SK_FALL; m->animation=0x21; break;
+        }
         if (s->pressed&JUMP) {
             m->status^=FACE; m->status|=AIR|ROLL; m->jumping=1;
             m->vx=(int16_t)(direction(m)*0x400); m->vy=-0x380;
             m->radius_y=14; m->radius_x=7; m->animation=2; s->special=S2_SK_NORMAL;
-        } else if ((s->held&UP) && c->wall>=4) {
+        } else if ((s->held&UP) && c->climb_up>=4) {
             s->special=S2_SK_LEDGE; s->ledge=0; s->age=0;
             knuckles_ledge_step(s,m);
         }
-        else if ((s->held&UP) && !c->wall && c->ceiling>=0) m->y-=65536;
+        else if ((s->held&UP) && !c->climb_up) {
+            if(c->ceiling<0)m->y-=c->ceiling*65536;
+            else m->y-=(m->super?2:1)*65536;
+            /* KiS2 stops a climb sixteen pixels inside the upper boundary;
+             * vertically wrapping stages leave this constraint disabled. */
+            if(c->climb_min_enabled && m->y<(int32_t)c->climb_min_y*65536)
+                m->y=(int32_t)c->climb_min_y*65536;
+            s->climb_delta=1;
+        }
         else if (s->held&DOWN) {
-            if (c->wall>0) s->special=S2_SK_FALL;
-            else if (c->floor<=0) { s->special=S2_SK_NORMAL; m->status&=~AIR; m->animation=5; }
-            else m->y+=65536;
+            if (c->climb_down) {s->special=S2_SK_FALL;m->animation=0x21;}
+            else if (c->floor<0) {
+                m->y+=c->floor*65536;m->angle=c->floor_angle;
+                s->special=S2_SK_NORMAL;m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+                m->jumping=0;m->radius_x=9;m->radius_y=19;m->animation=5;
+            } else {m->y+=(m->super?2:1)*65536;s->climb_delta=-1;}
         }
         break;
     case S2_SK_LEDGE:
@@ -153,15 +177,21 @@ void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t
     s->before_air=!!(m->status&AIR); s->before_jumping=m->jumping;
     s->move=S2_MOVE_NATIVE; s->jump_adjustment=0;
     if (s->kind==S2_CHAR_SHADOW) { s2_shadow_before(s,m,c); ++s->age; return; }
-    if (m->hurt || m->control_locked) { s->special=0; return; }
+    if (m->hurt || m->control_locked) {
+        if(s->kind==S2_CHAR_KNUCKLES && s->special) {m->radius_x=9;m->radius_y=19;}
+        s->special=0; return;
+    }
     if (s->kind==S2_CHAR_AMY) amy_before(s,m);
     if (s->kind==S2_CHAR_KNUCKLES) knuckles_before(s,m,c);
-    ++s->age;
+    if(s->kind!=S2_CHAR_KNUCKLES || s->special!=S2_SK_CLIMB || s->climb_delta)++s->age;
 }
 void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
     if (s->kind==S2_CHAR_SHADOW) { s2_shadow_after(s,m); return; }
-    if (m->hurt) { s->special=0; return; }
+    if (m->hurt) {
+        if(s->kind==S2_CHAR_KNUCKLES && s->special) {m->radius_x=9;m->radius_y=19;}
+        s->special=0; return;
+    }
     if (!s->before_air && (m->status&AIR) && m->jumping && s->jump_adjustment) {
         unsigned angle=(m->angle-0x40)&255;
         /* Adjustment is signed vertical on flat ground; rotate with the floor. */
@@ -191,16 +221,27 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
         }
     } else if (s->kind==S2_CHAR_KNUCKLES) {
         if (s->special==S2_SK_GLIDE) {
-            if (!(m->status&AIR)) { s->special=S2_SK_SLIDE; s->frame=0xCC; s->age=0; }
-            else if (c->wall<=0 && absword(m->vx)<0x20) {
-                s->special=S2_SK_CLIMB; s->wall_x=m->x; s->age=0;
-                m->vx=m->vy=m->inertia=0; s->frame=0xB7;
-            }
+            if (c->wall<=0 && absword(m->vx)<0x20) {
+                /* KiS2 BeginClimb requires both wall sensors to fit, or a
+                 * floor edge within eleven pixels of its upper sensor. */
+                if(c->grab_y<0 || c->grab_y>=12) {
+                    s->special=S2_SK_FALL;m->animation=0x21;m->status|=AIR;
+                } else {
+                    m->x+=c->grab_x*65536;m->y+=c->grab_y*65536;
+                    s->special=S2_SK_CLIMB;s->wall_x=m->x;s->age=0;s->climb_delta=0;
+                    m->status|=AIR;m->jumping=1;
+                    m->vx=m->vy=m->inertia=0;s->frame=0xB7;
+                }
+            } else if (!(m->status&AIR)) {s->special=S2_SK_SLIDE;s->frame=0xCC;s->age=0;}
         } else if (s->special==S2_SK_FALL && !(m->status&AIR)) {
             s->special=0; m->vx=m->vy=m->inertia=0;
             m->status&=~(AIR|ROLL|ROLLJUMP|PUSH); m->jumping=0;
             m->move_lock=15; m->animation=0x23;
         }
+        /* KiS2 GlideControl and Sliding restore the standing box before
+         * object collision and the next tick's climb/ledge logic. Only the
+         * terrain query uses 10x10. A wall jump retains its rolling box. */
+        if (s->special) { m->radius_x=9; m->radius_y=19; }
     }
 }
 int s2_character_attacking(const S2CharacterState *s, const S2Motion *m)
@@ -209,7 +250,8 @@ int s2_character_attacking(const S2CharacterState *s, const S2Motion *m)
         unsigned a=m->animation;
         return a==2 || a==9 || (a>=0x23 && a<=0x25) || (a>=0x28 && a<=0x2A);
     }
-    return m->animation==2 || m->animation==9 || (s->kind==S2_CHAR_KNUCKLES && s->special==S2_SK_GLIDE);
+    return m->animation==2 || m->animation==9 || (s->kind==S2_CHAR_KNUCKLES &&
+        (s->special==S2_SK_GLIDE || s->special==S2_SK_SLIDE));
 }
 void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *bank)
 {
@@ -222,8 +264,8 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
             s->render_flip=s->frame==0xC4; if (s->render_flip) s->frame=0xC0;
         } else {
             s->render_flip=!!(m->status&FACE);
-            if (s->special==S2_SK_CLIMB && (s->held&(UP|DOWN)) && !(s->age&3)) {
-                int frame=s->frame+((s->held&UP)?1:-1);
+            if (s->special==S2_SK_CLIMB && s->climb_delta && !(s->age&3)) {
+                int frame=s->frame+s->climb_delta;
                 s->frame=(uint8_t)(frame>0xBC?0xB7:frame<0xB7?0xBC:frame);
             }
         }
