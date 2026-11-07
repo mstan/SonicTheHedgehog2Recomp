@@ -1775,15 +1775,18 @@ void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
     if(!front->serial || !(front->ui_mask&(1u<<p)))return;
     int donor_hud=!vs && !strcmp(s2_party.roster.character[0],"knuckles") &&
         s2_resource_knuckles_art()!=NULL;
+    int competition_hud=vs && s2_runtime_ui_font()!=NULL &&
+        strcmp(s2_party.roster.character[p],p?"tails":"sonic");
     int cell=(v->reg[12]&6)==6?16:8,slot=0;uint8_t covered[320]={0};
     for(unsigned i=0;i<80 && slot<80;++i) {
         unsigned at=table+(unsigned)slot*8,kind=front->kind[p][slot];
         unsigned attr=vram16(v,at+4),size=v->vram[(at+2)&65535],cw=((size>>2)&3)+1,ch=(size&3)+1;
         int x=(vram16(v,at+6)&511)-128,y=(vram16(v,at)&1023)-(cell==16?256:128);
-        /* The original KiS2 HUD replacement owns both its ink and its
-         * transparent silhouette; do not put Sonic's old name back under it. */
-        int replaced=donor_hud && kind==1 &&
-            ((attr&2047)==0x7D4 || (attr&2047)==0x7D8);
+        /* Character HUDs own both their ink and transparent silhouette;
+         * do not put the old role's icon/name back under the replacement. */
+        int replaced=kind==1 && ((donor_hud &&
+            ((attr&2047)==0x7D4 || (attr&2047)==0x7D8)) ||
+            (competition_hud && (x==16 || x==32) && y==(p?424:200)));
         {
             if(!replaced && line>=y && line<y+(int)ch*cell) {
                 int iy=line-y;if(attr&0x1000)iy=(int)ch*cell-1-iy;

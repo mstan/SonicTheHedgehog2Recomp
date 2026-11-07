@@ -327,6 +327,41 @@ static void front_ui_and_background_priority_test(void)
     CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
 }
 
+static void competition_hud_replacement_test(void)
+{
+    static GVDP v;uint32_t out[320];
+    static const char *names[]={"sonic","tails","amy","knuckles","shadow","mighty"};
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    CHECK(sonic2_video.configure("off"));g_ram[0xF600]=12;g_ram[0xF711]=1;
+    g_ram[0xB000]=1;g_ram[0xB040]=2;
+    word(g_ram,0xFFD8,1);v.reg[1]=64;v.reg[5]=0x7C;v.reg[12]=7;v.cram[1]=0xEEE;
+    memset(v.vram+64,0x10,64);
+    for(unsigned p=0;p<2;++p) {
+        unsigned table=p?0xDD00:0xF800,life_y=p?424:200;
+        word(g_ram,table,life_y+256);word(g_ram,table+2,1);
+        word(g_ram,table+4,0x8001);word(g_ram,table+6,144);
+        word(g_ram,table+8,life_y+256);word(g_ram,table+10,0);
+        word(g_ram,table+12,0x8001);word(g_ram,table+14,160);
+        g_cpu.A[0]=0;g_cpu.A[1]=0x40C88;g_cpu.A[2]=0xFFFF0000u|(table+8);
+        s2_video_hook(0x16604);s2_video_hook(0x16DEE);
+        g_cpu.A[1]+=8;g_cpu.A[2]+=8;s2_video_hook(0x16DEE);s2_video_hook(0x16712);
+        memcpy(v.vram+0xF800,g_ram+table,640);
+        for(unsigned c=0;c<6;++c) {
+            strcpy(s2_party.roster.character[p],names[c]);
+            for(unsigned x=0;x<320;++x)out[x]=0xFFFF0000;
+            s2_video_front_ui(&v,p?224:0,out,320);
+            s2_video_front_ui(&v,(int)life_y,out,320);
+            /* The native role keeps its own glyph. Other roles delegate the
+             * entire old life-name footprint to competition_hud's drawer. */
+            uint32_t expected=c==(p?1u:0u)?0xFFFFFFFF:0xFFFF0000;
+            if(out[16]!=expected || out[32]!=expected)
+                fprintf(stderr,"VS life HUD p%u %s: %08x/%08x expected %08x\n",p+1,names[c],out[16],out[32],expected);
+            CHECK(out[16]==expected && out[32]==expected);
+            CHECK(out[17]==0xFFFF0000 && out[33]==0xFFFF0000);
+        }
+    }
+}
+
 int main(void)
 {
     /* Byte-matched SwScrl_EHZ_2P band boundaries and fixed-point gradient;
@@ -697,6 +732,7 @@ int main(void)
     private_water_palette_test();
     special_stage_pixel_shape_test();
     front_ui_and_background_priority_test();
+    competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }
