@@ -29,9 +29,12 @@ typedef struct S2DonorBank {
     uint16_t super_animation_length[64];
     uint8_t super_animations[64][256];
     uint16_t water_palette[16], cycle_palette[2][16][4];
+    uint16_t water_palette_alt[16]; /* optional second native water zone */
+    unsigned water_palette_count;
 } S2DonorBank;
 typedef struct S2KnucklesArt {
     uint8_t life[12*32],shield_stars[66*32],monitor[8*32],signpost[24*32];
+    uint8_t continue_icons[12*32],font_k[4*32];
     uint16_t palette[16],water_palette[2][16]; /* KiS2 CPZ and ARZ */
 } S2KnucklesArt;
 /* Immutable native competition HUD sources from the verified REV01 ROM. */

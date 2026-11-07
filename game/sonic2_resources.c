@@ -13,6 +13,15 @@ static S2KnucklesArt knuckles_art;
 int s2_resources_prepare_stage_images(const unsigned char *rom,unsigned size)
 { return s2_stage_images_decode(rom,size,save_assets); }
 static char errors[S2_RESOURCE_COUNT][192];
+static int read_palette(const uint8_t *rom,size_t size,unsigned entry,uint16_t out[16])
+{
+    if(size<32 || entry>size-4)return 0;
+    unsigned at=(unsigned)rom[entry]<<24|(unsigned)rom[entry+1]<<16|
+        (unsigned)rom[entry+2]<<8|rom[entry+3];
+    if(at>size-32)return 0;
+    for(unsigned c=0;c<16;++c)out[c]=(uint16_t)((rom[at+c*2]<<8)|rom[at+c*2+1]);
+    return 1;
+}
 static const char *hashes[S2_RESOURCE_COUNT] = {
     "9c028944730128f6b9999fc74babf69694b0edab50e3f42cc6b60a185d0b1457",
     "fba0677fde9f76df93f3e98d6310d8af68b9847bde16e253d73cd4dd8134ed23",
@@ -59,14 +68,23 @@ int s2_resource_set(unsigned i, const char *path)
     int ok = s2_donor_decode(rom, size, i==S2_RESOURCE_MEGAMIX?&s2_megamix_mighty_layout:i==S2_RESOURCE_AMY?&s2_amy_171_layout:&s2_sk_knuckles_layout,
         &candidate, errors[i], sizeof errors[i]);
     if (ok && i==S2_RESOURCE_SK) ok=s2_save_assets_decode(rom,size,&menu,errors[i],sizeof errors[i]);
+    if(ok && i==S2_RESOURCE_AMY) {
+        /* Amy 1.7.1 retains REV01 PalLoad_Water's descriptor table and
+         * provides its own CPZ/ARZ character colours in entries $16/$17. */
+        ok=read_palette(rom,size,0x2782+0x16*8,candidate.water_palette) &&
+            read_palette(rom,size,0x2782+0x17*8,candidate.water_palette_alt);
+        candidate.water_palette_count=2;
+        if(!ok)snprintf(errors[i],sizeof errors[i],"Invalid donor water palettes");
+    }
     if (ok && i==S2_RESOURCE_MEGAMIX) {
         ok=s2_donor_decode(rom,size,&s2_megamix_shadow_layout,&shadow,errors[i],sizeof errors[i]);
         if (ok) {
             /* Exact v3 normal/water palette and four-shade Super cycles. */
-            unsigned at=0x22D0+0x1A*8;
-            unsigned water=(unsigned)rom[at]<<24|(unsigned)rom[at+1]<<16|(unsigned)rom[at+2]<<8|rom[at+3];
-            if (water>size-32) ok=0;
-            else for (unsigned c=0;c<16;++c) shadow.water_palette[c]=(uint16_t)((rom[water+c*2]<<8)|rom[water+c*2+1]);
+            /* v3 Level initialization selects $19 for Mighty, $1A for Shadow. */
+            ok=read_palette(rom,size,0x22D0+0x19*8,candidate.water_palette) &&
+                read_palette(rom,size,0x22D0+0x1A*8,shadow.water_palette);
+            candidate.water_palette_count=shadow.water_palette_count=1;
+            if(!ok)snprintf(errors[i],sizeof errors[i],"Invalid donor water palettes");
             for (unsigned wet=0;wet<2;++wet) for (unsigned f=0;f<16;++f) for (unsigned c=0;c<4;++c) {
                 unsigned p=(wet?0x11CCFC:0x11CB7C)+f*8+c*2;
                 shadow.cycle_palette[wet][f][c]=(uint16_t)((rom[p]<<8)|rom[p+1]);

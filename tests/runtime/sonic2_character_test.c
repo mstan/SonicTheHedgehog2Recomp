@@ -40,6 +40,11 @@ int main(void)
     s2_character_before(&s,&m,0x20,0x20,&c);
     assert(s.special==S2_SK_GLIDE && s.move==S2_MOVE_AIR && m.radius_y==10 && !(m.status&4));
     assert(s2_character_attacking(&s,&m));
+    s2_character_after(&s,&m,&c);
+    assert(m.radius_x==9 && m.radius_y==19 && s.special==S2_SK_GLIDE);
+    s2_character_before(&s,&m,0x20,0,&c);
+    assert(m.radius_x==10 && m.radius_y==10);
+    s2_character_after(&s,&m,&c);
     s2_character_before(&s,&m,0,0,&c);
     assert(s.special==S2_SK_FALL && m.radius_y==19);
     s.special=S2_SK_CLIMB; s.wall_x=m.x; c.wall=0;
@@ -55,16 +60,75 @@ int main(void)
     s.special=S2_SK_SLIDE; m.radius_y=m.radius_x=10; m.y=0; c.floor=0;
     s2_character_before(&s,&m,0,0,&c);
     assert(m.animation==0x22 && m.move_lock==15 && m.y==-9*65536 && m.radius_y==19);
+    /* The KiS2 glide box is local to terrain collision, including a slide.
+     * Solid-object landing uses the full box and returns directly to Walk,
+     * preserving the object's movement rather than the terrain get-up lock. */
+    s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+    s.special=S2_SK_SLIDE; m.vx=0x200; c.floor=0;
+    s2_character_before(&s,&m,0x20,0,&c);
+    assert(m.radius_y==10 && m.vx==0x1E0);
+    s2_character_after(&s,&m,&c);
+    assert(m.radius_y==19 && m.radius_x==9);
+    assert(s2_character_attacking(&s,&m));
+    m.y=80*65536;
+    s2_character_before(&s,&m,0,0,&c);
+    assert(m.y==71*65536 && m.animation==0x22 && !m.jumping && m.radius_y==19);
+    for (unsigned action=S2_SK_GLIDE;action<=S2_SK_LEDGE;++action) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+        s.special=action; m.status=8; m.animation=0x20; m.jumping=1;
+        m.vx=m.inertia=0x180; m.y=123*65536;
+        s2_character_before(&s,&m,0x20,0,&c);
+        assert(s.special==S2_SK_NORMAL && s.move==S2_MOVE_NATIVE);
+        assert(m.animation==0 && !m.jumping && !m.move_lock);
+        assert(m.y==123*65536 && m.vx==0x180 && m.radius_y==19);
+    }
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_GLIDE;m.radius_x=m.radius_y=10;m.hurt=1;
+    s2_character_after(&s,&m,&c);
+    assert(!s.special && m.radius_x==9 && m.radius_y==19);
     for (unsigned face=0;face<2;++face) {
         s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
         s.special=S2_SK_CLIMB; m.status=(uint8_t)(2|face); m.jumping=1;
-        s.wall_x=m.x; c.wall=4;
+        s.wall_x=m.x; c.wall=c.climb_up=4;
         s2_character_before(&s,&m,1,0,&c);
         assert(s.special==S2_SK_LEDGE && s.frame==0xBD && m.y==-3*65536);
         for (unsigned tick=0;tick<21;++tick) s2_character_before(&s,&m,1,0,&c);
         assert(s.special==S2_SK_NORMAL && m.animation==5 && !m.jumping);
         assert(m.x==(face?-12:11)*65536 && m.y==-30*65536 && !(m.status&2));
     }
+    /* KiS2 BeginClimb aligns a near upper edge, rejects gaps >=12, and
+     * uses separate probes above/below the player's center while climbing. */
+    c.climb_up=c.climb_down=0;c.wall=0;c.grab_y=11;c.grab_x=1;
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_GLIDE;m.status=3;m.jumping=1;m.animation=0x20;
+    s2_character_after(&s,&m,&c);
+    assert(s.special==S2_SK_CLIMB && m.x==65536 && m.y==11*65536 && s.wall_x==m.x);
+    c.grab_y=12;s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_GLIDE;m.status=2;m.animation=0x20;
+    s2_character_after(&s,&m,&c);assert(s.special==S2_SK_FALL && m.animation==0x21);
+    c.grab_y=-1;s.special=S2_SK_GLIDE;
+    s2_character_after(&s,&m,&c);assert(s.special==S2_SK_FALL);
+    c.grab_y=c.grab_x=0;
+    s.special=S2_SK_GLIDE;m.status=0;
+    s2_character_after(&s,&m,&c);
+    assert(s.special==S2_SK_CLIMB && (m.status&2) && m.jumping); /* wall before floor */
+    s.special=S2_SK_CLIMB;s.wall_x=m.x;c.climb_up=2;unsigned age=s.age;
+    s2_character_before(&s,&m,1,0,&c);
+    assert(s.special==S2_SK_CLIMB && m.y==0 && s.age==age && !s.climb_delta);
+    c.climb_up=0;c.ceiling=-3;
+    s2_character_before(&s,&m,1,0,&c);
+    assert(m.y==3*65536 && s.climb_delta==1);
+    c.ceiling=64;c.climb_min_enabled=1;c.climb_min_y=100;m.y=100*65536;m.super=1;
+    s2_character_before(&s,&m,1,0,&c);
+    assert(m.y==100*65536 && s.climb_delta==1);
+    c.climb_min_enabled=0;
+    s2_character_before(&s,&m,1,0,&c);
+    assert(m.y==98*65536); /* wrapping stages retain upward movement */
+    m.y=3*65536;m.super=0;
+    c.ceiling=64;c.climb_down=0;c.floor=-1;c.floor_angle=8;m.jumping=1;
+    s2_character_before(&s,&m,2,0,&c);
+    assert(s.special==S2_SK_NORMAL && m.y==2*65536 && m.angle==8 && !m.jumping && !(m.status&2));
+    c.floor=0;
     S2DonorBank bank={0}; bank.count=253; bank.animation_count=6;
     bank.animation_length[5]=5; memcpy(bank.animations[5],(uint8_t[]){1,10,11,0xFE,1},5);
     s2_character_reset(&s,S2_CHAR_AMY); m=standing();

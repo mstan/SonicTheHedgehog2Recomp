@@ -21,6 +21,10 @@ typedef struct S2Contacts {
     unsigned target;
     int target_dx, target_dy;
     uint8_t (*angle)(int dx, int dy);
+    int climb_up,climb_down,grab_y,grab_x;
+    uint8_t floor_angle;
+    int16_t climb_min_y;
+    uint8_t climb_min_enabled;
 } S2Contacts;
 typedef struct S2CharacterState {
     unsigned kind, special, age, charge, ledge;
@@ -33,6 +37,7 @@ typedef struct S2CharacterState {
     unsigned shadow_air_used, shadow_target, shadow_last_target, shadow_target_age;
     unsigned shadow_chain, shadow_chaos, source_animation, shadow_super;
     unsigned shadow_monitor_ticks; /* S-monitor prerequisite, independent of Super invincibility */
+    int8_t climb_delta;
 } S2CharacterState;
 void s2_character_reset(S2CharacterState *s, unsigned kind);
 void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t pressed, const S2Contacts *c);

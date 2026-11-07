@@ -52,6 +52,30 @@ discovery_files = [
 # ---------------------------------------------------------------------------
 # Opt-in custom renderer sites: canonical REV01 s2_canonical.lst.
 [[widescreen_site]]
+addr = 0x23C6 # Pal_FadeFromBlack: donor palette starts at black
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x23FE # Pal_FadeFromBlack.UpdateAllColours
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x248A # Pal_FadeToBlack.UpdateAllColours
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x24E8 # Pal_FadeFromWhite
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x2522 # Pal_FadeFromWhite.UpdateAllColours
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x2592 # Pal_FadeToWhite
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x25B2 # Pal_FadeToWhite.UpdateAllColours
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x3F7C8 # Touch_Enemy_Part2: Knuckles leaves glide on a damaging rebound
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x246A # Pal_FadeToBlack: retain the outgoing save-menu composition until black
 kind = "game_hook"
 [[widescreen_site]]
