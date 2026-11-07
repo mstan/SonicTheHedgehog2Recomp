@@ -366,6 +366,18 @@ static void knuckles_special_ui_test(void)
         }
     }
     CHECK(!memcmp(g_ram,original_ram,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    /* Checkpoint sprites may cross the top edge. Fully clipped pieces must
+     * leave the presented row alone; partially visible native ink stays red. */
+    CHECK(configure("off"));word(v.vram,0xF820,112);
+    for(unsigned x=0;x<256;++x)out[x]=0x12345678;
+    s2_video_special_actor(&v,0,out,256);
+    for(unsigned x=0;x<256;++x)CHECK(out[x]==0x12345678);
+    word(v.vram,0xF820,124);s2_video_special_actor(&v,0,out,256);
+    CHECK(out[64]==genesis_dac_cram_to_argb(0x00E,GENESIS_DAC_NORMAL));
+    for(unsigned x=0;x<256;++x)out[x]=0x12345678;
+    s2_video_special_actor(&v,4,out,256);
+    for(unsigned x=0;x<256;++x)CHECK(out[x]==0x12345678);
+    v=before;
     hud_available=0;s2_video_prepare_knuckles_items();out[32]=0x12345678;
     s2_video_special_actor(&v,0,out,256);s2_video_special_actor(&v,16,out,256);
     CHECK(out[32]==0x12345678);s2_video_hook(0x4F64);

@@ -821,7 +821,8 @@ static int special_primary_ui_sat(const GVDP *v,GVDP *copy,int line)
     for(unsigned n=0;n<64 && slot<80;++n) {
         unsigned at=table+slot*8,size=v->vram[(at+2)&65535];
         int y=(((v->vram[at&65535]<<8)|v->vram[(at+1)&65535])&1023)-128;
-        if(!(size&0x80) && line>=y && line<y+((size&3)+1)*8) {
+        int height=(int)((size&3)+1)*8;
+        if(!(size&0x80) && line>=y && line<y+height) {
             unsigned attr=(v->vram[(at+4)&65535]<<8)|v->vram[(at+5)&65535],tile=attr&2047;
             unsigned cells=(((size>>2)&3)+1)*((size&3)+1);
             if((attr&0xE000)==0xA000 && tile>=0x1FA &&
