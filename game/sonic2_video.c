@@ -725,7 +725,9 @@ void s2_video_prepare_knuckles_items(void)
     int split=1<<20;
     if (!competition() && g_ram[0xF64C])
         split=g_ram[0xF64E]?0:g_ram[0xF625]+1;
-    gvdp_set_ext_tiles(world_lines);
+    /* Half-pipe colours belong only to marked sprites. Keep native planes
+     * on their ordinary path when no world palette provider needs them. */
+    gvdp_set_ext_tiles(knux_world || shadow_active?world_lines:NULL);
     memcpy(s_item_top,top,sizeof s_item_top);memcpy(s_item_bottom,bottom,sizeof s_item_bottom);
     gvdp_set_ext_colors(top,bottom,split);
     if (shadow_active) gvdp_set_sprite_patterns_bank(1,shadow_patterns,sizeof shadow_patterns,shadow_lines);
