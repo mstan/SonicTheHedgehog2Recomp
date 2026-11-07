@@ -276,6 +276,49 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
         !nemesis(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
         !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor) ||
         !nemesis(r+0x33AAF2,340,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
+    /* KiS2 has its own half-pipe mappings and standard DPLCs. Retain those
+     * pieces: nine frames extend outside the stock Sonic mapping geometry.
+     * All patterns and colours remain derived from the verified owner ROM. */
+    uint8_t special_tiles[442*32];
+    if ((be16(r+0x33B3F0)&0x7FFF)!=442 ||
+        !nemesis(r+0x33B3F0,6892,special_tiles,sizeof special_tiles)) return 0;
+    for (unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame) {
+        unsigned mp=0x32D410+be16(r+0x32D410+frame*2);
+        unsigned dp=0x32D728+be16(r+0x32D728+frame*2);
+        if (mp>size-2 || dp>size-2) return 0;
+        unsigned pieces=be16(r+mp),cues=be16(r+dp),tiles=0;
+        if (!pieces || pieces>S2_SPECIAL_PIECES || cues>S2_SPECIAL_PIECES ||
+            pieces*6>size-mp-2 || cues*2>size-dp-2) return 0;
+        S2SpecialArtFrame *f=&candidate.special[frame];f->count=(uint8_t)pieces;
+        for (unsigned i=0;i<cues;++i) {
+            unsigned code=be16(r+dp+2+i*2),source=code&4095,count=(code>>12)+1;
+            if (source+count>442 || tiles+count>S2_SPECIAL_TILES) return 0;
+            memcpy(f->tiles+tiles*32,special_tiles+source*32,count*32);tiles+=count;
+        }
+        for (unsigned i=0;i<pieces;++i) {
+            const uint8_t *p=r+mp+2+i*6;S2SpecialPiece *piece=&f->pieces[i];
+            piece->y=(int8_t)p[0];piece->size=p[1];
+            piece->attr=(uint16_t)be16(p+2);piece->x=(int16_t)be16(p+4);
+            unsigned cells=(((piece->size>>2)&3)+1)*((piece->size&3)+1);
+            if (piece->size>15 || (piece->attr&0x6000) ||
+                (piece->attr&2047)+cells>tiles || piece->x < -128 || piece->x>127) return 0;
+        }
+    }
+    for(unsigned frame=0;frame<S2_SS_RESULT_FRAMES;++frame) {
+        unsigned mp=0x311D22+be16(r+0x311D22+frame*2);
+        if(mp>size-2)return 0;
+        unsigned pieces=be16(r+mp);
+        if(!pieces || pieces>S2_SS_RESULT_PIECES || pieces*6>size-mp-2)return 0;
+        S2SpecialResultArtFrame *f=&candidate.special_results[frame];f->count=(uint8_t)pieces;
+        for(unsigned i=0;i<pieces;++i) {
+            const uint8_t *p=r+mp+2+i*6;S2SpecialPiece *piece=&f->pieces[i];
+            piece->y=(int8_t)p[0];piece->size=p[1];
+            piece->attr=(uint16_t)be16(p+2);piece->x=(int16_t)be16(p+4);
+            unsigned cells=(((piece->size>>2)&3)+1)*((piece->size&3)+1);
+            if(piece->size>15 || (piece->attr&2047)+cells>2048 ||
+               piece->x < -256 || piece->x>255)return 0;
+        }
+    }
     memcpy(candidate.font_k,r+0x312096,sizeof candidate.font_k);
     for (unsigned i=0;i<16;++i) {
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
@@ -283,6 +326,7 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
          * Read from the verified owner image, never embed donor palette data. */
         candidate.water_palette[0][i]=(uint16_t)be16(r+0x3029BE+i*2);
         candidate.water_palette[1][i]=(uint16_t)be16(r+0x302AFE+i*2);
+        candidate.special_palette[i]=(uint16_t)be16(r+0x302CDE+i*2);
     }
     *out=candidate; return 1;
 }

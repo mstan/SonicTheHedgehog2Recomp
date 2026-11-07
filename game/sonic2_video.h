@@ -19,6 +19,8 @@ void s2_video_prepare_knuckles_items(void);
 int s2_video_water_palette(const struct GVDP *v);
 uint16_t s2_video_donor_color(uint16_t shade);
 void s2_video_results_name(const struct GVDP *v,int line,uint32_t *out,int width,int draw);
+void s2_video_special_actor(const struct GVDP *v,int line,uint32_t *out,int width);
+void s2_video_special_results(const struct GVDP *v,int line,uint32_t *out,int width);
 
 int s2_video_intro_world_visible(void);
 

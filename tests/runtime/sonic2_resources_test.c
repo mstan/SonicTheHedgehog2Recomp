@@ -69,6 +69,16 @@ int main(int argc, char **argv)
         assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles","original-knuckles-art",argv[2]));
         const S2KnucklesArt *art=s2_resource_knuckles_art();
         assert(art && art->palette[4]==0x080 && art->palette[6]==0xEEE);
+        for(unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame) {
+            const S2SpecialArtFrame *special=&art->special[frame];
+            assert(special->count>=2 && special->count<=S2_SPECIAL_PIECES);
+            unsigned ink=0;
+            for(unsigned i=0;i<sizeof special->tiles;++i)ink+=special->tiles[i]!=0;
+            assert(ink>200);
+        }
+        for(unsigned frame=0;frame<S2_SS_RESULT_FRAMES;++frame)
+            assert(art->special_results[frame].count>0 && art->special_results[frame].count<=S2_SS_RESULT_PIECES);
+        assert((art->special_results[29].pieces[0].attr&2047)==0x3E);
         S2KnucklesArt before=*art;
         assert(!s2_resource_set(S2_RESOURCE_KIS2,"missing-kis2.bin"));
         assert(!memcmp(&before,s2_resource_knuckles_art(),sizeof before));
