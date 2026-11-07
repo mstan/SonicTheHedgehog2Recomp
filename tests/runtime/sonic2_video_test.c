@@ -304,12 +304,19 @@ static void front_ui_and_background_priority_test(void)
     word(v.vram,0xE000,0x8001);
     CHECK(!s2_video_actor_pixel_visible(&v,0,0,0,g_ram));
     CHECK(s2_video_actor_pixel_visible(&v,0,0,1,g_ram));
-    /* The complete wide scene already knows which opaque UI pixels win.
-     * Restore precisely those after a donor, including extended card edges. */
+    /* Capture a real queued Obj34 mapping through the widescreen path, then
+     * restore its opaque UI pixel after a donor while preserving its hole. */
     CHECK(sonic2_video.configure("16:9"));CHECK(reserve_sprite_row(398));
     memset(s_priority,0,398);memset(&s_display_frame,0,sizeof s_display_frame);
-    s_display=&s_display_frame;s_display_frame.scene=1;s_display_frame.count=1;
-    s_display_frame.sprites[0]=(SceneSprite){0,0,0x8001,0,130};
+    memset(g_rom,0,sizeof g_rom);word(g_ram,0xE808,0xFFFF);
+    g_ram[0xB000]=1;g_ram[0xB800]=0x34;g_ram[0xB801]=0;
+    word(g_ram,0xB802,0x8001);word(g_ram,0xB804,0);word(g_ram,0xB806,0x100);
+    word(g_ram,0xB808,128);word(g_ram,0xB80A,128);word(g_ram,0xB830,128);
+    word(g_ram,0xAC00,2);word(g_ram,0xAC02,0xB800);
+    word(g_rom,0x100,2);word(g_rom,0x102,1);
+    memset(g_rom+0x104,0,8);memcpy(ram,g_ram,sizeof ram);
+    capture_objects_into(&s_display_frame,398,1,NULL);
+    CHECK(s_display_frame.count==1);s_display=&s_display_frame;
     s_frame_level=1;s_frame_vs=0;s_camera=s_camera_y=0;
     uint32_t palette[64]={0};palette[1]=0xFFFFFFFF;
     for(unsigned x=0;x<398;++x)out[x]=0xFFFF0000;
