@@ -852,7 +852,7 @@ int s2_runtime_hook(uint32_t pc)
     }
     if (pc==0x4F64) {
         s2_video_hook(pc);
-        /* Stock solo roles and original Knuckles use the native solo
+        /* Stock solo roles and the original Amy/Knuckles use the native solo
          * half-pipe controller. The campaign roster survives the round trip;
          * unsupported imported half-pipe roles still use the stock duo. */
         inside_player=0; actor=-1;
@@ -860,7 +860,7 @@ int s2_runtime_hook(uint32_t pc)
         memset(objects+2,0,sizeof objects-2*sizeof objects[0]);
         unsigned primary=kind(0),solo=s2_party.roster.slots==1;
         putword(0xFF70,solo && primary==S2_CHAR_TAILS?2:
-            solo && (primary==S2_CHAR_SONIC || primary==S2_CHAR_KNUCKLES)?1:0);
+            solo && (primary==S2_CHAR_SONIC || primary==S2_CHAR_KNUCKLES || primary==S2_CHAR_AMY)?1:0);
         return 0;
     }
     if (pc==0x4450) { /* Level_SetPlayerMode: attract demos remain byte-identical */

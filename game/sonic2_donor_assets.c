@@ -14,6 +14,39 @@ const S2DonorLayout s2_megamix_mighty_layout = {176,0x2A9D6,0x2C3D2,0xA9364,0x2C
 const S2DonorLayout s2_megamix_shadow_layout = {176,0x2B6A4,0x2CA1C,0xBE2E4,0x2C80,5,0x1AA1C,38,0,0,0x1AB5E,38};
 static unsigned word(const uint8_t *p) { return (unsigned)p[0]*256+p[1]; }
 static int inside(size_t size,size_t offset,size_t length) { return offset<=size && length<=size-offset; }
+int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out)
+{
+    if(!rom || !out || size!=0x200000)return 0;
+    S2SpecialStageArt candidate={0};
+    /* The original Obj09 uses the stock 18-frame animation sequence, but
+     * supplies its own geometry and standard DPLCs into raw ROM art. */
+    for(unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame) {
+        size_t mp=0x36490+word(rom+0x36490+frame*2);
+        size_t dp=0x36878+word(rom+0x36878+frame*2);
+        if(!inside(size,mp,2) || !inside(size,dp,2))return 0;
+        unsigned pieces=word(rom+mp),cues=word(rom+dp),tiles=0;
+        if(!pieces || pieces>S2_SPECIAL_PIECES || !cues || cues>S2_SPECIAL_PIECES ||
+           !inside(size,mp+2,pieces*8) || !inside(size,dp+2,cues*2))return 0;
+        S2SpecialArtFrame *f=&candidate.frames[frame];f->count=(uint8_t)pieces;
+        for(unsigned i=0;i<cues;++i) {
+            unsigned code=word(rom+dp+2+i*2),count=(code>>12)+1;
+            size_t source=0x106DC2+(size_t)(code&4095)*32;
+            if(tiles+count>S2_SPECIAL_TILES || !inside(size,source,count*32))return 0;
+            memcpy(f->tiles+tiles*32,rom+source,count*32);tiles+=count;
+        }
+        for(unsigned i=0;i<pieces;++i) {
+            const uint8_t *p=rom+mp+2+i*8;S2SpecialPiece *piece=&f->pieces[i];
+            piece->y=(int8_t)p[0];piece->size=p[1];piece->attr=(uint16_t)word(p+2);
+            piece->x=(int16_t)word(p+6);
+            unsigned cells=(((piece->size>>2)&3)+1)*((piece->size&3)+1);
+            if(piece->size>15 || (piece->attr&0x6000) ||
+               (piece->attr&2047)+cells>tiles || piece->x < -128 || piece->x>127)return 0;
+        }
+    }
+    /* PalLoad_ForFade entry $18 ($2842) selects $3142; Obj09 uses line1. */
+    for(unsigned i=0;i<16;++i)candidate.palette[i]=(uint16_t)word(rom+0x3162+i*2);
+    *out=candidate;return 1;
+}
 void s2_donor_free(S2DonorBank *bank)
 {
     if (!bank) return;
