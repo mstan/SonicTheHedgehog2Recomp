@@ -214,6 +214,32 @@ static void results_identity_test(void)
     CHECK(out[96]==0xFF00FF00 && !memcmp(original,g_ram,sizeof original));
     hud_available=0;CHECK(sonic2_video.configure("off"));
 }
+static void special_results_scroll_test(void)
+{
+    uint8_t before[65536];
+    /* These are ordinary queued level rows, not results-screen sprites.
+     * Vint_Level copies the source flags before invoking tile streaming. */
+    for (unsigned wide=0;wide<2;++wide) {
+        s_mode=wide?VIDEO_RATIO:VIDEO_OFF;
+        memset(g_ram,0xA5,sizeof g_ram);g_ram[0xF600]=16;
+        memcpy(before,g_ram,sizeof before);
+        s2_video_hook(0x5300);
+        for (unsigned i=0;i<sizeof g_ram;++i) {
+            int flags=(i>=0xEE50 && i<0xEE60) || (i>=0xEEA0 && i<0xEEB0);
+            CHECK(g_ram[i]==(flags?0:before[i]));
+        }
+        /* The subsequent native V-int must copy only retired requests. */
+        memcpy(g_ram+0xEEA0,g_ram+0xEE50,16);
+        for(unsigned i=0;i<16;++i)CHECK(!g_ram[0xEEA0+i]);
+        for(unsigned mode=0;mode<32;++mode)if(mode!=16) {
+            memset(g_ram,0xA5,sizeof g_ram);g_ram[0xF600]=(uint8_t)mode;
+            memcpy(before,g_ram,sizeof before);s2_video_hook(0x5300);
+            CHECK(!memcmp(g_ram,before,sizeof g_ram));
+        }
+    }
+    s_mode=VIDEO_OFF;
+}
+
 static void special_results_identity_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
@@ -996,6 +1022,7 @@ int main(void)
     native_interpolation_test();
     donor_palette_fade_test();
     results_identity_test();
+    special_results_scroll_test();
     private_water_palette_test();
     special_stage_pixel_shape_test();
     special_actor_test();

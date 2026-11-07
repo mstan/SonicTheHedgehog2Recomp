@@ -1,7 +1,7 @@
 /* Opt-in Sonic 2 REV01 world renderer.
  * Canonical s2disasm: GetBlock $E244, ObjectsManager $17AA4,
  * BuildSprites $16604, RingsManager $16F88. Native rendering is the default.
- * No collision, layout, decompression or tile-streaming data is rewritten.
+ * Native collision, layouts and decompression remain authoritative.
  */
 #include "sonic2_video.h"
 #include "sonic2_runtime.h"
@@ -1301,6 +1301,15 @@ static void publish_sprites(void)
 int s2_video_hook(uint32_t pc)
 {
     switch (pc) {
+    case 0x5300:
+        /* Half-pipe results reuse the level V-int, including its tile
+         * streaming. Retire pending world redraws before ClearScreen, so
+         * that first results V-int cannot repopulate the cleared planes. */
+        if ((g_ram[0xF600]&127)==16) {
+            memset(g_ram+0xEE50,0,16); /* both players' source scroll flags */
+            memset(g_ram+0xEEA0,0,16); /* pending V-int/H-int copies */
+        }
+        break;
     case 0x4450: s_donor_fade=(DonorFade){0}; /* fresh level retires SS publications */
         /* fall through */
     case 0x4F64:
