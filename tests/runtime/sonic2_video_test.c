@@ -315,6 +315,62 @@ static void amy_special_ui_test(void)
     CHECK(out[96]==0x12345678);s2_video_hook(0x4F64);
 }
 
+static void knuckles_special_ui_test(void)
+{
+    static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    s2_video_hook(0x4F64);hud_available=1;amy_special_available=0;
+    strcpy(s2_party.roster.character[0],"knuckles");
+    strcpy(s2_party.roster.character[1],"tails");s2_party.roster.slots=2;
+    g_ram[0xF600]=16;
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=8;v.reg[16]=1;
+    v.cram[17]=0xE00;v.cram[18]=0xEEE;v.cram[33]=v.cram[34]=0x0E0;
+    hud_art.special_palette[1]=0x00E;hud_art.special_palette[2]=0x0E0;
+    /* Native blue high-priority terrain remains visible under omitted names.
+     * The checkpoint's native ink is deliberately absent from donor patterns. */
+    memset(v.vram+0x1BC*32,0x11,32);memset(v.vram+0x1BA*32,0x22,32);
+    memset(v.vram+0x1FA*32,0x22,11*32);
+    for(unsigned at=0xC000;at<0xD000;at+=2)word(v.vram,at,0xA1BC);
+    static const struct {int x,y;unsigned size,attr;} pieces[]={
+        {32,16,12,0xA1FA},{64,16,0,0xA1FE}, /* primary SONIC */
+        {160,16,0,0xC1FF},{80,16,0,0xA204}, /* Tails and other HUD ink */
+        {64,64,0,0xA1BC},{104,64,0,0xC1BC},{144,64,0,0xA1BA}
+    };
+    for(unsigned i=0;i<sizeof pieces/sizeof pieces[0];++i) {
+        unsigned at=0xF800+i*8;word(v.vram,at,pieces[i].y+128);
+        v.vram[at+2]=(uint8_t)pieces[i].size;
+        v.vram[at+3]=(uint8_t)(i+1<sizeof pieces/sizeof pieces[0]?i+1:0);
+        word(v.vram,at+4,pieces[i].attr);word(v.vram,at+6,pieces[i].x+128);
+    }
+    s2_video_prepare_knuckles_items();memcpy(original_ram,g_ram,sizeof g_ram);before=v;
+    CHECK(!s_special_serial); /* The UI must work during native actor blink. */
+    for(unsigned wide=0;wide<2;++wide) {
+        CHECK(configure(wide?"16:9":"off"));int width=wide?398:256,source=wide?318:256;
+        s2_video_special_actor(&v,0,out,width);
+        for(unsigned line=16;line<=64;line+=48) {
+            for(int x=0;x<width;++x)out[x]=0xFF123456;
+            s2_video_special_actor(&v,(int)line,out,width);
+            for(int x=0;x<width;++x) {
+                int nx=x*source/width-(source-256)/2;
+                if(line==16) {
+                    if(nx>=32 && nx<72)CHECK(out[x]==genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL));
+                    if(nx>=160 && nx<168)CHECK(out[x]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+                    if(nx>=80 && nx<88)CHECK(out[x]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+                } else {
+                    if(nx>=64 && nx<72)CHECK(out[x]==genesis_dac_cram_to_argb(0x00E,GENESIS_DAC_NORMAL));
+                    if(nx>=104 && nx<112)CHECK(out[x]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+                    if(nx>=144 && nx<152)CHECK(out[x]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+                    if(nx==32)CHECK(out[x]==genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL));
+                }
+            }
+        }
+    }
+    CHECK(!memcmp(g_ram,original_ram,sizeof g_ram) && !memcmp(&v,&before,sizeof v));
+    hud_available=0;s2_video_prepare_knuckles_items();out[32]=0x12345678;
+    s2_video_special_actor(&v,0,out,256);s2_video_special_actor(&v,16,out,256);
+    CHECK(out[32]==0x12345678);s2_video_hook(0x4F64);
+}
+
 static void native_interpolation_test(void)
 {
     static GVDP v;
@@ -933,6 +989,7 @@ int main(void)
     special_actor_test();
     special_results_identity_test();
     amy_special_ui_test();
+    knuckles_special_ui_test();
     front_ui_and_background_priority_test();
     competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
