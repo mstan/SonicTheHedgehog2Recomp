@@ -569,6 +569,10 @@ static int knuckles_palette_tile(unsigned tile)
     return (tile>=0x400 && tile<0x456) || (tile>=0x46E && tile<0x482) ||
         (tile>=0x580 && tile<0x5A8);
 }
+static int amy_item_tile(unsigned tile)
+{
+    return (tile>=0x7D4 && tile<0x7D8) || (tile>=0x5F4 && tile<0x600);
+}
 #if OWN_BACKEND
 static int shadow_sprite_tagged(const uint8_t *data,unsigned base)
 {
@@ -645,6 +649,7 @@ void s2_video_prepare_knuckles_items(void)
 {
     static const S2KnucklesArt *cached;
     static const S2SpecialArtFrame *cached_special;
+    static const S2ItemArt *cached_amy_items;
     static uint8_t patterns[65536];
     static uint8_t shadow_patterns[65536],shadow_lines[2048],world_lines[2048],item_lines[2048];
     static int shadow_ready;
@@ -652,7 +657,11 @@ void s2_video_prepare_knuckles_items(void)
     const uint16_t *special_palette=NULL;
     const S2SpecialArtFrame *special=special_actor_art(&special_palette);
     const S2SpecialStageArt *amy=!strcmp(s2_party.roster.character[0],"amy")?s2_resource_amy_special():NULL;
-    if (art!=cached || special!=cached_special) {
+    const S2ItemArt *amy_items=s2_party.amy_enabled && !strcmp(s2_party.roster.character[0],"amy")?
+        s2_resource_amy_items():NULL;
+    const S2DonorBank *amy_bank=amy_items?s2_resource_bank(S2_RESOURCE_AMY):NULL;
+    if(!amy_bank)amy_items=NULL;
+    if (art!=cached || special!=cached_special || amy_items!=cached_amy_items) {
         memset(patterns,0,sizeof patterns);
         memset(item_lines,0,sizeof item_lines);
         if(art) {
@@ -675,6 +684,12 @@ void s2_video_prepare_knuckles_items(void)
             for(unsigned t=SPECIAL_HUD_NAME;t<SPECIAL_HUD_NAME+5;++t)
                 item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
         }
+        if(amy_items) {
+            memcpy(patterns+0x7D4*32,amy_items->life,sizeof amy_items->life);
+            memcpy(patterns+0x5F4*32,amy_items->continue_icons,sizeof amy_items->continue_icons);
+            for(unsigned t=0x7D4;t<0x7D8;++t)item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
+            for(unsigned t=0x5F4;t<0x600;++t)item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
+        }
         if(special)for(unsigned f=0;f<S2_SPECIAL_FRAMES;++f) {
             memcpy(patterns+f*S2_SPECIAL_TILES*32,special[f].tiles,S2_SPECIAL_TILES*32);
             for(unsigned t=0;t<S2_SPECIAL_TILES;++t)
@@ -685,10 +700,11 @@ void s2_video_prepare_knuckles_items(void)
         if(art && special==art->special)for(unsigned t=0x1BC;t<0x1FA;++t)
             item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
     }
-    cached=art;cached_special=special;
+    cached=art;cached_special=special;cached_amy_items=amy_items;
     /* Original grey items keep live CRAM. The signpost patch and tagged
      * world objects select a separate, native-timed Knuckles palette. */
-    gvdp_set_sprite_patterns_bank(0,art||special?patterns:NULL,art||special?sizeof patterns:0,item_lines);
+    int have_patterns=art || special || amy_items;
+    gvdp_set_sprite_patterns_bank(0,have_patterns?patterns:NULL,have_patterns?sizeof patterns:0,item_lines);
     const S2DonorBank *shadow=s2_party.shadow_enabled?s2_resource_shadow_bank():NULL;
     int selected=0;
     for (unsigned p=0;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p)
@@ -701,15 +717,17 @@ void s2_video_prepare_knuckles_items(void)
     int shadow_active=shadow && selected && shadow_ready && shadow_palette_needed();
     int knux_world=art && !competition() && (g_ram[0xF600]&127)==12 &&
         !strcmp(s2_party.roster.character[0],"knuckles");
+    int amy_world=amy_items && (g_ram[0xF600]&127)==12;
+    int item_world=knux_world || amy_world;
     int actor_special=special && (g_ram[0xF600]&127)==16;
     memset(world_lines,0,sizeof world_lines);
     /* The active colour table is shared, but only object-tagged pieces use
      * its Knuckles line. Planes and unmarked sprites keep native CRAM. */
-    s_item_water_enabled=knux_world && g_ram[0xF64C];
+    s_item_water_enabled=item_world && g_ram[0xF64C] && !competition();
     s_item_water_selected=-1;
     gvdp_set_host_sprites(s_item_water_enabled?item_palette_row:NULL,NULL);
     if (!shadow_active) gvdp_set_sprite_patterns_bank(1,NULL,0,NULL);
-    if (!shadow_active && !knux_world && !actor_special) {gvdp_set_ext_tiles(NULL);return;}
+    if (!shadow_active && !item_world && !actor_special) {gvdp_set_ext_tiles(NULL);return;}
     uint16_t top[GVDP_EXT_LINES*16]={0},bottom[GVDP_EXT_LINES*16]={0};
     /* Match the existing donor actor fade. Only marked Shadow stars use this
      * private line; native CRAM, world monitors and Knuckles stay unchanged. */
@@ -729,6 +747,16 @@ void s2_video_prepare_knuckles_items(void)
             bottom[16+c]=s2_video_donor_color(wet[c]);
         }
     }
+    if(amy_world) {
+        unsigned zone=g_ram[0xFE10];
+        const uint16_t *wet=amy_bank->palette;
+        if(!competition() && g_ram[0xF64C] && amy_bank->water_palette_count)
+            wet=zone==15 && amy_bank->water_palette_count>1?amy_bank->water_palette_alt:amy_bank->water_palette;
+        for(unsigned c=0;c<16;++c) {
+            top[16+c]=s2_video_donor_color(amy_bank->palette[c]);
+            bottom[16+c]=s2_video_donor_color(wet[c]);
+        }
+    }
     if(actor_special)for(unsigned c=0;c<16;++c)
         top[32+c]=bottom[32+c]=s2_video_donor_color(special_palette[c]);
     int split=1<<20;
@@ -736,7 +764,7 @@ void s2_video_prepare_knuckles_items(void)
         split=g_ram[0xF64E]?0:g_ram[0xF625]+1;
     /* Half-pipe colours belong only to marked sprites. Keep native planes
      * on their ordinary path when no world palette provider needs them. */
-    gvdp_set_ext_tiles(knux_world || shadow_active?world_lines:NULL);
+    gvdp_set_ext_tiles(item_world || shadow_active?world_lines:NULL);
     memcpy(s_item_top,top,sizeof s_item_top);memcpy(s_item_bottom,bottom,sizeof s_item_bottom);
     gvdp_set_ext_colors(top,bottom,split);
     if (shadow_active) gvdp_set_sprite_patterns_bank(1,shadow_patterns,sizeof shadow_patterns,shadow_lines);
@@ -1067,6 +1095,7 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
                          ((flags&0x1000)?SCENE_WATER_REPEAT:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
+        if ((flags&0x2000) && amy_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
             (attr&2047)*(vs?2u:1u)<0x500) q->size|=0xC0;
@@ -1207,6 +1236,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
             unsigned flags=g_ram[o+1],multi=flags&64,space=flags&12;
             if(g_ram[o]==0x3A && g_ram[o+0x1A]<=2 && custom_result_name())continue;
             if (s2_runtime_knuckles_item(o)) flags|=0x100;
+            if (s2_runtime_amy_item(o)) flags|=0x2000;
             if (s2_runtime_shadow_star(o)) flags|=0x200;
             int x,y,anchor=0;
             if(space || multi) {
@@ -1377,6 +1407,7 @@ int s2_video_hook(uint32_t pc)
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
+            if (amy_item_tile(tile) && s2_runtime_amy_item(o)) g_ram[next-6]|=0x80;
             if (s2_runtime_knuckles_item(o) && knuckles_palette_tile(tile)) g_ram[next-6]|=GVDP_SPRITE_PALETTE_ONLY;
             if (s2_runtime_shadow_star(o) && tile>=0x4DE && tile<0x500) g_ram[next-6]|=0xC0;
         }

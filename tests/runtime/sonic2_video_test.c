@@ -10,8 +10,12 @@ S2PartyConfig s2_party;
 static S2KnucklesArt hud_art;
 static S2SpecialStageArt amy_special;
 static int amy_special_available;
+static S2ItemArt amy_items;
+static S2DonorBank amy_item_bank;
+static int amy_items_available,amy_item_owner;
 const S2SpecialStageArt *s2_resource_amy_special(void) {return amy_special_available?&amy_special:NULL;}
-const S2DonorBank *s2_resource_bank(unsigned id) { (void)id;return NULL; }
+const S2ItemArt *s2_resource_amy_items(void) {return amy_items_available?&amy_items:NULL;}
+const S2DonorBank *s2_resource_bank(unsigned id) {return amy_items_available && id==S2_RESOURCE_AMY?&amy_item_bank:NULL;}
 const S2DonorBank *s2_resource_shadow_bank(void) { return NULL; }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 { (void)r;(void)size;(void)out;return 0; }
@@ -24,6 +28,7 @@ const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_
 static int online,local_player,item_owner;
 static int shadow_item_owner;
 int s2_runtime_knuckles_item(unsigned o) { return item_owner && o==0xD180; }
+int s2_runtime_amy_item(unsigned o) { return amy_item_owner && o==0xD180; }
 int s2_runtime_shadow_star(unsigned o) { return shadow_item_owner && o==0xD200; }
 static int positions[4][2];
 int genesis_netplay_active(void){return online;}
@@ -39,6 +44,41 @@ void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);
 void cmd_send_response(const char *json){(void)json;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"line %d: %s\n",__LINE__,#c);exit(1);}}while(0)
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
+static void amy_item_art_test(void)
+{
+    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    s_display=NULL;s_donor_fade=s_presented_fade=(DonorFade){0};
+    hud_available=1;amy_special_available=0;amy_items_available=1;
+    s2_party.amy_enabled=1;strcpy(s2_party.roster.character[0],"amy");g_ram[0xF600]=12;
+    memset(amy_items.life,0x33,sizeof amy_items.life);
+    memset(amy_items.continue_icons,0x44,sizeof amy_items.continue_icons);
+    amy_item_bank.palette[3]=0x00E;amy_item_bank.water_palette[3]=0xE00;
+    amy_item_bank.water_palette_alt[3]=0x0E0;amy_item_bank.water_palette_count=2;
+    s2_video_prepare_knuckles_items();unsigned bytes=0;
+    const uint8_t *patterns=gvdp_sprite_patterns(0x80,&bytes);
+    CHECK(patterns && bytes==65536 && patterns[0x7D4*32]==0x33 && patterns[0x5F4*32]==0x44);
+    CHECK(gvdp_sprite_palette_line(0x80,0x7D4,0)==2);
+    CHECK(gvdp_sprite_palette_line(0x80,0x7D4,1)==2);
+    CHECK(!amy_item_tile(0x7D3) && !amy_item_tile(0x7D8) && !amy_item_tile(0x600));
+    CHECK(s_item_top[16+3]==0x00E && s_item_bottom[16+3]==0x00E);
+    g_ram[0xF64C]=1;g_ram[0xFE10]=13;s2_video_prepare_knuckles_items();
+    CHECK(s_item_top[16+3]==0x00E && s_item_bottom[16+3]==0xE00);
+    g_ram[0xFE10]=15;s2_video_prepare_knuckles_items();CHECK(s_item_bottom[16+3]==0x0E0);
+    unsigned sites[]={0x1684E,0x1688E,0x168E6,0x16938};
+    g_cpu.A[0]=0xFFFFD180;g_cpu.A[2]=0xFFFFF810;amy_item_owner=1;item_owner=0;
+    for(unsigned n=0;n<4;++n) {
+        word(g_ram,0xF80C,0x87D4);g_ram[0xF80A]=5;s2_video_hook(sites[n]);CHECK(g_ram[0xF80A]==0x85);
+        word(g_ram,0xF80C,0x84BE);g_ram[0xF80A]=5;s2_video_hook(sites[n]);CHECK(g_ram[0xF80A]==5);
+    }
+    word(g_ram,0xFFD8,1);s2_video_prepare_knuckles_items();CHECK(s_item_bottom[16+3]==0x00E);
+    word(g_ram,0xF80C,0x83EA);g_ram[0xF80A]=5;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==0x85);
+    amy_item_owner=0;g_ram[0xF80A]=5;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==5);
+    word(g_ram,0xFFD8,0);strcpy(s2_party.roster.character[0],"knuckles");s2_video_prepare_knuckles_items();
+    patterns=gvdp_sprite_patterns(0x80,&bytes);CHECK(patterns[0x7D4*32]==hud_art.life[0]);
+    amy_items_available=0;hud_available=0;s2_video_prepare_knuckles_items();
+    CHECK(!gvdp_sprite_patterns(0x80,&bytes));
+    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+}
 static unsigned native_fetches;
 static void donor_palette_fade_test(void)
 {
@@ -1185,6 +1225,7 @@ int main(void)
     foreground_world_sprite_test();
     water_surface_span_test();
     competition_hud_replacement_test();
+    amy_item_art_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }

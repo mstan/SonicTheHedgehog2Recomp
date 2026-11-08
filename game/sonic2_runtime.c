@@ -350,6 +350,16 @@ int s2_runtime_knuckles_item(unsigned o)
         if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES && knuckles_available()) return 1;
     return 0;
 }
+int s2_runtime_amy_item(unsigned o)
+{
+    if (!level() || o<0xB000 || o>=0xD400) return 0;
+    unsigned id=g_ram[o];
+    /* Monitors use the world's lead identity. The result mini and flying
+     * life icon keep their native mapping, movement and reward behavior. */
+    if (id!=0x26 && id!=0x2E && id!=0x0D &&
+        !(id==0x3A && (g_ram[o+0x1A]==0xC || g_ram[o+0x1A]==0xD))) return 0;
+    return s2_party.amy_enabled && kind(0)==S2_CHAR_AMY && s2_resource_amy_items()!=NULL;
+}
 int s2_runtime_shadow_star(unsigned o)
 {
     if (!level() || o<0xB000 || o>=0xD400 || g_ram[o]!=0x35 ||

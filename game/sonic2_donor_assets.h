@@ -64,6 +64,9 @@ typedef struct S2KnucklesArt {
     uint16_t special_palette[16];
     S2SpecialResultArtFrame special_results[S2_SS_RESULT_FRAMES];
 } S2KnucklesArt;
+typedef struct S2ItemArt {
+    uint8_t life[4*32],continue_icons[12*32];
+} S2ItemArt;
 /* Immutable native competition HUD sources from the verified REV01 ROM. */
 typedef struct S2NativeHudArt {
     uint8_t life[3][12*32]; /* Sonic, Miles, Tails */
@@ -78,6 +81,7 @@ int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
 int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
 /* Completes an already decoded Amy half-pipe bank transactionally. */
 int s2_amy_special_ui_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
+int s2_amy_item_art_decode(const uint8_t *rom,size_t size,S2ItemArt *out);
 extern const S2DonorLayout s2_amy_171_layout;
 extern const S2DonorLayout s2_sk_knuckles_layout;
 extern const S2DonorLayout s2_megamix_mighty_layout;

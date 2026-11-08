@@ -20,5 +20,6 @@ int s2_runtime_rb_load(const void *src, size_t len);
 
 /* Source-backed item artwork belongs to the actual shield/star parent. */
 int s2_runtime_knuckles_item(unsigned object);
+int s2_runtime_amy_item(unsigned object);
 int s2_runtime_shadow_star(unsigned object);
 const uint8_t *s2_runtime_ui_font(void);
