@@ -330,12 +330,12 @@ static void native_publish_sprites(void);
 static unsigned s_serial, s_scene_tick, s_spawned, s_pool_pressure;
 static int s_vs_other_lo,s_vs_other_hi;
 
-/* The native SAT remains authoritative for front-of-player UI. Keep only
+/* The native SAT remains authoritative for foreground sprites and UI. Keep only
  * source-object classifications beside its completed publication; no guest
  * marker, mapping, palette or sprite order is changed. */
 typedef struct {
     uint8_t sat[2][640],kind[2][80];
-    unsigned serial,ui_mask;
+    unsigned serial,ui_mask,world_mask;
 } FrontUIFrame;
 static FrontUIFrame s_front_build,s_front_history[3],s_front_display[2];
 static unsigned s_front_serial;
@@ -381,8 +381,10 @@ static void front_ui_publish(void)
 {
     memcpy(s_front_build.sat[0],g_ram+0xF800,640);
     memcpy(s_front_build.sat[1],g_ram+0xDD00,640);
-    for(unsigned p=0;p<2;++p)for(unsigned i=0;i<80;++i)
-        if(s_front_build.kind[p][i]){s_front_build.ui_mask|=1u<<p;break;}
+    for(unsigned p=0;p<2;++p)for(unsigned i=0;i<80;++i) {
+        if(s_front_build.kind[p][i])s_front_build.ui_mask|=1u<<p;
+        if(s_front_build.kind[p][i]==4)s_front_build.world_mask|=1u<<p;
+    }
     s_front_build.serial=++s_front_serial;
     s_front_history[s_front_serial%3]=s_front_build;
     special_actor_publish();
@@ -1062,7 +1064,7 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
-        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0));
+        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
@@ -1250,6 +1252,9 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
             if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
+            /* Playable actors use priority 2. Native world objects in the
+             * earlier queues, including Grabber legs, must stay in front. */
+            if(pri<2 && (space || multi))flags|=0x800;
             if(multi) {
                 if(g_ram[o+0xB])add_mapping(dst,keys,o<<16,map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
@@ -1358,7 +1363,8 @@ int s2_video_hook(uint32_t pc)
                 s_front_build.kind[p][slot]=1;
             else if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
                 s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:
-                    (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:0;
+                    (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:
+                    (g_ram[o+0x18]<2 && (g_ram[o+1]&0x4C))?4:0;
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
@@ -1431,6 +1437,18 @@ static int reserve_sprite_row(int width)
     if(p)s_priority=p;if(f)s_front_rgb=f;
     if(!p || !f)return 0;
     s_priority_capacity=width;return 1;
+}
+void s2_video_preserve_foreground_row(const uint32_t *out,int width)
+{
+    if(enabled() || !out || width<=0)return;
+    unsigned world=s_front_build.world_mask;
+    for(unsigned n=0;n<3;++n)world|=s_front_history[n].world_mask;
+    for(unsigned p=0;p<2;++p)world|=s_front_display[p].world_mask;
+    /* Preserve the composed native colour, including high planes, private
+     * palettes and shading; an occluded foreground sprite still prevents
+     * the sprite behind it from becoming visible through that plane. */
+    if(world && reserve_sprite_row(width))
+        memcpy(s_front_rgb,out,(size_t)width*sizeof *out);
 }
 static void select_scene(const GVDP *v)
 {
@@ -1520,8 +1538,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             s_priority[x]|=2;
             if(anchor || (s->attr&0x8000) || !(s_priority[x]&1)) {
                 out[x]=knux?custom:palette[p];
-                if((s->hud&128) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
             }
+            if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
         }
     }
 }
@@ -2212,6 +2230,10 @@ void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
                         covered[dx]=1;
                         int target=dx+(width-320)/2;
                         if(kind && !result_name_slot((unsigned)slot) && target>=0 && target<width) {
+                            if(kind==4) {
+                                if(s_front_rgb && s_priority_capacity>=width)out[target]=s_front_rgb[target];
+                                continue;
+                            }
                             int extra=gvdp_sprite_palette_line(size,tile&2047,(tile>>13)&3);
                             uint16_t shade=extra?gvdp_ext_color(line,extra,ink&15):v->cram[ink];
                             out[target]=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);

@@ -1426,6 +1426,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         if (line>=216 && line<224) return;
         if (line>=224) { origin_x=vs_left; origin_y=vs_top; }
     }
+    s2_video_preserve_foreground_row(out,width);
     for (int index=S2_MAX_PLAYERS;index>=0;--index) {
         unsigned p=index==S2_MAX_PLAYERS?0:(unsigned)index;
         const PartySprite *s=&frame_sprites[index];
