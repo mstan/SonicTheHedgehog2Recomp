@@ -43,7 +43,7 @@ int main(void)
     s2_character_after(&s,&m,&c);
     assert(m.radius_x==9 && m.radius_y==19 && s.special==S2_SK_GLIDE);
     s2_character_before(&s,&m,0x20,0,&c);
-    assert(m.radius_x==10 && m.radius_y==10);
+    assert(m.radius_x==9 && m.radius_y==19);
     s2_character_after(&s,&m,&c);
     s2_character_before(&s,&m,0,0,&c);
     assert(s.special==S2_SK_FALL && m.radius_y==19);
@@ -57,6 +57,12 @@ int main(void)
     s.special=S2_SK_FALL; m.jumping=1; m.vx=0x200;
     s2_character_after(&s,&m,&c);
     assert(m.animation==0x23 && m.move_lock==15 && !m.jumping && !m.vx);
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_FALL;s.glide_collision=0x80;m.status=2;m.angle=0xC8;
+    m.vx=m.inertia=0x400;m.jumping=1;
+    s2_character_after(&s,&m,&c);
+    assert(!s.special && !m.animation && !m.move_lock && !(m.status&2));
+    assert(!m.vx && !m.vy && !m.inertia && !m.jumping && !m.y);
     s.special=S2_SK_SLIDE; m.radius_y=m.radius_x=10; m.y=0; c.floor=0;
     s2_character_before(&s,&m,0,0,&c);
     assert(m.animation==0x22 && m.move_lock==15 && m.y==-9*65536 && m.radius_y==19);
@@ -111,8 +117,22 @@ int main(void)
     c.grab_y=c.grab_x=0;
     s.special=S2_SK_GLIDE;m.status=0;
     s2_character_after(&s,&m,&c);
-    assert(s.special==S2_SK_CLIMB && (m.status&2) && m.jumping); /* wall before floor */
-    s.special=S2_SK_CLIMB;s.wall_x=m.x;c.climb_up=2;unsigned age=s.age;
+    assert(s.special==S2_SK_CLIMB && (m.status&2)); /* KiS2 wall before floor */
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_GLIDE;s.glide_collision=0x82;m.status=2;m.vx=0;
+    s2_character_after(&s,&m,&c);
+    assert(s.special==S2_SK_GLIDE); /* touching is not penetration */
+    for(unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+        s.special=S2_SK_GLIDE;m.status=(uint8_t)face;m.jumping=1;
+        s.glide_collision=0x80; /* actual floor, no wall penetration */
+        m.angle=face?0x40:0xC0;m.vx=0;m.inertia=face?-0x480:0x480;
+        s2_character_after(&s,&m,&c);
+        assert(s.special==S2_SK_NORMAL && !m.jumping && !(m.status&6));
+        assert(m.vx==m.inertia && !m.vy && !m.animation);
+        assert(m.radius_y==19 && m.radius_x==9);
+    }
+    s.special=S2_SK_CLIMB;m.status=2;s.wall_x=m.x;c.climb_up=2;unsigned age=s.age;
     s2_character_before(&s,&m,1,0,&c);
     assert(s.special==S2_SK_CLIMB && m.y==0 && s.age==age && !s.climb_delta);
     c.climb_up=0;c.ceiling=-3;

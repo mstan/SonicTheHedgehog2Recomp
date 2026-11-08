@@ -174,6 +174,52 @@ static int shadow_target(unsigned o,int monitors)
     if (id==0x26) return monitors && g_ram[o+0x24]<4;
     return (!(collision&0xC0) && (collision&63)>=5) || collision==0xCC;
 }
+static unsigned knuckles_glide_collision(unsigned o, int gliding)
+{
+    /* KiS2 Knuckles_DoLevelCollision2 uses the original terrain helpers,
+     * without Sonic_ResetOnFloor or replacement of glide inertia. Its
+     * airborne/pushing result is separate from the object's status. */
+    M68KState cpu=g_cpu;
+    unsigned flags=2;
+    if(gliding)g_ram[o+0x16]=g_ram[o+0x17]=10;
+    host_call(0x1EC4E); /* select primary/secondary collision table */
+    unsigned quadrant=(shadow_angle((int16_t)word(o+0x10),(int16_t)word(o+0x12))-0x20)&0xC0;
+    int floor=0,ceiling=0;
+    if (quadrant!=0xC0) {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1F05E);
+        if(d<0){putword(o+8,word(o+8)-d);putword(o+0x10,0);flags|=32;}
+    }
+    if (quadrant!=0x40) {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1EEDC);
+        if(d<0){putword(o+8,word(o+8)+d);putword(o+0x10,0);flags|=32;}
+    }
+    if(!quadrant) floor=1;
+    else {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1EF2E);
+        if(d<0) {
+            if(quadrant==0x40 && -d>=20) {
+                g_cpu.D[5]=g_ram[o+0x3F];d=host_call(0x1EEDC);
+                if(d<0){putword(o+8,word(o+8)+d);putword(o+0x10,0);flags|=32;}
+            } else {
+                putword(o+12,word(o+12)-d);
+                if(quadrant==0x80 || (int16_t)word(o+0x12)<0)putword(o+0x12,0);
+            }
+            ceiling=1;
+        }
+        if(!ceiling && quadrant!=0x80 && (int16_t)word(o+0x12)>=0)floor=1;
+    }
+    if(floor) {
+        M68KState result=native_helper(0x1EC4E);
+        int d=(int16_t)result.D[1];
+        if(d<0){putword(o+12,word(o+12)+d);g_ram[o+0x26]=(uint8_t)result.D[3];putword(o+0x12,0);flags&=~2u;}
+    }
+    g_ram[o+0x16]=19;g_ram[o+0x17]=9;
+    g_cpu=cpu;
+    return flags|0x80;
+}
 static void shadow_contacts(unsigned o,S2Contacts *c)
 {
     if (actor<0 || kind((unsigned)actor)!=S2_CHAR_SHADOW) return;
@@ -213,7 +259,9 @@ static S2Contacts contacts(unsigned o)
     g_cpu.D[5]=g_ram[o+0x3F];
     c.wall=host_call((g_ram[o+0x22]&1)?0x1F05E:0x1EEDC);
     c.ceiling=host_call(0x1EF2E);
-    if(knux && special==S2_SK_GLIDE && c.wall<=0 && (int16_t)word(o+0x10)>-0x20 && (int16_t)word(o+0x10)<0x20) {
+    if(knux && special==S2_SK_GLIDE &&
+        ((characters[actor].glide_collision&32) ||
+         (c.wall<=0 && (int16_t)word(o+0x10)>-0x20 && (int16_t)word(o+0x10)<0x20))) {
         int left=g_ram[o+0x22]&1;
         M68KState fit=native_helper(left?0x1EFF6:0x1EE7C);
         if(((uint16_t)fit.D[0]|(uint16_t)fit.D[1])==0)c.grab_x=left?1:0;
@@ -732,7 +780,14 @@ static int update_player(unsigned p, uint32_t entry)
         if (characters[p].move!=S2_MOVE_NATIVE) {
             if (characters[p].move!=S2_MOVE_FIXED) {
                 host_call(0x163AC); /* ObjectMove, no gravity */
-                host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
+                int gliding=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_GLIDE;
+                int falling=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_FALL;
+                if(falling) {
+                    host_call(0x1A8E8); /* KiS2 steers/applies gravity after movement */
+                    putword(object+0x12,word(object+0x12)+((g_ram[object+0x22]&64)?0x10:0x38));
+                }
+                if(gliding || falling)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding);
+                else host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
             }
             host_call(0x1A974); /* LevelBound remains authoritative */
             g_ram[object+0x2A]|=1;
