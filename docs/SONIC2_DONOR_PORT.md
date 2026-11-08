@@ -30,6 +30,14 @@ All numbers below are donor addresses, not Sonic 2 host addresses.
 | Uncompressed character art | `$060000` | `$1200E0` |
 | Normal character palette | `$0029E2` | `$0A8AFC` |
 | Mapping/DPLC frame count | 253 | 251 |
+
+Amy's verified life atlas at `$096002` supplies the four face tiles used by
+native 1-UP monitors and their rising reward sprites. The twelve tiles at
+`$098D78` supply the two continue-award mini frames. These use sprite-only
+pattern substitution and Amy's dry/water palette. Replacement tiles stay in
+host sprite banks; monitor rewards and result timing remain native. The bounded Nemesis decoder follows the
+native decoder's return at the final output row, including a partially used
+last run.
 | Animation table / streams | `$01C96E` / 44 | `$017EF4` / 37 |
 | Super palette (three shades x ten frames) | Derived from normal pink shades | `$003AAE` |
 
@@ -98,10 +106,11 @@ P1 owns progression, camera and checkpoints; companions have independent input,
 physics and death/catch-up respawn. Campaign rings use a shared native pool.
 
 Native VS has only P1/P2 and respects their selected characters. Special stages
-always use stock Sonic and Tails, including solo/P2=NONE campaign rosters.
-Their native controllers, art, shadows and CPU follow remain unchanged; the
-chosen campaign characters and companions return afterward. No imported
-special-stage projection remains, and no donor title assets are decoded.
+retain native controllers, projection, rewards and transitions. Supported solo
+roles select Sonic or Tails; primary Knuckles and Amy use their verified
+original half-pipe sprite geometry and result artwork. Other imported and
+companion special-stage roles remain limited. Campaign characters and
+companions return afterward; donor title code never executes.
 
 The Options registry uses stable IDs (capacity 16), availability callbacks and
 uniqueness checks. New imports add a verified resource, portable controller and
@@ -112,9 +121,9 @@ This is a representative playable spike, not whole-campaign parity certification
 Live tests cover real-terrain glide/grab/climb/wall-jump, Amy enemy/monitor/boss
 hits, springs, recovery, transitions and SS return. All-zone devices, all power-up
 visual combinations, water palettes and exhaustive donor timing need further
-validation. Machine quickstates reject experimental rosters because their
-format does not serialize host controller/solid state. That guard does not
-implement the separately gated campaign save/zone-selection feature.
+validation. Current-build machine snapshots serialize per-actor controller,
+solid-contact and presentation state; their format is specific to each build.
+Native campaign saves are separate persistent progress.
 
 ## Knuckles loop animation correction (beads-5dyp.6)
 

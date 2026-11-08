@@ -240,7 +240,10 @@ static int nemesis(const uint8_t *p,size_t size,uint8_t *out,size_t cap)
         }
         if (!value || b.bad) return 0;
         --value; unsigned count=(value>>4)+1,color=value&15;
-        if (count>nibbles-written) return 0;
+        /* Native NemDec_WriteAndAdvance returns as soon as the final row
+         * is complete, even partway through a run. Amy's life atlas ends
+         * with one such spare nibble. Never write beyond the declared art. */
+        if (count>nibbles-written) count=nibbles-written;
         while (count--) { out[written/2]|=(uint8_t)(color<<((written&1)?0:4)); ++written; }
     }
     if (header&0x8000) for (unsigned i=4;i<nibbles/2;++i) out[i]^=out[i-4];
@@ -297,6 +300,18 @@ int s2_amy_special_ui_decode(const uint8_t *r,size_t size,S2SpecialStageArt *out
     memcpy(out->font_y,font+72*32,sizeof out->font_y);
     memcpy(out->hud_name,hud,sizeof out->hud_name);
     return 1;
+}
+int s2_amy_item_art_decode(const uint8_t *r,size_t size,S2ItemArt *out)
+{
+    if (!r || !out || size!=0x200000) return 0;
+    S2ItemArt candidate={0}; uint8_t life[12*32];
+    /* Rev1.7.1 PLC $44D38 loads the life atlas at $FA80. The continue
+     * loader at $786A and its results PLC select the same mini atlas. */
+    if ((be16(r+0x96002)&0x7FFF)!=12 || (be16(r+0x98D78)&0x7FFF)!=12 ||
+        !nemesis(r+0x96002,256,life,sizeof life) ||
+        !nemesis(r+0x98D78,334,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
+    memcpy(candidate.life,life,sizeof candidate.life);
+    *out=candidate; return 1;
 }
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {

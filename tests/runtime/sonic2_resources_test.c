@@ -14,8 +14,33 @@ int genesis_replay_playing(void) { return playback; }
 static int count(void *ctx) { assert(ctx == &delegated); return 1; }
 static int enable(void *ctx, const char *p, const char *f, int on)
 { assert(ctx == &delegated && !strcmp(p,"base") && !strcmp(f,"wide") && on); ++delegated; return 1; }
+static void amy_item_art_bounds_test(void)
+{
+    uint8_t *rom=calloc(1,0x200000);assert(rom);
+    static const unsigned at[]={0x96002,0x98D78};
+    for(unsigned n=0;n<2;++n) {
+        uint8_t *p=rom+at[n];
+        p[1]=12;p[2]=(uint8_t)(0x81+n);
+        p[3]=1;p[4]=0;p[5]=0x71;p[6]=1;p[7]=0xFF;
+        /* One pixel, then eight-pixel runs. Native NemDec stops after
+         * exactly twelve tiles, leaving one final run pixel unused. */
+        memset(p+8,0xFF,13);p[8]=0x7F;
+    }
+    S2ItemArt art;memset(&art,0xA5,sizeof art);
+    assert(s2_amy_item_art_decode(rom,0x200000,&art));
+    for(unsigned i=0;i<sizeof art.life;++i)assert(art.life[i]==0x11);
+    for(unsigned i=0;i<sizeof art.continue_icons;++i)assert(art.continue_icons[i]==0x22);
+    S2ItemArt before=art;
+    assert(!s2_amy_item_art_decode(rom,0x1FFFFF,&art));
+    rom[0x96003]=11;assert(!s2_amy_item_art_decode(rom,0x200000,&art));rom[0x96003]=12;
+    rom[0x98D79]=13;assert(!s2_amy_item_art_decode(rom,0x200000,&art));
+    assert(!s2_amy_item_art_decode(NULL,0x200000,&art));
+    assert(!s2_amy_item_art_decode(rom,0x200000,NULL));
+    assert(!memcmp(&art,&before,sizeof art));free(rom);
+}
 int main(int argc, char **argv)
 {
+    amy_item_art_bounds_test();
     assert(argc == 2 || argc == 3 || argc == 4);
     s2_party_load(argv[1]); s2_resources_load(argv[1]);
     s2_campaign_file_load(argv[1]);
@@ -94,6 +119,8 @@ int main(int argc, char **argv)
         assert(s2_resource_bank(S2_RESOURCE_AMY)->count==253);
         assert(s2_resource_bank(S2_RESOURCE_AMY)->animation_count==44);
         const S2SpecialStageArt *special=s2_resource_amy_special();
+        const S2ItemArt *items=s2_resource_amy_items();assert(items);
+        S2ItemArt items_before=*items;
         assert(special && special->frames[11].count==6 && special->palette[2]==0x00C);
         for(unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame)
             assert(special->frames[frame].count>=3 && special->frames[frame].count<=6);
@@ -121,6 +148,7 @@ int main(int argc, char **argv)
         assert(!s2_resource_set(S2_RESOURCE_AMY,argv[3]));
         assert(s2_resource_verified(S2_RESOURCE_AMY) && before->frames[1].pixels==pixels);
         assert(!memcmp(&special_before,s2_resource_amy_special(),sizeof special_before));
+        assert(!memcmp(&items_before,s2_resource_amy_items(),sizeof items_before));
         assert(!strcmp(s2_party.amy_path,argv[2]));
         assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles",1));
         assert(s2_party.s3k_enabled);
@@ -144,6 +172,7 @@ int main(int argc, char **argv)
     assert(!s2_resource_verified(0) && !s2_resource_verified(1));
     assert(!s2_resource_owner_verified(1) && !s2_resource_save_assets());
     assert(!s2_resource_amy_special());
+    assert(!s2_resource_amy_items());
     puts("Owner-resource identity, atomic replacement and composed Mods provider passed");
     return 0;
 }
