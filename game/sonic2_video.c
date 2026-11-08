@@ -562,7 +562,10 @@ static int knuckles_item_tile(unsigned tile)
 }
 static int knuckles_palette_tile(unsigned tile)
 {
-    return (tile>=0x400 && tile<0x434) || (tile>=0x580 && tile<0x5A8);
+    /* The lock-on palette also colours the native spin faces and pole.
+     * Only the two settled-face pieces use replacement pattern data. */
+    return (tile>=0x400 && tile<0x456) || (tile>=0x46E && tile<0x482) ||
+        (tile>=0x580 && tile<0x5A8);
 }
 #if OWN_BACKEND
 static int shadow_sprite_tagged(const uint8_t *data,unsigned base)
@@ -657,7 +660,7 @@ void s2_video_prepare_knuckles_items(void)
             memcpy(patterns+0x7D4*32,art->life,4*32);
             memcpy(patterns+0x5F4*32,art->continue_icons,sizeof art->continue_icons);
             memcpy(patterns+SPECIAL_FONT_K*32,art->font_k,sizeof art->font_k);
-            for (unsigned t=0x456;t<0x46E;++t) item_lines[t]=2;
+            for (unsigned t=0x434;t<0x482;++t) item_lines[t]=2;
             for (unsigned t=0x7D4;t<0x7D8;++t) item_lines[t]=2;
             for (unsigned t=0x5F4;t<0x600;++t) item_lines[t]=2;
             for (unsigned t=0x400;t<0x434;++t) item_lines[t]=2;

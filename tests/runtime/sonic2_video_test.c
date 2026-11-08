@@ -463,6 +463,35 @@ static void native_interpolation_test(void)
     free(before);free(after);
 }
 
+static void signpost_palette_test(void)
+{
+    static GVDP v,before;
+    GVDPRasterRow row;uint8_t pixels[GVDP_MAX_WIDTH],ram_before[65536];
+    const unsigned tiles[]={0x434,0x440,0x450,0x454,0x456,0x46E,0x472,0x481,0x482};
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&s2_party,0,sizeof s2_party);hud_available=0;s2_video_prepare_knuckles_items();
+    hud_available=1;s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
+    g_ram[0xF600]=12;s_donor_fade=s_presented_fade=(DonorFade){0};
+    hud_art.palette[1]=0x00E;hud_art.palette[2]=0x0E0;
+    memset(hud_art.signpost,0x22,sizeof hud_art.signpost);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
+    v.cram[1]=0xE00;s2_video_prepare_knuckles_items();
+    for(unsigned owner=0;owner<2;++owner)for(unsigned i=0;i<sizeof tiles/sizeof tiles[0];++i) {
+        unsigned tile=tiles[i];memset(v.vram+tile*32,0x11,32);
+        memset(g_ram+0xF800,0,640);word(g_ram,0xF800,128);word(g_ram,0xF804,tile);word(g_ram,0xF806,128);
+        g_cpu.A[0]=0xFFFFD180;g_cpu.A[2]=0xFFFFF808;item_owner=(int)owner;
+        s2_video_hook(0x1684E);memcpy(v.vram+0xF800,g_ram+0xF800,640);
+        before=v;memcpy(ram_before,g_ram,sizeof g_ram);
+        CHECK(gvdp_capture_presented_scanline(&v,0,&row)==320 && gvdp_compose_captured(&row,pixels));
+        uint32_t actual=pixels[0]>=GVDP_HOST_PALETTE_BASE?
+            row.host_palette[pixels[0]-GVDP_HOST_PALETTE_BASE]:
+            genesis_dac_cram_to_argb(v.cram[pixels[0]&63],GENESIS_DAC_NORMAL);
+        uint32_t expected=!owner || tile==0x482?0xFF0000FFu:tile==0x456?0xFF00FF00u:0xFFFF0000u;
+        CHECK(actual==expected);
+        CHECK(!memcmp(&v,&before,sizeof v) && !memcmp(g_ram,ram_before,sizeof g_ram));
+    }
+    item_owner=0;hud_available=0;s2_video_prepare_knuckles_items();
+}
 static void private_water_palette_test(void)
 {
     static GVDP v;
@@ -1041,6 +1070,7 @@ int main(void)
     donor_palette_fade_test();
     results_identity_test();
     special_results_scroll_test();
+    signpost_palette_test();
     private_water_palette_test();
     special_stage_pixel_shape_test();
     special_actor_test();
