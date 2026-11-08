@@ -55,6 +55,9 @@ static void amy_item_art_test(void)
     amy_item_bank.palette[3]=0x00E;amy_item_bank.water_palette[3]=0xE00;
     amy_item_bank.water_palette_alt[3]=0x0E0;amy_item_bank.water_palette_count=2;
     s2_video_prepare_knuckles_items();unsigned bytes=0;
+    CHECK(!gvdp_ext_active()); /* Amy's private colours belong to sprites. */
+    CHECK(gvdp_host_palette() && gvdp_host_palette()[16+3]==
+        genesis_dac_cram_to_argb(0x00E,GENESIS_DAC_NORMAL));
     const uint8_t *patterns=gvdp_sprite_patterns(0x80,&bytes);
     CHECK(patterns && bytes==65536 && patterns[0x7D4*32]==0x33 && patterns[0x5F4*32]==0x44);
     CHECK(gvdp_sprite_palette_line(0x80,0x7D4,0)==2);
@@ -62,7 +65,12 @@ static void amy_item_art_test(void)
     CHECK(!amy_item_tile(0x7D3) && !amy_item_tile(0x7D8) && !amy_item_tile(0x600));
     CHECK(s_item_top[16+3]==0x00E && s_item_bottom[16+3]==0x00E);
     g_ram[0xF64C]=1;g_ram[0xFE10]=13;s2_video_prepare_knuckles_items();
+    CHECK(!gvdp_ext_active());
     CHECK(s_item_top[16+3]==0x00E && s_item_bottom[16+3]==0xE00);
+    GVDP water={0};word(g_ram,0xF080,0x002);water.cram[0]=0x002;
+    item_palette_row(NULL,&water,NULL);
+    CHECK(gvdp_host_palette() && gvdp_host_palette()[16+3]==
+        genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL));
     g_ram[0xFE10]=15;s2_video_prepare_knuckles_items();CHECK(s_item_bottom[16+3]==0x0E0);
     unsigned sites[]={0x1684E,0x1688E,0x168E6,0x16938};
     g_cpu.A[0]=0xFFFFD180;g_cpu.A[2]=0xFFFFF810;amy_item_owner=1;item_owner=0;
@@ -71,9 +79,12 @@ static void amy_item_art_test(void)
         word(g_ram,0xF80C,0x84BE);g_ram[0xF80A]=5;s2_video_hook(sites[n]);CHECK(g_ram[0xF80A]==5);
     }
     word(g_ram,0xFFD8,1);s2_video_prepare_knuckles_items();CHECK(s_item_bottom[16+3]==0x00E);
+    CHECK(!gvdp_ext_active());
     word(g_ram,0xF80C,0x83EA);g_ram[0xF80A]=5;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==0x85);
     amy_item_owner=0;g_ram[0xF80A]=5;s2_video_hook(0x16DEE);CHECK(g_ram[0xF80A]==5);
     word(g_ram,0xFFD8,0);strcpy(s2_party.roster.character[0],"knuckles");s2_video_prepare_knuckles_items();
+    CHECK(gvdp_ext_active()); /* Knuckles' world palette still needs it. */
+    CHECK(!gvdp_host_palette()); /* Retire Amy's palette on a wet-world switch. */
     patterns=gvdp_sprite_patterns(0x80,&bytes);CHECK(patterns[0x7D4*32]==hud_art.life[0]);
     amy_items_available=0;hud_available=0;s2_video_prepare_knuckles_items();
     CHECK(!gvdp_sprite_patterns(0x80,&bytes));

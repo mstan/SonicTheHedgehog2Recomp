@@ -616,7 +616,16 @@ int s2_video_water_palette(const GVDP *v)
     return wet>dry;
 }
 static uint16_t s_item_top[GVDP_EXT_LINES*16],s_item_bottom[GVDP_EXT_LINES*16];
-static int s_item_water_enabled,s_item_water_selected=-1;
+static int s_item_water_enabled,s_item_water_selected=-1,s_item_sprite_palette;
+static void item_sprite_palette(int wet)
+{
+    if (!s_item_sprite_palette) return;
+    uint32_t colors[GVDP_EXT_LINES*16];
+    const uint16_t *source=wet?s_item_bottom:s_item_top;
+    for(unsigned c=0;c<GVDP_EXT_LINES*16;++c)
+        colors[c]=genesis_dac_cram_to_argb(source[c],GENESIS_DAC_NORMAL);
+    gvdp_set_host_palette(colors,GVDP_EXT_LINES*16);
+}
 static void item_palette_row(void *user,const GVDP *v,const GVDPSpriteLayer *layer)
 {
     (void)user;(void)layer;
@@ -624,6 +633,7 @@ static void item_palette_row(void *user,const GVDP *v,const GVDPSpriteLayer *lay
     int wet=s2_video_water_palette(v);
     if (wet!=s_item_water_selected) {
         gvdp_set_ext_colors(s_item_top,s_item_bottom,wet?0:1<<20);
+        item_sprite_palette(wet);
         s_item_water_selected=wet;
     }
 }
@@ -719,6 +729,8 @@ void s2_video_prepare_knuckles_items(void)
         !strcmp(s2_party.roster.character[0],"knuckles");
     int amy_world=amy_items && (g_ram[0xF600]&127)==12;
     int item_world=knux_world || amy_world;
+    s_item_sprite_palette=amy_world && !shadow_active;
+    if (!s_item_sprite_palette) gvdp_set_host_palette(NULL,0);
     int actor_special=special && (g_ram[0xF600]&127)==16;
     memset(world_lines,0,sizeof world_lines);
     /* The active colour table is shared, but only object-tagged pieces use
@@ -762,11 +774,12 @@ void s2_video_prepare_knuckles_items(void)
     int split=1<<20;
     if (!competition() && g_ram[0xF64C])
         split=g_ram[0xF64E]?0:g_ram[0xF625]+1;
-    /* Half-pipe colours belong only to marked sprites. Keep native planes
-     * on their ordinary path when no world palette provider needs them. */
-    gvdp_set_ext_tiles(item_world || shadow_active?world_lines:NULL);
+    /* Amy items and half-pipe colours belong only to marked sprites.
+     * An all-zero plane table still selects private-plane composition. */
+    gvdp_set_ext_tiles(knux_world || shadow_active?world_lines:NULL);
     memcpy(s_item_top,top,sizeof s_item_top);memcpy(s_item_bottom,bottom,sizeof s_item_bottom);
     gvdp_set_ext_colors(top,bottom,split);
+    item_sprite_palette(split==0);
     if (shadow_active) gvdp_set_sprite_patterns_bank(1,shadow_patterns,sizeof shadow_patterns,shadow_lines);
 }
 /* Half-pipe actors retain native simulation and SAT ordering. Presentation
