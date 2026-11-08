@@ -196,9 +196,11 @@ static void results_identity_test(void)
             s2_video_results_name(&v,line,out,width,0);
             s2_video_results_name(&v,line,out,width,1);
             if(line==56) {
-                CHECK(out[40+center]==0xFFFF0000 && out[56+center]==0xFFFFFFFF);
-                CHECK(out[104+center]==0xFFFF0000 && out[176+center]==0xFFFFFFFF);
-                CHECK(out[24+center]==0xFF00FF00);
+                /* Original KiS2 shifts the complete eight-letter name/GOT
+                 * row 24 pixels right, retaining its centered footprint. */
+                CHECK(out[64+center]==0xFFFF0000 && out[80+center]==0xFFFFFFFF);
+                CHECK(out[128+center]==0xFFFF0000 && out[200+center]==0xFFFFFFFF);
+                CHECK(out[40+center]==0xFF00FF00);
             }
         }
     }
@@ -207,7 +209,7 @@ static void results_identity_test(void)
         memset(out,0,sizeof out);s2_video_results_name(&v,line,out,398,0);
         s2_video_results_name(&v,line,out,398,1);
     }
-    CHECK(out[72+39]==0xFFFFFFFF && out[176+39]==0xFFFFFFFF);
+    CHECK(out[80+39]==0xFFFFFFFF && out[184+39]==0xFFFFFFFF);
     strcpy(s2_party.roster.character[0],"sonic");
     for(int x=0;x<320;++x)out[x]=0xFF00FF00;
     s2_video_results_name(&v,0,out,320,0);s2_video_results_name(&v,56,out,320,1);
@@ -649,6 +651,108 @@ static void front_ui_and_background_priority_test(void)
     CHECK(!memcmp(ram,g_ram,sizeof ram));CHECK(sonic2_video.configure("off"));
 }
 
+static void foreground_world_sprite_test(void)
+{
+    static GVDP v;uint32_t out[398];uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    presentation_configure(0);CHECK(sonic2_video.configure("off"));
+    memset(&s_front_build,0,sizeof s_front_build);memset(s_front_history,0,sizeof s_front_history);
+    memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB840]=0xA8;
+    g_ram[0xB841]=4;g_ram[0xB858]=2;
+    v.reg[1]=64;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;v.cram[1]=0xEEE;
+    memset(v.vram+32,0x10,32);
+    word(g_ram,0xF800,128);word(g_ram,0xF804,1);word(g_ram,0xF806,128);
+    front_ui_begin();g_cpu.A[0]=0xFFFFB840;g_cpu.A[1]=0;g_cpu.A[2]=0xFFFFF808;
+    /* DisplaySprite3 can enqueue stars ahead of actors without changing
+     * the object's nominal priority byte. Use the queue being consumed. */
+    g_cpu.D[7]=6;g_cpu.A[4]=0xFFFFAC80;
+    s2_video_hook(0x1684E);front_ui_publish();
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);memcpy(ram,g_ram,sizeof ram);
+    CHECK(s_front_build.kind[0][0]==4);
+    for(unsigned x=0;x<320;++x)out[x]=0xFF223344;
+    s2_video_preserve_foreground_row(out,320);
+    out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);
+    /* Keep the actual composed colour, not a raw sprite palette lookup.
+     * Its opaque pixel hides a donor; its transparent hole exposes it. */
+    CHECK(out[0]==0xFF223344 && out[1]==0xFFFF0000);
+    CHECK(!memcmp(ram,g_ram,sizeof ram));
+    g_ram[0xB858]=1;g_cpu.D[7]=5;g_cpu.A[4]=0xFFFFAD00;
+    front_ui_begin();s2_video_hook(0x1684E);front_ui_publish();
+    CHECK(!s_front_build.kind[0][0]);
+    out[0]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);CHECK(out[0]==0xFFFF0000);
+    /* The second competition viewport has its own completed SAT. */
+    word(g_ram,0xFFD8,1);g_ram[0xB858]=2;g_cpu.D[7]=7;v.reg[12]=7;
+    g_cpu.A[4]=0xFFFFEE20; /* Multipart P2 mappings borrow the queue register. */
+    memset(v.vram+64,0x10,64); /* Mode 2 tile 1 is an 8x16 cell. */
+    word(g_ram,0xDD00,480);word(g_ram,0xDD04,1);word(g_ram,0xDD06,128);
+    front_ui_begin();g_cpu.A[2]=0xFFFFDD08;s2_video_hook(0x16DEE);front_ui_publish();
+    memcpy(v.vram+0xF800,g_ram+0xDD00,640);
+    CHECK(s_front_build.kind[1][0]==4);
+    out[0]=0xFF445566;s2_video_preserve_foreground_row(out,320);
+    out[0]=0xFFFF0000;s2_video_front_ui(&v,224,out,320);CHECK(out[0]==0xFF445566);
+    /* The expanded renderer keeps the same rule even where a high plane
+     * hides the foreground sprite: the actor behind it cannot shine through. */
+    word(g_ram,0xFFD8,0);v.reg[12]=1;g_ram[0xB000]=1;
+    CHECK(sonic2_video.configure("16:9"));CHECK(reserve_sprite_row(398));
+    memset(g_rom,0,sizeof g_rom);word(g_ram,0xE808,0xFFFF);
+    word(g_ram,0xB842,1);word(g_ram,0xB844,0);word(g_ram,0xB846,0x100);
+    word(g_ram,0xB848,0);word(g_ram,0xB84C,0);
+    word(g_ram,0xAC80,2);word(g_ram,0xAC82,0xB840);
+    word(g_rom,0x100,2);word(g_rom,0x102,1);memset(g_rom+0x104,0,8);
+    capture_objects_into(&s_display_frame,398,1,NULL);s_display=&s_display_frame;
+    CHECK(s_display_frame.count==1 && (s_display_frame.sprites[0].hud&64));
+    s_frame_level=1;s_frame_vs=0;s_camera=s_camera_y=0;
+    memset(s_priority,0,398);s_priority[0]=1;
+    for(unsigned x=0;x<398;++x)out[x]=0xFF112233;
+    uint32_t palette[64]={0};palette[1]=0xFFFFFFFF;
+    draw_scene_sprites(&v,0,out,398,0,palette);
+    CHECK(out[0]==0xFF112233);
+    out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,398);
+    CHECK(out[0]==0xFF112233 && out[1]==0xFFFF0000);
+    CHECK(sonic2_video.configure("off"));
+}
+
+static void water_surface_span_test(void)
+{
+    static GVDP v;uint32_t out[796],palette[64]={0};uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(g_rom,0,sizeof g_rom);
+    memset(&s2_party,0,sizeof s2_party);online=0;s_interpolating=0;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
+    word(g_ram,0xEEF0,512);word(g_ram,0xEE00,512);
+    /* REV01 Obj04's three 32x16 pieces, repeated by its two native objects. */
+    word(g_rom,0x20A0E,12);word(g_rom,0x20A1A,3);
+    for(unsigned n=0;n<3;++n) {
+        unsigned at=0x20A1C+n*8;g_rom[at]=0xF8;g_rom[at+1]=0x0D;
+        word(g_rom,at+6,(unsigned)(-96+(int)n*64));
+    }
+    for(unsigned n=0;n<2;++n) {
+        unsigned o=0xB380+n*64;g_ram[o]=4;g_ram[o+1]=4;g_ram[o+0x19]=128;
+        word(g_ram,o+2,0x8400);word(g_ram,o+4,2);word(g_ram,o+6,0xA0E);
+        word(g_ram,o+8,640+n*192);word(g_ram,o+12,8);
+        word(g_ram,0xAC02+n*2,o);
+    }
+    word(g_ram,0xAC00,4);memcpy(ram,g_ram,sizeof ram);
+    v.reg[12]=1;memset(v.vram+0x400*32,0x11,8*32);palette[1]=0xFFFFFFFF;
+    CHECK(reserve_sprite_row(796));s_frame_campaign_view=0;s_camera=512;s_camera_y=0;
+    capture_objects_into(&s_display_frame,320,1,NULL);s_display=&s_display_frame;
+    CHECK(s_display_frame.count==6);
+    memset(s_priority,0,796);memset(out,0,sizeof out);
+    draw_scene_sprites(&v,0,out,320,0,palette);
+    for(unsigned x=0;x<320;++x)CHECK(out[x]==((x%64)>=32?0xFFFFFFFFu:0));
+    capture_objects_into(&s_display_frame,796,1,NULL);
+    memset(s_priority,0,796);memset(out,0,sizeof out);
+    draw_scene_sprites(&v,0,out,796,238,palette);
+    for(int x=0;x<796;++x)CHECK(out[x]==(((x-14)&63)<32?0xFFFFFFFFu:0));
+    /* A separate camera gets the same native phase, including a wrapped
+     * negative origin. An earlier sprite still owns its opaque pixel. */
+    s_frame_campaign_view=1;s_camera=512+777;
+    memset(s_priority,0,796);memset(out,0,sizeof out);s_priority[10]=2;
+    draw_scene_sprites(&v,0,out,320,238,palette);
+    for(int x=0;x<320;++x)CHECK(out[x]==(x!=10 && ((x-5)&63)<32?0xFFFFFFFFu:0));
+    CHECK(!memcmp(ram,g_ram,sizeof ram));s_frame_campaign_view=0;s_camera=0;
+}
+
 static void competition_hud_replacement_test(void)
 {
     static GVDP v;uint32_t out[320];
@@ -1078,6 +1182,8 @@ int main(void)
     amy_special_ui_test();
     knuckles_special_ui_test();
     front_ui_and_background_priority_test();
+    foreground_world_sprite_test();
+    water_surface_span_test();
     competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;

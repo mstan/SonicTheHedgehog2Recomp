@@ -64,8 +64,31 @@ static void input(unsigned press,unsigned expected)
     assert(g_ram[0xFFE1]==(expected?expected:0xA5));
     assert(g_ram[0xFFE0]==0x87);
 }
+static void menu_snapshot_test(void)
+{
+    uint8_t bytes[4096];
+    reset(1,S2_SAVE_ACTIVE);s2_party.save_menu_enabled=1;begin_menu();
+    menu_ready=1;view.selection=3;view.cursor=352;view.scroll=192;
+    view.frame=57;view.erase=view.confirm=1;view.delete_x=344;view.delete_frame=13;
+    replay_stage=4;
+    S2StateIO size={0};s2_save_menu_state(&size);assert(size.pos<=sizeof bytes);
+    S2StateIO save={bytes,sizeof bytes,0,0,1};s2_save_menu_state(&save);
+    assert(save.ok && save.pos==size.pos);
+    menu=menu_ready=0;memset(&view,0,sizeof view);replay_stage=S2_CAMPAIGN_STAGES;
+    /* Other files remain persistent even when menu history is restored. */
+    fixture.data.slots[7]=(S2CampaignSlot){S2_SAVE_ACTIVE,2,0,3,0};
+    S2StateIO validate={bytes,save.pos,0,1,1};s2_save_menu_state(&validate);
+    assert(validate.ok && !menu && !view.selection && !commits);
+    S2StateIO load={bytes,save.pos,0,2,1};s2_save_menu_state(&load);
+    assert(load.ok && menu==1 && menu_ready && session==-1);
+    assert(view.selection==3 && view.cursor==352 && view.scroll==192 && view.frame==57);
+    assert(view.erase && view.confirm && view.delete_x==344 && view.delete_frame==13);
+    assert(replay_stage==4 && !commits && fixture.data.slots[7].stage==2);
+    assert(!memcmp(&view.data.slots[7],&fixture.data.slots[7],sizeof(S2CampaignSlot)));
+}
 int main(void)
 {
+    menu_snapshot_test();
     reset(1,S2_SAVE_COMPLETE); input(4,0xC0); assert(view.selection==0);
     input(8,0); /* sliding: no second move/sound */
     reset(0,S2_SAVE_EMPTY); input(4,0); input(8,0xC0); assert(view.selection==1);

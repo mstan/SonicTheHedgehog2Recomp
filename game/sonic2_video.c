@@ -306,7 +306,7 @@ static uint16_t plane_attr(const GVDP *v, unsigned base, int x, int y)
  * for the hardware pass and publishes a signature used to align our list
  * with the exact VBlank upload displayed by the VDP. */
 typedef struct { int x, y; uint16_t attr; uint8_t size, hud; } SceneSprite;
-enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024 };
+enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024, SCENE_WATER_REPEAT = 16 };
 typedef struct {
     SceneSprite sprites[SCENE_SPRITES];
     unsigned count, serial;
@@ -330,12 +330,12 @@ static void native_publish_sprites(void);
 static unsigned s_serial, s_scene_tick, s_spawned, s_pool_pressure;
 static int s_vs_other_lo,s_vs_other_hi;
 
-/* The native SAT remains authoritative for front-of-player UI. Keep only
+/* The native SAT remains authoritative for foreground sprites and UI. Keep only
  * source-object classifications beside its completed publication; no guest
  * marker, mapping, palette or sprite order is changed. */
 typedef struct {
     uint8_t sat[2][640],kind[2][80];
-    unsigned serial,ui_mask;
+    unsigned serial,ui_mask,world_mask;
 } FrontUIFrame;
 static FrontUIFrame s_front_build,s_front_history[3],s_front_display[2];
 static unsigned s_front_serial;
@@ -381,8 +381,10 @@ static void front_ui_publish(void)
 {
     memcpy(s_front_build.sat[0],g_ram+0xF800,640);
     memcpy(s_front_build.sat[1],g_ram+0xDD00,640);
-    for(unsigned p=0;p<2;++p)for(unsigned i=0;i<80;++i)
-        if(s_front_build.kind[p][i]){s_front_build.ui_mask|=1u<<p;break;}
+    for(unsigned p=0;p<2;++p)for(unsigned i=0;i<80;++i) {
+        if(s_front_build.kind[p][i])s_front_build.ui_mask|=1u<<p;
+        if(s_front_build.kind[p][i]==4)s_front_build.world_mask|=1u<<p;
+    }
     s_front_build.serial=++s_front_serial;
     s_front_history[s_front_serial%3]=s_front_build;
     special_actor_publish();
@@ -1062,7 +1064,8 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
-        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0));
+        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
+                         ((flags&0x1000)?SCENE_WATER_REPEAT:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
@@ -1249,7 +1252,14 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
+            /* Obj04's two original surface objects form a 384-pixel cycle.
+             * Repeat their completed artwork in presentation only; native
+             * animation, camera phase and object lifetimes stay in charge. */
+            if(!vs && g_ram[o]==4 && map==0x20A0E)flags|=0x1000;
             if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
+            /* Playable actors use priority 2. Native world objects in the
+             * earlier queues, including Grabber legs, must stay in front. */
+            if(pri<2 && (space || multi))flags|=0x800;
             if(multi) {
                 if(g_ram[o+0xB])add_mapping(dst,keys,o<<16,map,g_ram[o+0xB],gfx,flags,x,y,anchor,0);
                 unsigned count=g_ram[o+0xF];if(count>8)count=8;
@@ -1356,9 +1366,14 @@ int s2_video_hook(uint32_t pc)
             if(!competition){special_actor_piece(slot,o,mapping);special_results_piece(slot,o);}
             if(slot<80 && mapping>0x40A9A && mapping<=0x40D06)
                 s_front_build.kind[p][slot]=1;
+            /* BuildSprites counts queues 0..7 with D7=7..0 in both views.
+             * DisplaySprite3 overrides the nominal object priority; A4 is
+             * temporarily a child mapping pointer for multipart objects. */
             else if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
                 s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:
-                    (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:0;
+                    (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:
+                    ((uint16_t)g_cpu.D[7]>=6 && (uint16_t)g_cpu.D[7]<=7 &&
+                     (g_ram[o+1]&0x4C))?4:0;
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
@@ -1432,6 +1447,18 @@ static int reserve_sprite_row(int width)
     if(!p || !f)return 0;
     s_priority_capacity=width;return 1;
 }
+void s2_video_preserve_foreground_row(const uint32_t *out,int width)
+{
+    if(enabled() || !out || width<=0)return;
+    unsigned world=s_front_build.world_mask;
+    for(unsigned n=0;n<3;++n)world|=s_front_history[n].world_mask;
+    for(unsigned p=0;p<2;++p)world|=s_front_display[p].world_mask;
+    /* Preserve the composed native colour, including high planes, private
+     * palettes and shading; an occluded foreground sprite still prevents
+     * the sprite behind it from becoming visible through that plane. */
+    if(world && reserve_sprite_row(width))
+        memcpy(s_front_rgb,out,(size_t)width*sizeof *out);
+}
 static void select_scene(const GVDP *v)
 {
     s_display=NULL;
@@ -1483,6 +1510,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
         unsigned anchor=s->hud&3u;
         int world=!anchor && (s_display->scene==1 || s_display->scene==3);
+        int repeat=(s->hud&SCENE_WATER_REPEAT) && world &&
+            (width>320 || s_frame_campaign_view);
         int cell_height=(v->reg[12]&6)==6?16:8;
         int sx=s->x,sy=s->y;
         if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
@@ -1497,7 +1526,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         if(s->attr&0x1000)iy=ch*cell_height-1-iy;
         for(int i=0;i<cw*8;++i) {
             int x=base+i;
-            if(x<0 || x>=width || (s_priority[x]&2))continue;
+            if(repeat) {x%=384;if(x<0)x+=384;}
+            else if(x<0 || x>=width || (s_priority[x]&2))continue;
             int ix=(s->attr&0x800)?cw*8-1-i:i;
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
@@ -1517,10 +1547,14 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
                 knux=1;
             }
-            s_priority[x]|=2;
-            if(anchor || (s->attr&0x8000) || !(s_priority[x]&1)) {
-                out[x]=knux?custom:palette[p];
-                if((s->hud&128) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
+            for(;x<width;x+=384) {
+                if(!(s_priority[x]&2)) {
+                    s_priority[x]|=2;
+                    if(anchor || (s->attr&0x8000) || !(s_priority[x]&1))
+                        out[x]=knux?custom:palette[p];
+                    if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
+                }
+                if(!repeat)break;
             }
         }
     }
@@ -2212,6 +2246,10 @@ void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
                         covered[dx]=1;
                         int target=dx+(width-320)/2;
                         if(kind && !result_name_slot((unsigned)slot) && target>=0 && target<width) {
+                            if(kind==4) {
+                                if(s_front_rgb && s_priority_capacity>=width)out[target]=s_front_rgb[target];
+                                continue;
+                            }
                             int extra=gvdp_sprite_palette_line(size,tile&2047,(tile>>13)&3);
                             uint16_t shade=extra?gvdp_ext_color(line,extra,ink&15):v->cram[ink];
                             out[target]=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
@@ -2285,7 +2323,10 @@ void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int dr
         return;
     }
     const char *name=s_result_name.name;unsigned length=(unsigned)strlen(name);
-    int x0=origin+s_result_name.x+8-(int)length*16;
+    /* Keep the complete name/GOT row centered around its native five-letter
+     * footprint. KiS2's eight-letter row advances its object by 24 pixels. */
+    int name_origin=origin+s_result_name.x+((int)length-5)*8;
+    int x0=name_origin+8-(int)length*16;
     const uint8_t *font=s2_runtime_ui_font();
     for(unsigned c=0;c<length;++c)for(int x=0;x<16;++x) {
         int dx=x0+(int)c*16+x;if(dx<0 || dx>=width)continue;
@@ -2304,7 +2345,7 @@ void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int dr
     static const unsigned tiles[]={0x5B8,0x588,0x5D4};
     static const int offsets[]={16,32,47};
     for(unsigned c=0;c<3;++c)for(int x=0;x<16;++x) {
-        int dx=origin+s_result_name.x+offsets[c]+x;if(dx<0 || dx>=width)continue;
+        int dx=name_origin+offsets[c]+x;if(dx<0 || dx>=width)continue;
         unsigned ink=results_ink(v,tiles[c],x,y,0);
         if(ink)out[dx]=genesis_dac_cram_to_argb(v->cram[ink],GENESIS_DAC_NORMAL);
     }

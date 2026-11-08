@@ -102,7 +102,8 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
             s->special=S2_SK_FALL; m->vx>>=2; m->radius_x=9; m->radius_y=19;
             m->animation=0x21; break;
         }
-        m->radius_x=m->radius_y=10;
+        /* KiS2 moves with the standing box, then temporarily shrinks only
+         * its terrain-collision probes in the world adapter. */
         int speed=(uint16_t)m->inertia;
         if (speed<0x400) speed+=8; else if (speed<0x1800 && !(s->turn&0x7F)) speed+=4;
         m->inertia=(int16_t)speed;
@@ -118,7 +119,7 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
         break;
     }
     case S2_SK_FALL:
-        m->animation=0x21; break; /* native airborne steering/gravity */
+        s->move=S2_MOVE_AIR;m->animation=0x21; break;
     case S2_SK_SLIDE:
         s->move=S2_MOVE_GROUND;
         m->radius_x=m->radius_y=10;
@@ -221,7 +222,12 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
         }
     } else if (s->kind==S2_CHAR_KNUCKLES) {
         if (s->special==S2_SK_GLIDE) {
-            if (c->wall<=0 && absword(m->vx)<0x20) {
+            unsigned collision=(s->glide_collision&0x80)?s->glide_collision:
+                ((m->status&AIR)|((c->wall<=0 && absword(m->vx)<0x20)?PUSH:0));
+            s->glide_collision=0;
+            /* KiS2 tests actual wall penetration before floor contact.
+             * A zero-distance probe alone is not a wall collision. */
+            if (collision&PUSH) {
                 /* KiS2 BeginClimb requires both wall sensors to fit, or a
                  * floor edge within eleven pixels of its upper sensor. */
                 if(c->grab_y<0 || c->grab_y>=12) {
@@ -232,15 +238,27 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
                     m->status|=AIR;m->jumping=1;
                     m->vx=m->vy=m->inertia=0;s->frame=0xB7;
                 }
-            } else if (!(m->status&AIR)) {s->special=S2_SK_SLIDE;s->frame=0xCC;s->age=0;}
-        } else if (s->special==S2_SK_FALL && !(m->status&AIR)) {
-            s->special=0; m->vx=m->vy=m->inertia=0;
-            m->status&=~(AIR|ROLL|ROLLJUMP|PUSH); m->jumping=0;
-            m->move_lock=15; m->animation=0x23;
+            } else if (!(collision&AIR)) {
+                m->status=(m->status&~FACE)|(m->vx<0?FACE:0);
+                if ((m->angle+0x20)&0xC0) {
+                    s->special=S2_SK_NORMAL;m->vx=m->inertia;m->vy=0;
+                    m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);m->jumping=0;
+                    m->radius_x=9;m->radius_y=19;m->animation=0;
+                } else {s->special=S2_SK_SLIDE;s->frame=0xCC;s->age=0;}
+            }
+        } else if (s->special==S2_SK_FALL) {
+            unsigned collision=(s->glide_collision&0x80)?s->glide_collision:m->status;
+            s->glide_collision=0;
+            if(!(collision&AIR)) {
+                s->special=0;m->vx=m->vy=m->inertia=0;
+                m->y+=(m->radius_y-19)*65536;
+                m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);m->jumping=0;
+                if((m->angle+0x20)&0xC0)m->animation=0;
+                else {m->move_lock=15;m->animation=0x23;}
+            }
         }
-        /* KiS2 GlideControl and Sliding restore the standing box before
-         * object collision and the next tick's climb/ledge logic. Only the
-         * terrain query uses 10x10. A wall jump retains its rolling box. */
+        /* KiS2 restores the standing box before world-object collision.
+         * Terrain probes use 10x10. A wall jump keeps its rolling box. */
         if (s->special) { m->radius_x=9; m->radius_y=19; }
     }
 }
@@ -273,7 +291,11 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
     }
     unsigned animation=m->animation<bank->animation_count?m->animation:5;
     s->animation_changed=0;
-    if (animation!=s->animation) { s->animation=animation; s->animation_index=s->animation_timer=0; }
+    if (animation!=s->animation) {
+        s->animation=animation;s->animation_index=s->animation_timer=0;
+        /* Animate_Knuckles $17D50 retires contact from the previous action. */
+        if(s->kind==S2_CHAR_KNUCKLES)m->status&=~PUSH;
+    }
     const uint8_t *sequence=bank->animations[animation];
     unsigned length=bank->animation_length[animation], delay=sequence[0], add=0;
     s->render_flip=!!(m->status&FACE);
@@ -297,25 +319,33 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
         if (!(m->status&FACE)) angle=(uint8_t)~angle;
         angle=(uint8_t)(angle+0x10);
         if (angle&0x80) s->render_flip^=3;
-        unsigned sector=(angle>>4)&6;
-        animation=speed>=0x600?1:0;
-        sequence=bank->animations[animation]; length=bank->animation_length[animation];
-        delay=speed<0x800?(0x800-speed)>>8:0;
-        if (s->kind==S2_CHAR_KNUCKLES) {
-            /* S3&K Animate_Knuckles $17E42-$17E82: its directional banks
-             * have half Sonic's frame stride. Select the surface pose every
-             * tick; only advancing the gait index is gated by the timer. */
-            add=sector*(animation?2:4);
-            if (s->animation_index+1>=length) s->animation_index=0;
-            unsigned code=sequence[1+s->animation_index];
-            if (code==0xFF) { s->animation_index=0; code=sequence[1]; }
-            if (code<0xFC && code+add<bank->count) s->frame=(uint8_t)(code+add);
-            m->frame=s->frame;
-            if (s->animation_timer) --s->animation_timer;
-            else { s->animation_timer=delay; ++s->animation_index; }
-            return;
+        if (s->kind==S2_CHAR_KNUCKLES && (m->status&PUSH) && bank->animation_count>4) {
+            /* Animate_Knuckles $17E00/$17ECC: native wall contact keeps
+             * Walk selected. Status_Push chooses the four punching poses
+             * with the same speed-dependent timer as the original. */
+            sequence=bank->animations[4];length=bank->animation_length[4];
+            delay=speed<0x800?(0x800-speed)>>8:0;
+        } else {
+            unsigned sector=(angle>>4)&6;
+            animation=speed>=0x600?1:0;
+            sequence=bank->animations[animation]; length=bank->animation_length[animation];
+            delay=speed<0x800?(0x800-speed)>>8:0;
+            if (s->kind==S2_CHAR_KNUCKLES) {
+                /* S3&K Animate_Knuckles $17E42-$17E82: its directional banks
+                 * have half Sonic's frame stride. Select the surface pose every
+                 * tick; only advancing the gait index is gated by the timer. */
+                add=sector*(animation?2:4);
+                if (s->animation_index+1>=length) s->animation_index=0;
+                unsigned code=sequence[1+s->animation_index];
+                if (code==0xFF) { s->animation_index=0; code=sequence[1]; }
+                if (code<0xFC && code+add<bank->count) s->frame=(uint8_t)(code+add);
+                m->frame=s->frame;
+                if (s->animation_timer) --s->animation_timer;
+                else { s->animation_timer=delay; ++s->animation_index; }
+                return;
+            }
+            add=sector*(animation?4:8);
         }
-        add=sector*(animation?4:8);
     } else if (delay==0xFE) {
         animation=speed>=0x550?3:2; sequence=bank->animations[animation]; length=bank->animation_length[animation];
         delay=speed<0x400?(0x400-speed)>>8:0;

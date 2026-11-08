@@ -38,6 +38,7 @@ typedef struct S2CharacterState {
     unsigned shadow_chain, shadow_chaos, source_animation, shadow_super;
     unsigned shadow_monitor_ticks; /* S-monitor prerequisite, independent of Super invincibility */
     int8_t climb_delta;
+    uint8_t glide_collision; /* valid bit 7, KiS2 airborne/pushing contact bits */
 } S2CharacterState;
 void s2_character_reset(S2CharacterState *s, unsigned kind);
 void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t pressed, const S2Contacts *c);

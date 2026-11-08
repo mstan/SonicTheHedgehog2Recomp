@@ -16,12 +16,55 @@ static int departure_ready;
 static uint32_t menu_portrait[S2_SAVE_PORTRAIT_WIDTH*S2_SAVE_PORTRAIT_HEIGHT];
 static int menu,menu_ready,exit_action,session=-1,dirty;
 static unsigned replay_stage; /* S2_CAMPAIGN_STAGES is the unpicked CLEAR card. */
+static void bind_portrait(void);
+static const char *const notices[]={NULL,"SAVE FAILED   SELECT FILE TO RETRY",
+    "SAVE FILE INVALID   USE NO SAVE","SAVE FILE PROTECTED   NO SAVE OK",
+    "DELETE FAILED   CHECK SAVE PATH"};
+typedef struct MenuViewState {
+    uint32_t selection,frame,counter,delete_frame;
+    int32_t cursor,scroll,erase,confirm,delete_x,replay_selected,notice;
+} MenuViewState;
+static MenuViewState view_state(const S2SaveView *v)
+{
+    MenuViewState s={v->selection,v->frame,v->counter_character,v->delete_frame,
+        v->cursor,v->scroll,v->erase,v->confirm,v->delete_x,v->replay_selected,0};
+    for(unsigned i=1;i<sizeof notices/sizeof *notices;++i)
+        if(v->notice && !strcmp(v->notice,notices[i]))s.notice=(int32_t)i;
+    return s;
+}
+static int valid_view(const MenuViewState *s)
+{
+    return s->selection<=9 && s->counter<=2 && s->cursor>=0 && s->cursor<=976 &&
+        s->scroll>=0 && s->scroll<=704 && (s->erase==0 || s->erase==1) &&
+        (s->confirm==0 || s->confirm==1) && s->delete_x>=0 && s->delete_x<=976 &&
+        (s->replay_selected==0 || s->replay_selected==1) && s->notice>=0 &&
+        (unsigned)s->notice<sizeof notices/sizeof *notices;
+}
+static void apply_view(S2SaveView *v,const MenuViewState *s)
+{
+    v->selection=s->selection;v->frame=s->frame;v->counter_character=s->counter;
+    v->delete_frame=s->delete_frame;v->cursor=s->cursor;v->scroll=s->scroll;
+    v->erase=s->erase;v->confirm=s->confirm;v->delete_x=s->delete_x;
+    v->replay_selected=s->replay_selected;v->notice=notices[s->notice];
+    v->read_only=store->read_only;
+}
 void s2_save_menu_state(S2StateIO *io)
 {
     /* Only the active campaign slot is rewound. The current path, writer
      * baseline, protection flags and other seven slots are never restored
      * from a quickstate. No filesystem writes happen during quickload. */
     struct { int session; S2CampaignSlot slot; uint64_t path; } saved={0};
+    /* Rewind can restore MenuScreen as well as gameplay. Carry its complete
+     * control/fade composition, without storing pointers or rewinding files. */
+    struct {
+        uint32_t menu,ready,exit,departure,replay;
+        MenuViewState view,departure_view;
+        S2CampaignData departure_data;
+    } ui={0};
+    ui.menu=menu;ui.ready=menu_ready;ui.exit=exit_action;
+    ui.departure=departure_ready;ui.replay=replay_stage;
+    ui.view=view_state(&view);ui.departure_view=view_state(&departure_view);
+    ui.departure_data=departure_view.data;
     saved.session=session;
     if (session>=0 && store) {
         saved.slot=view.data.slots[session]; saved.path=14695981039346656037ull;
@@ -40,11 +83,25 @@ void s2_save_menu_state(S2StateIO *io)
              store->read_only || saved.path!=current_path || !saved.slot.state))) io->ok=0;
     }
     S2_STATE(io,saved);
+    if(io->mode) {
+        if(io->pos>io->size || sizeof ui>io->size-io->pos){io->ok=0;return;}
+        memcpy(&ui,io->data+io->pos,sizeof ui);
+        if(ui.menu>3 || ui.ready>1 || ui.exit>2 || ui.departure>1 ||
+            ui.replay>S2_CAMPAIGN_STAGES || !valid_view(&ui.view) ||
+            !valid_view(&ui.departure_view) || !s2_campaign_valid(&ui.departure_data))io->ok=0;
+    }
+    S2_STATE(io,ui);
     if (io->mode==2 && io->ok) {
-        session=saved.session; menu=menu_ready=exit_action=departure_ready=0;
+        session=saved.session;menu=(int)ui.menu;menu_ready=(int)ui.ready;
+        exit_action=(int)ui.exit;departure_ready=(int)ui.departure;replay_stage=ui.replay;
         view.data=store->data; view.read_only=store->read_only; view.notice=NULL;
         dirty=session>=0;
         if (session>=0) view.data.slots[session]=saved.slot;
+        apply_view(&view,&ui.view);apply_view(&departure_view,&ui.departure_view);
+        departure_view.data=ui.departure_data;
+        view.portrait=NULL;
+        if(menu || departure_ready)bind_portrait();
+        departure_view.portrait=view.portrait;
     }
 }
 static uint16_t word(unsigned a) { return (uint16_t)((g_ram[a]<<8)|g_ram[a+1]); }
@@ -103,16 +160,8 @@ static void save_transition(uint16_t destination)
     if (!s2_campaign_advance(slot,destination)) return;
     s2_campaign_collect(slot,emeralds()); save_counters(); dirty=1; flush();
 }
-static void begin_menu(void)
+static void bind_portrait(void)
 {
-    if (!s2_resources_prepare_stage_images(g_rom,0x100000))
-        fprintf(stderr,"[NOTE] Sonic 2 stage thumbnail decoding failed.\n");
-    menu=1; menu_ready=exit_action=departure_ready=0; session=-1;
-    /* The launcher may have selected a different file after settings loaded. */
-    if (!dirty) view.data=store->data;
-    view.read_only=store->read_only;
-    view.selection=1; view.scroll=0; view.frame=0; view.erase=view.confirm=0;
-    view.cursor=144; view.delete_x=968; view.delete_frame=0;
     view.portrait=NULL;
     view.counter_character=!strcmp(s2_party.roster.character[0],"knuckles")?2:
         !strcmp(s2_party.roster.character[0],"tails")?1:0;
@@ -138,6 +187,19 @@ static void begin_menu(void)
         s2_save_portraits(s2_resource_save_assets(),portraits,count,menu_portrait);
         view.portrait=menu_portrait;
     }
+}
+static void begin_menu(void)
+{
+    if (!s2_resources_prepare_stage_images(g_rom,0x100000))
+        fprintf(stderr,"[NOTE] Sonic 2 stage thumbnail decoding failed.\n");
+    menu=1; menu_ready=exit_action=departure_ready=0; session=-1;
+    /* The launcher may have selected a different file after settings loaded. */
+    if (!dirty) view.data=store->data;
+    view.read_only=store->read_only;
+    view.selection=1; view.scroll=0; view.frame=0; view.erase=view.confirm=0;
+    view.cursor=144; view.delete_x=968; view.delete_frame=0;
+    view.portrait=NULL;
+    bind_portrait();
     replay_stage=S2_CAMPAIGN_STAGES;
     if (!store->ready) view.notice="SAVE FILE INVALID   USE NO SAVE";
     else if (store->read_only) view.notice="SAVE FILE PROTECTED   NO SAVE OK";

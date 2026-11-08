@@ -26,6 +26,7 @@
 #endif
 static int active, inside_player, actor = -1;
 static uint8_t previous_input[S2_MAX_PLAYERS];
+static uint32_t input_poll_serial;
 /* The native character decides whether to submit a sprite, including hurt
  * flashing. Reuse that decision instead of approximating its timer phase. */
 static uint8_t displayed[S2_MAX_PLAYERS];
@@ -87,6 +88,7 @@ static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_A
 void s2_runtime_load(void)
 {
     active=inside_player=0; actor=-1;
+    input_poll_serial=0;
     gvdp_set_unlimited_sprites(0);
     s2_video_prepare_knuckles_items();
     hud_art_ready=0;
@@ -172,6 +174,52 @@ static int shadow_target(unsigned o,int monitors)
     if (id==0x26) return monitors && g_ram[o+0x24]<4;
     return (!(collision&0xC0) && (collision&63)>=5) || collision==0xCC;
 }
+static unsigned knuckles_glide_collision(unsigned o, int gliding)
+{
+    /* KiS2 Knuckles_DoLevelCollision2 uses the original terrain helpers,
+     * without Sonic_ResetOnFloor or replacement of glide inertia. Its
+     * airborne/pushing result is separate from the object's status. */
+    M68KState cpu=g_cpu;
+    unsigned flags=2;
+    if(gliding)g_ram[o+0x16]=g_ram[o+0x17]=10;
+    host_call(0x1EC4E); /* select primary/secondary collision table */
+    unsigned quadrant=(shadow_angle((int16_t)word(o+0x10),(int16_t)word(o+0x12))-0x20)&0xC0;
+    int floor=0,ceiling=0;
+    if (quadrant!=0xC0) {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1F05E);
+        if(d<0){putword(o+8,word(o+8)-d);putword(o+0x10,0);flags|=32;}
+    }
+    if (quadrant!=0x40) {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1EEDC);
+        if(d<0){putword(o+8,word(o+8)+d);putword(o+0x10,0);flags|=32;}
+    }
+    if(!quadrant) floor=1;
+    else {
+        g_cpu.D[5]=g_ram[o+0x3F];
+        int d=host_call(0x1EF2E);
+        if(d<0) {
+            if(quadrant==0x40 && -d>=20) {
+                g_cpu.D[5]=g_ram[o+0x3F];d=host_call(0x1EEDC);
+                if(d<0){putword(o+8,word(o+8)+d);putword(o+0x10,0);flags|=32;}
+            } else {
+                putword(o+12,word(o+12)-d);
+                if(quadrant==0x80 || (int16_t)word(o+0x12)<0)putword(o+0x12,0);
+            }
+            ceiling=1;
+        }
+        if(!ceiling && quadrant!=0x80 && (int16_t)word(o+0x12)>=0)floor=1;
+    }
+    if(floor) {
+        M68KState result=native_helper(0x1EC4E);
+        int d=(int16_t)result.D[1];
+        if(d<0){putword(o+12,word(o+12)+d);g_ram[o+0x26]=(uint8_t)result.D[3];putword(o+0x12,0);flags&=~2u;}
+    }
+    g_ram[o+0x16]=19;g_ram[o+0x17]=9;
+    g_cpu=cpu;
+    return flags|0x80;
+}
 static void shadow_contacts(unsigned o,S2Contacts *c)
 {
     if (actor<0 || kind((unsigned)actor)!=S2_CHAR_SHADOW) return;
@@ -211,7 +259,9 @@ static S2Contacts contacts(unsigned o)
     g_cpu.D[5]=g_ram[o+0x3F];
     c.wall=host_call((g_ram[o+0x22]&1)?0x1F05E:0x1EEDC);
     c.ceiling=host_call(0x1EF2E);
-    if(knux && special==S2_SK_GLIDE && c.wall<=0 && (int16_t)word(o+0x10)>-0x20 && (int16_t)word(o+0x10)<0x20) {
+    if(knux && special==S2_SK_GLIDE &&
+        ((characters[actor].glide_collision&32) ||
+         (c.wall<=0 && (int16_t)word(o+0x10)>-0x20 && (int16_t)word(o+0x10)<0x20))) {
         int left=g_ram[o+0x22]&1;
         M68KState fit=native_helper(left?0x1EFF6:0x1EE7C);
         if(((uint16_t)fit.D[0]|(uint16_t)fit.D[1])==0)c.grab_x=left?1:0;
@@ -448,7 +498,8 @@ static void runtime_state(S2StateIO *io)
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
     }
     S2_STATE(io,header); S2_STATE(io,active);
-    S2_STATE(io,previous_input); S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
+    S2_STATE(io,previous_input); S2_STATE(io,input_poll_serial);
+    S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
     S2_STATE(io,characters); S2_STATE(io,physics); S2_STATE(io,objects);
     S2_STATE(io,solid_flags); S2_STATE(io,solid_ids); S2_STATE(io,published_sprites);
     S2_STATE(io,dust_emit_age); S2_STATE(io,published_dust);
@@ -638,6 +689,17 @@ static int spring_extras(uint32_t pc)
     }
     g_cpu=result; return 1;
 }
+static void restore_player_inputs(const uint8_t saved[12], uint32_t poll, unsigned player)
+{
+    /* P1's native controller publishes Ctrl_1_Logical for world objects.
+     * A companion instead borrows that logical slot temporarily. Physical
+     * pads live at F604/F606; a real ReadJoypads call during this scope
+     * replaces our substitutions with the next poll's actual edges. */
+    uint16_t logical=word(0xF602),pad1=word(0xF604),pad2=word(0xF606);
+    memcpy(g_ram+0xF602,saved+2,10);
+    if (!player) putword(0xF602,logical);
+    if (input_poll_serial!=poll) {putword(0xF604,pad1);putword(0xF606,pad2);}
+}
 static int update_player(unsigned p, uint32_t entry)
 {
     unsigned object=g_cpu.A[0]&0xFFFF;
@@ -648,6 +710,7 @@ static int update_player(unsigned p, uint32_t entry)
     displayed[p]=0;
     M68KState cpu=g_cpu;
     uint8_t inputs[12]; memcpy(inputs,g_ram+0xF600,sizeof inputs);
+    uint32_t input_poll=input_poll_serial;
     uint16_t mode=word(0xFF70), bias=word(0xEED8);
     uint16_t record_index=word(0xEED2);
     uint8_t history[512]; memcpy(history,g_ram+0xE400,sizeof history);
@@ -717,7 +780,14 @@ static int update_player(unsigned p, uint32_t entry)
         if (characters[p].move!=S2_MOVE_NATIVE) {
             if (characters[p].move!=S2_MOVE_FIXED) {
                 host_call(0x163AC); /* ObjectMove, no gravity */
-                host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
+                int gliding=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_GLIDE;
+                int falling=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_FALL;
+                if(falling) {
+                    host_call(0x1A8E8); /* KiS2 steers/applies gravity after movement */
+                    putword(object+0x12,word(object+0x12)+((g_ram[object+0x22]&64)?0x10:0x38));
+                }
+                if(gliding || falling)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding);
+                else host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
             }
             host_call(0x1A974); /* LevelBound remains authoritative */
             g_ram[object+0x2A]|=1;
@@ -756,7 +826,7 @@ static int update_player(unsigned p, uint32_t entry)
     }
     if (imported()) {
         if (injected_control) g_ram[object+0x2A]&=~1;
-        memcpy(g_ram+0xF602,inputs+2,10);
+        restore_player_inputs(inputs,input_poll,p);
     }
     inside_player=0; actor=-1;
     if (companion) {
@@ -767,7 +837,7 @@ static int update_player(unsigned p, uint32_t entry)
     if (p) {
         /* Preserve Game_Mode changes, but not companion copies of pad state. */
         g_ram[0xFE19]=super;
-        memcpy(g_ram+0xF602,inputs+2,10); putword(0xF66A,logical2);
+        restore_player_inputs(inputs,input_poll,p); putword(0xF66A,logical2);
         putword(0xEED8,bias); g_ram[0xF7CC]=locked;
         memcpy(g_ram+0xFE30,checkpoint,sizeof checkpoint);
         memcpy(g_ram+0xE400,history,sizeof history); putword(0xEED2,record_index);
@@ -793,6 +863,7 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if (pc==0x111C) {++input_poll_serial;return 0;}
     if (pc==0xC680 && (g_ram[0xF600]&127)==12 && !g_ram[0xFE10] &&
         !word(0xFFD8) && !s2_roster_is_classic(&s2_party.roster)) {
         /* KiS2 Deform_EHZ appends the missing last two H-scroll rows using
@@ -1426,6 +1497,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
         if (line>=216 && line<224) return;
         if (line>=224) { origin_x=vs_left; origin_y=vs_top; }
     }
+    s2_video_preserve_foreground_row(out,width);
     for (int index=S2_MAX_PLAYERS;index>=0;--index) {
         unsigned p=index==S2_MAX_PLAYERS?0:(unsigned)index;
         const PartySprite *s=&frame_sprites[index];

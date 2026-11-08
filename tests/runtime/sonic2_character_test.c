@@ -43,7 +43,7 @@ int main(void)
     s2_character_after(&s,&m,&c);
     assert(m.radius_x==9 && m.radius_y==19 && s.special==S2_SK_GLIDE);
     s2_character_before(&s,&m,0x20,0,&c);
-    assert(m.radius_x==10 && m.radius_y==10);
+    assert(m.radius_x==9 && m.radius_y==19);
     s2_character_after(&s,&m,&c);
     s2_character_before(&s,&m,0,0,&c);
     assert(s.special==S2_SK_FALL && m.radius_y==19);
@@ -57,6 +57,12 @@ int main(void)
     s.special=S2_SK_FALL; m.jumping=1; m.vx=0x200;
     s2_character_after(&s,&m,&c);
     assert(m.animation==0x23 && m.move_lock==15 && !m.jumping && !m.vx);
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_FALL;s.glide_collision=0x80;m.status=2;m.angle=0xC8;
+    m.vx=m.inertia=0x400;m.jumping=1;
+    s2_character_after(&s,&m,&c);
+    assert(!s.special && !m.animation && !m.move_lock && !(m.status&2));
+    assert(!m.vx && !m.vy && !m.inertia && !m.jumping && !m.y);
     s.special=S2_SK_SLIDE; m.radius_y=m.radius_x=10; m.y=0; c.floor=0;
     s2_character_before(&s,&m,0,0,&c);
     assert(m.animation==0x22 && m.move_lock==15 && m.y==-9*65536 && m.radius_y==19);
@@ -111,8 +117,22 @@ int main(void)
     c.grab_y=c.grab_x=0;
     s.special=S2_SK_GLIDE;m.status=0;
     s2_character_after(&s,&m,&c);
-    assert(s.special==S2_SK_CLIMB && (m.status&2) && m.jumping); /* wall before floor */
-    s.special=S2_SK_CLIMB;s.wall_x=m.x;c.climb_up=2;unsigned age=s.age;
+    assert(s.special==S2_SK_CLIMB && (m.status&2)); /* KiS2 wall before floor */
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+    s.special=S2_SK_GLIDE;s.glide_collision=0x82;m.status=2;m.vx=0;
+    s2_character_after(&s,&m,&c);
+    assert(s.special==S2_SK_GLIDE); /* touching is not penetration */
+    for(unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+        s.special=S2_SK_GLIDE;m.status=(uint8_t)face;m.jumping=1;
+        s.glide_collision=0x80; /* actual floor, no wall penetration */
+        m.angle=face?0x40:0xC0;m.vx=0;m.inertia=face?-0x480:0x480;
+        s2_character_after(&s,&m,&c);
+        assert(s.special==S2_SK_NORMAL && !m.jumping && !(m.status&6));
+        assert(m.vx==m.inertia && !m.vy && !m.animation);
+        assert(m.radius_y==19 && m.radius_x==9);
+    }
+    s.special=S2_SK_CLIMB;m.status=2;s.wall_x=m.x;c.climb_up=2;unsigned age=s.age;
     s2_character_before(&s,&m,1,0,&c);
     assert(s.special==S2_SK_CLIMB && m.y==0 && s.age==age && !s.climb_delta);
     c.climb_up=0;c.ceiling=-3;
@@ -171,6 +191,24 @@ int main(void)
     assert(m.frame==8 && s.render_flip==2 && s.animation_index==1);
     m.angle=0x60; m.inertia=0x700; s2_character_animate(&s,&m,&bank);
     assert(m.frame==0x2E && s.animation_index==1);
+    /* Grounded wall contact keeps Walk selected and sets Status_Push.
+     * Animate_Knuckles loc_17ECC then uses AniKnuckles04, advancing every
+     * nine ticks at zero inertia; it does not display a walking gait. */
+    bank.animation_length[4]=6;
+    memcpy(bank.animations[4],(uint8_t[]){0xFD,0xCE,0xCF,0xD0,0xD1,0xFF},6);
+    for (unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+        m.animation=0;s.animation=0;m.status=(uint8_t)(32|face);
+        for(unsigned tick=0;tick<72;++tick) {
+            s2_character_animate(&s,&m,&bank);
+            assert(m.frame==0xCE + (tick/9)%4 && s.render_flip==face);
+            assert(m.animation==0 && (m.status&32));
+        }
+        bank.animation_length[5]=3;
+        memcpy(bank.animations[5],(uint8_t[]){5,0x56,0xFF},3);
+        m.animation=5;s2_character_animate(&s,&m,&bank);
+        assert(!(m.status&32) && m.frame==0x56 && s.render_flip==face);
+    }
     /* Native spring subtype 1 switches to Walk plus a tumble angle. These
      * explicit poses follow Animate_Knuckles -> Anim_Tumble, including byte
      * wrap at the end of a turn; held gait timing cannot freeze that pose. */
