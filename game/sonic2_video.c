@@ -1361,10 +1361,14 @@ int s2_video_hook(uint32_t pc)
             if(!competition){special_actor_piece(slot,o,mapping);special_results_piece(slot,o);}
             if(slot<80 && mapping>0x40A9A && mapping<=0x40D06)
                 s_front_build.kind[p][slot]=1;
+            /* BuildSprites counts queues 0..7 with D7=7..0 in both views.
+             * DisplaySprite3 overrides the nominal object priority; A4 is
+             * temporarily a child mapping pointer for multipart objects. */
             else if(o>=0xB000 && o<0xD800 && !(o&63) && slot<80)
                 s_front_build.kind[p][slot]=g_ram[o]==0x3A?2:
                     (g_ram[o]==0x34 || g_ram[o]==0x0A)?3:
-                    (g_ram[o+0x18]<2 && (g_ram[o+1]&0x4C))?4:0;
+                    ((uint16_t)g_cpu.D[7]>=6 && (uint16_t)g_cpu.D[7]<=7 &&
+                     (g_ram[o+1]&0x4C))?4:0;
             /* Mode2 cells are8x16: each index addresses two ordinary tiles. */
             if (competition) tile*=2;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;

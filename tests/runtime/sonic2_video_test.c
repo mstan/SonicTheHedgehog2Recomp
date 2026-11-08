@@ -657,11 +657,14 @@ static void foreground_world_sprite_test(void)
     memset(&s_front_build,0,sizeof s_front_build);memset(s_front_history,0,sizeof s_front_history);
     memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB840]=0xA8;
-    g_ram[0xB841]=4;g_ram[0xB858]=1;
+    g_ram[0xB841]=4;g_ram[0xB858]=2;
     v.reg[1]=64;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;v.cram[1]=0xEEE;
     memset(v.vram+32,0x10,32);
     word(g_ram,0xF800,128);word(g_ram,0xF804,1);word(g_ram,0xF806,128);
     front_ui_begin();g_cpu.A[0]=0xFFFFB840;g_cpu.A[1]=0;g_cpu.A[2]=0xFFFFF808;
+    /* DisplaySprite3 can enqueue stars ahead of actors without changing
+     * the object's nominal priority byte. Use the queue being consumed. */
+    g_cpu.D[7]=6;g_cpu.A[4]=0xFFFFAC80;
     s2_video_hook(0x1684E);front_ui_publish();
     memcpy(v.vram+0xF800,g_ram+0xF800,640);memcpy(ram,g_ram,sizeof ram);
     CHECK(s_front_build.kind[0][0]==4);
@@ -672,11 +675,13 @@ static void foreground_world_sprite_test(void)
      * Its opaque pixel hides a donor; its transparent hole exposes it. */
     CHECK(out[0]==0xFF223344 && out[1]==0xFFFF0000);
     CHECK(!memcmp(ram,g_ram,sizeof ram));
-    g_ram[0xB858]=2;front_ui_begin();s2_video_hook(0x1684E);front_ui_publish();
+    g_ram[0xB858]=1;g_cpu.D[7]=5;g_cpu.A[4]=0xFFFFAD00;
+    front_ui_begin();s2_video_hook(0x1684E);front_ui_publish();
     CHECK(!s_front_build.kind[0][0]);
     out[0]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);CHECK(out[0]==0xFFFF0000);
     /* The second competition viewport has its own completed SAT. */
-    word(g_ram,0xFFD8,1);g_ram[0xB858]=1;v.reg[12]=7;
+    word(g_ram,0xFFD8,1);g_ram[0xB858]=2;g_cpu.D[7]=7;v.reg[12]=7;
+    g_cpu.A[4]=0xFFFFEE20; /* Multipart P2 mappings borrow the queue register. */
     memset(v.vram+64,0x10,64); /* Mode 2 tile 1 is an 8x16 cell. */
     word(g_ram,0xDD00,480);word(g_ram,0xDD04,1);word(g_ram,0xDD06,128);
     front_ui_begin();g_cpu.A[2]=0xFFFFDD08;s2_video_hook(0x16DEE);front_ui_publish();
