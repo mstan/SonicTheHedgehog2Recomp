@@ -711,6 +711,46 @@ static void foreground_world_sprite_test(void)
     CHECK(sonic2_video.configure("off"));
 }
 
+static void water_surface_span_test(void)
+{
+    static GVDP v;uint32_t out[796],palette[64]={0};uint8_t ram[65536];
+    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(g_rom,0,sizeof g_rom);
+    memset(&s2_party,0,sizeof s2_party);online=0;s_interpolating=0;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
+    word(g_ram,0xEEF0,512);word(g_ram,0xEE00,512);
+    /* REV01 Obj04's three 32x16 pieces, repeated by its two native objects. */
+    word(g_rom,0x20A0E,12);word(g_rom,0x20A1A,3);
+    for(unsigned n=0;n<3;++n) {
+        unsigned at=0x20A1C+n*8;g_rom[at]=0xF8;g_rom[at+1]=0x0D;
+        word(g_rom,at+6,(unsigned)(-96+(int)n*64));
+    }
+    for(unsigned n=0;n<2;++n) {
+        unsigned o=0xB380+n*64;g_ram[o]=4;g_ram[o+1]=4;g_ram[o+0x19]=128;
+        word(g_ram,o+2,0x8400);word(g_ram,o+4,2);word(g_ram,o+6,0xA0E);
+        word(g_ram,o+8,640+n*192);word(g_ram,o+12,8);
+        word(g_ram,0xAC02+n*2,o);
+    }
+    word(g_ram,0xAC00,4);memcpy(ram,g_ram,sizeof ram);
+    v.reg[12]=1;memset(v.vram+0x400*32,0x11,8*32);palette[1]=0xFFFFFFFF;
+    CHECK(reserve_sprite_row(796));s_frame_campaign_view=0;s_camera=512;s_camera_y=0;
+    capture_objects_into(&s_display_frame,320,1,NULL);s_display=&s_display_frame;
+    CHECK(s_display_frame.count==6);
+    memset(s_priority,0,796);memset(out,0,sizeof out);
+    draw_scene_sprites(&v,0,out,320,0,palette);
+    for(unsigned x=0;x<320;++x)CHECK(out[x]==((x%64)>=32?0xFFFFFFFFu:0));
+    capture_objects_into(&s_display_frame,796,1,NULL);
+    memset(s_priority,0,796);memset(out,0,sizeof out);
+    draw_scene_sprites(&v,0,out,796,238,palette);
+    for(int x=0;x<796;++x)CHECK(out[x]==(((x-14)&63)<32?0xFFFFFFFFu:0));
+    /* A separate camera gets the same native phase, including a wrapped
+     * negative origin. An earlier sprite still owns its opaque pixel. */
+    s_frame_campaign_view=1;s_camera=512+777;
+    memset(s_priority,0,796);memset(out,0,sizeof out);s_priority[10]=2;
+    draw_scene_sprites(&v,0,out,320,238,palette);
+    for(int x=0;x<320;++x)CHECK(out[x]==(x!=10 && ((x-5)&63)<32?0xFFFFFFFFu:0));
+    CHECK(!memcmp(ram,g_ram,sizeof ram));s_frame_campaign_view=0;s_camera=0;
+}
+
 static void competition_hud_replacement_test(void)
 {
     static GVDP v;uint32_t out[320];
@@ -1141,6 +1181,7 @@ int main(void)
     knuckles_special_ui_test();
     front_ui_and_background_priority_test();
     foreground_world_sprite_test();
+    water_surface_span_test();
     competition_hud_replacement_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;

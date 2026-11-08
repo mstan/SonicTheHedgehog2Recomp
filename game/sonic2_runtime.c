@@ -26,6 +26,7 @@
 #endif
 static int active, inside_player, actor = -1;
 static uint8_t previous_input[S2_MAX_PLAYERS];
+static uint32_t input_poll_serial;
 /* The native character decides whether to submit a sprite, including hurt
  * flashing. Reuse that decision instead of approximating its timer phase. */
 static uint8_t displayed[S2_MAX_PLAYERS];
@@ -87,6 +88,7 @@ static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_A
 void s2_runtime_load(void)
 {
     active=inside_player=0; actor=-1;
+    input_poll_serial=0;
     gvdp_set_unlimited_sprites(0);
     s2_video_prepare_knuckles_items();
     hud_art_ready=0;
@@ -448,7 +450,8 @@ static void runtime_state(S2StateIO *io)
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
     }
     S2_STATE(io,header); S2_STATE(io,active);
-    S2_STATE(io,previous_input); S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
+    S2_STATE(io,previous_input); S2_STATE(io,input_poll_serial);
+    S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
     S2_STATE(io,characters); S2_STATE(io,physics); S2_STATE(io,objects);
     S2_STATE(io,solid_flags); S2_STATE(io,solid_ids); S2_STATE(io,published_sprites);
     S2_STATE(io,dust_emit_age); S2_STATE(io,published_dust);
@@ -638,6 +641,17 @@ static int spring_extras(uint32_t pc)
     }
     g_cpu=result; return 1;
 }
+static void restore_player_inputs(const uint8_t saved[12], uint32_t poll, unsigned player)
+{
+    /* P1's native controller publishes Ctrl_1_Logical for world objects.
+     * A companion instead borrows that logical slot temporarily. Physical
+     * pads live at F604/F606; a real ReadJoypads call during this scope
+     * replaces our substitutions with the next poll's actual edges. */
+    uint16_t logical=word(0xF602),pad1=word(0xF604),pad2=word(0xF606);
+    memcpy(g_ram+0xF602,saved+2,10);
+    if (!player) putword(0xF602,logical);
+    if (input_poll_serial!=poll) {putword(0xF604,pad1);putword(0xF606,pad2);}
+}
 static int update_player(unsigned p, uint32_t entry)
 {
     unsigned object=g_cpu.A[0]&0xFFFF;
@@ -648,6 +662,7 @@ static int update_player(unsigned p, uint32_t entry)
     displayed[p]=0;
     M68KState cpu=g_cpu;
     uint8_t inputs[12]; memcpy(inputs,g_ram+0xF600,sizeof inputs);
+    uint32_t input_poll=input_poll_serial;
     uint16_t mode=word(0xFF70), bias=word(0xEED8);
     uint16_t record_index=word(0xEED2);
     uint8_t history[512]; memcpy(history,g_ram+0xE400,sizeof history);
@@ -756,7 +771,7 @@ static int update_player(unsigned p, uint32_t entry)
     }
     if (imported()) {
         if (injected_control) g_ram[object+0x2A]&=~1;
-        memcpy(g_ram+0xF602,inputs+2,10);
+        restore_player_inputs(inputs,input_poll,p);
     }
     inside_player=0; actor=-1;
     if (companion) {
@@ -767,7 +782,7 @@ static int update_player(unsigned p, uint32_t entry)
     if (p) {
         /* Preserve Game_Mode changes, but not companion copies of pad state. */
         g_ram[0xFE19]=super;
-        memcpy(g_ram+0xF602,inputs+2,10); putword(0xF66A,logical2);
+        restore_player_inputs(inputs,input_poll,p); putword(0xF66A,logical2);
         putword(0xEED8,bias); g_ram[0xF7CC]=locked;
         memcpy(g_ram+0xFE30,checkpoint,sizeof checkpoint);
         memcpy(g_ram+0xE400,history,sizeof history); putword(0xEED2,record_index);
@@ -793,6 +808,7 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if (pc==0x111C) {++input_poll_serial;return 0;}
     if (pc==0xC680 && (g_ram[0xF600]&127)==12 && !g_ram[0xFE10] &&
         !word(0xFFD8) && !s2_roster_is_classic(&s2_party.roster)) {
         /* KiS2 Deform_EHZ appends the missing last two H-scroll rows using

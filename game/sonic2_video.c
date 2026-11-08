@@ -306,7 +306,7 @@ static uint16_t plane_attr(const GVDP *v, unsigned base, int x, int y)
  * for the hardware pass and publishes a signature used to align our list
  * with the exact VBlank upload displayed by the VDP. */
 typedef struct { int x, y; uint16_t attr; uint8_t size, hud; } SceneSprite;
-enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024 };
+enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024, SCENE_WATER_REPEAT = 16 };
 typedef struct {
     SceneSprite sprites[SCENE_SPRITES];
     unsigned count, serial;
@@ -1064,7 +1064,8 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
-        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0));
+        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
+                         ((flags&0x1000)?SCENE_WATER_REPEAT:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
         if ((flags&0x200) && (attr&2047)*(vs?2u:1u)>=0x4DE &&
@@ -1251,6 +1252,10 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
+            /* Obj04's two original surface objects form a 384-pixel cycle.
+             * Repeat their completed artwork in presentation only; native
+             * animation, camera phase and object lifetimes stay in charge. */
+            if(!vs && g_ram[o]==4 && map==0x20A0E)flags|=0x1000;
             if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
             /* Playable actors use priority 2. Native world objects in the
              * earlier queues, including Grabber legs, must stay in front. */
@@ -1505,6 +1510,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
         unsigned anchor=s->hud&3u;
         int world=!anchor && (s_display->scene==1 || s_display->scene==3);
+        int repeat=(s->hud&SCENE_WATER_REPEAT) && world &&
+            (width>320 || s_frame_campaign_view);
         int cell_height=(v->reg[12]&6)==6?16:8;
         int sx=s->x,sy=s->y;
         if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
@@ -1519,7 +1526,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         if(s->attr&0x1000)iy=ch*cell_height-1-iy;
         for(int i=0;i<cw*8;++i) {
             int x=base+i;
-            if(x<0 || x>=width || (s_priority[x]&2))continue;
+            if(repeat) {x%=384;if(x<0)x+=384;}
+            else if(x<0 || x>=width || (s_priority[x]&2))continue;
             int ix=(s->attr&0x800)?cw*8-1-i:i;
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
@@ -1539,11 +1547,15 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
                 knux=1;
             }
-            s_priority[x]|=2;
-            if(anchor || (s->attr&0x8000) || !(s_priority[x]&1)) {
-                out[x]=knux?custom:palette[p];
+            for(;x<width;x+=384) {
+                if(!(s_priority[x]&2)) {
+                    s_priority[x]|=2;
+                    if(anchor || (s->attr&0x8000) || !(s_priority[x]&1))
+                        out[x]=knux?custom:palette[p];
+                    if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
+                }
+                if(!repeat)break;
             }
-            if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
         }
     }
 }
