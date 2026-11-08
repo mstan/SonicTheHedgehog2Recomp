@@ -171,6 +171,24 @@ int main(void)
     assert(m.frame==8 && s.render_flip==2 && s.animation_index==1);
     m.angle=0x60; m.inertia=0x700; s2_character_animate(&s,&m,&bank);
     assert(m.frame==0x2E && s.animation_index==1);
+    /* Grounded wall contact keeps Walk selected and sets Status_Push.
+     * Animate_Knuckles loc_17ECC then uses AniKnuckles04, advancing every
+     * nine ticks at zero inertia; it does not display a walking gait. */
+    bank.animation_length[4]=6;
+    memcpy(bank.animations[4],(uint8_t[]){0xFD,0xCE,0xCF,0xD0,0xD1,0xFF},6);
+    for (unsigned face=0;face<2;++face) {
+        s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
+        m.animation=0;s.animation=0;m.status=(uint8_t)(32|face);
+        for(unsigned tick=0;tick<72;++tick) {
+            s2_character_animate(&s,&m,&bank);
+            assert(m.frame==0xCE + (tick/9)%4 && s.render_flip==face);
+            assert(m.animation==0 && (m.status&32));
+        }
+        bank.animation_length[5]=3;
+        memcpy(bank.animations[5],(uint8_t[]){5,0x56,0xFF},3);
+        m.animation=5;s2_character_animate(&s,&m,&bank);
+        assert(!(m.status&32) && m.frame==0x56 && s.render_flip==face);
+    }
     /* Native spring subtype 1 switches to Walk plus a tumble angle. These
      * explicit poses follow Animate_Knuckles -> Anim_Tumble, including byte
      * wrap at the end of a turn; held gait timing cannot freeze that pose. */

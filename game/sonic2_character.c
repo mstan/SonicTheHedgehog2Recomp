@@ -273,7 +273,11 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
     }
     unsigned animation=m->animation<bank->animation_count?m->animation:5;
     s->animation_changed=0;
-    if (animation!=s->animation) { s->animation=animation; s->animation_index=s->animation_timer=0; }
+    if (animation!=s->animation) {
+        s->animation=animation;s->animation_index=s->animation_timer=0;
+        /* Animate_Knuckles $17D50 retires contact from the previous action. */
+        if(s->kind==S2_CHAR_KNUCKLES)m->status&=~PUSH;
+    }
     const uint8_t *sequence=bank->animations[animation];
     unsigned length=bank->animation_length[animation], delay=sequence[0], add=0;
     s->render_flip=!!(m->status&FACE);
@@ -297,25 +301,33 @@ void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *b
         if (!(m->status&FACE)) angle=(uint8_t)~angle;
         angle=(uint8_t)(angle+0x10);
         if (angle&0x80) s->render_flip^=3;
-        unsigned sector=(angle>>4)&6;
-        animation=speed>=0x600?1:0;
-        sequence=bank->animations[animation]; length=bank->animation_length[animation];
-        delay=speed<0x800?(0x800-speed)>>8:0;
-        if (s->kind==S2_CHAR_KNUCKLES) {
-            /* S3&K Animate_Knuckles $17E42-$17E82: its directional banks
-             * have half Sonic's frame stride. Select the surface pose every
-             * tick; only advancing the gait index is gated by the timer. */
-            add=sector*(animation?2:4);
-            if (s->animation_index+1>=length) s->animation_index=0;
-            unsigned code=sequence[1+s->animation_index];
-            if (code==0xFF) { s->animation_index=0; code=sequence[1]; }
-            if (code<0xFC && code+add<bank->count) s->frame=(uint8_t)(code+add);
-            m->frame=s->frame;
-            if (s->animation_timer) --s->animation_timer;
-            else { s->animation_timer=delay; ++s->animation_index; }
-            return;
+        if (s->kind==S2_CHAR_KNUCKLES && (m->status&PUSH) && bank->animation_count>4) {
+            /* Animate_Knuckles $17E00/$17ECC: native wall contact keeps
+             * Walk selected. Status_Push chooses the four punching poses
+             * with the same speed-dependent timer as the original. */
+            sequence=bank->animations[4];length=bank->animation_length[4];
+            delay=speed<0x800?(0x800-speed)>>8:0;
+        } else {
+            unsigned sector=(angle>>4)&6;
+            animation=speed>=0x600?1:0;
+            sequence=bank->animations[animation]; length=bank->animation_length[animation];
+            delay=speed<0x800?(0x800-speed)>>8:0;
+            if (s->kind==S2_CHAR_KNUCKLES) {
+                /* S3&K Animate_Knuckles $17E42-$17E82: its directional banks
+                 * have half Sonic's frame stride. Select the surface pose every
+                 * tick; only advancing the gait index is gated by the timer. */
+                add=sector*(animation?2:4);
+                if (s->animation_index+1>=length) s->animation_index=0;
+                unsigned code=sequence[1+s->animation_index];
+                if (code==0xFF) { s->animation_index=0; code=sequence[1]; }
+                if (code<0xFC && code+add<bank->count) s->frame=(uint8_t)(code+add);
+                m->frame=s->frame;
+                if (s->animation_timer) --s->animation_timer;
+                else { s->animation_timer=delay; ++s->animation_index; }
+                return;
+            }
+            add=sector*(animation?4:8);
         }
-        add=sector*(animation?4:8);
     } else if (delay==0xFE) {
         animation=speed>=0x550?3:2; sequence=bank->animations[animation]; length=bank->animation_length[animation];
         delay=speed<0x400?(0x400-speed)>>8:0;
