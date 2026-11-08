@@ -196,9 +196,11 @@ static void results_identity_test(void)
             s2_video_results_name(&v,line,out,width,0);
             s2_video_results_name(&v,line,out,width,1);
             if(line==56) {
-                CHECK(out[40+center]==0xFFFF0000 && out[56+center]==0xFFFFFFFF);
-                CHECK(out[104+center]==0xFFFF0000 && out[176+center]==0xFFFFFFFF);
-                CHECK(out[24+center]==0xFF00FF00);
+                /* Original KiS2 shifts the complete eight-letter name/GOT
+                 * row 24 pixels right, retaining its centered footprint. */
+                CHECK(out[64+center]==0xFFFF0000 && out[80+center]==0xFFFFFFFF);
+                CHECK(out[128+center]==0xFFFF0000 && out[200+center]==0xFFFFFFFF);
+                CHECK(out[40+center]==0xFF00FF00);
             }
         }
     }
@@ -207,7 +209,7 @@ static void results_identity_test(void)
         memset(out,0,sizeof out);s2_video_results_name(&v,line,out,398,0);
         s2_video_results_name(&v,line,out,398,1);
     }
-    CHECK(out[72+39]==0xFFFFFFFF && out[176+39]==0xFFFFFFFF);
+    CHECK(out[80+39]==0xFFFFFFFF && out[184+39]==0xFFFFFFFF);
     strcpy(s2_party.roster.character[0],"sonic");
     for(int x=0;x<320;++x)out[x]=0xFF00FF00;
     s2_video_results_name(&v,0,out,320,0);s2_video_results_name(&v,56,out,320,1);

@@ -2323,7 +2323,10 @@ void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int dr
         return;
     }
     const char *name=s_result_name.name;unsigned length=(unsigned)strlen(name);
-    int x0=origin+s_result_name.x+8-(int)length*16;
+    /* Keep the complete name/GOT row centered around its native five-letter
+     * footprint. KiS2's eight-letter row advances its object by 24 pixels. */
+    int name_origin=origin+s_result_name.x+((int)length-5)*8;
+    int x0=name_origin+8-(int)length*16;
     const uint8_t *font=s2_runtime_ui_font();
     for(unsigned c=0;c<length;++c)for(int x=0;x<16;++x) {
         int dx=x0+(int)c*16+x;if(dx<0 || dx>=width)continue;
@@ -2342,7 +2345,7 @@ void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int dr
     static const unsigned tiles[]={0x5B8,0x588,0x5D4};
     static const int offsets[]={16,32,47};
     for(unsigned c=0;c<3;++c)for(int x=0;x<16;++x) {
-        int dx=origin+s_result_name.x+offsets[c]+x;if(dx<0 || dx>=width)continue;
+        int dx=name_origin+offsets[c]+x;if(dx<0 || dx>=width)continue;
         unsigned ink=results_ink(v,tiles[c],x,y,0);
         if(ink)out[dx]=genesis_dac_cram_to_argb(v->cram[ink],GENESIS_DAC_NORMAL);
     }
