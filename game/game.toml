@@ -133,6 +133,9 @@ kind = "game_hook"
 addr = 0x4F64 # SpecialStage: always native Sonic + Tails, independent of roster
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x5300 # Special-stage results: retire pending level tile redraws
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x189CA # spring launch: relinquish imported special-move trajectory
 kind = "game_hook"
 [[widescreen_site]]

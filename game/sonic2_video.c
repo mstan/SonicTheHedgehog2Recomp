@@ -1,7 +1,7 @@
 /* Opt-in Sonic 2 REV01 world renderer.
  * Canonical s2disasm: GetBlock $E244, ObjectsManager $17AA4,
  * BuildSprites $16604, RingsManager $16F88. Native rendering is the default.
- * No collision, layout, decompression or tile-streaming data is rewritten.
+ * Native collision, layouts and decompression remain authoritative.
  */
 #include "sonic2_video.h"
 #include "sonic2_runtime.h"
@@ -675,6 +675,10 @@ void s2_video_prepare_knuckles_items(void)
             for(unsigned t=0;t<S2_SPECIAL_TILES;++t)
                 item_lines[f*S2_SPECIAL_TILES+t]=GVDP_EXT_SPRITE_FORCE|3;
         }
+        /* Palette-only checkpoint pieces retain the native message atlas.
+         * This range shares the actor bank's palette map, not its patterns. */
+        if(art && special==art->special)for(unsigned t=0x1BC;t<0x1FA;++t)
+            item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
     }
     cached=art;cached_special=special;
     /* Original grey items keep live CRAM. The signpost patch and tagged
@@ -805,29 +809,93 @@ static void special_actor_compose(const GVDP *v,GVDP *copy,const uint16_t *palet
             out[ox]=row.host_palette[index-GVDP_HOST_PALETTE_BASE];
     }
 }
-/* Obj5E's original mappings are byte-identical in Amy 1.7.1. Only its five
- * primary-name tiles change. Substitute them in a private SAT, including
- * native blink frames where no primary actor was submitted. */
-static int special_amy_hud_sat(GVDP *copy,int line)
+/* Original KiS2 Obj5E omits the primary name pieces. Amy retains the
+ * native mappings with her own name tiles. Checkpoint wings/hand share the
+ * native art and geometry, but use Knuckles' original half-pipe colours.
+ * A NULL destination only checks whether this scanline needs recomposition. */
+static int special_primary_ui_sat(const GVDP *v,GVDP *copy,int line)
 {
-    if(line<16 || line>=24)return 0;
-    unsigned table=(copy->reg[5]&127u)<<9,slot=0;int changed=0;
+    int knuckles=!strcmp(s2_party.roster.character[0],"knuckles");
+    if(!knuckles && (strcmp(s2_party.roster.character[0],"amy") || line<16 || line>=24))return 0;
+    unsigned table=(v->reg[5]&127u)<<9,slot=0;int changed=0;
     for(unsigned n=0;n<64 && slot<80;++n) {
         unsigned at=table+slot*8;uint8_t p[8];
-        for(unsigned i=0;i<8;++i)p[i]=copy->vram[(at+i)&65535];
+        for(unsigned i=0;i<8;++i)p[i]=v->vram[(at+i)&65535];
         unsigned attr=(p[4]<<8)|p[5],tile=attr&2047;
         unsigned cells=(((p[2]>>2)&3)+1)*((p[2]&3)+1);
         int y=(((p[0]<<8)|p[1])&1023)-128;
         if(!(p[2]&0x80) && (attr&0xE000)==0xA000 && tile>=0x1FA &&
-           tile+cells<=0x1FF && line>=y && line<y+8) {
-            attr=(attr&0xF800)|(SPECIAL_HUD_NAME+tile-0x1FA);
-            copy->vram[(at+2)&65535]=p[2]|0x80;
-            copy->vram[(at+4)&65535]=(uint8_t)(attr>>8);
-            copy->vram[(at+5)&65535]=(uint8_t)attr;changed=1;
+           tile+cells<=0x1FF && line>=16 && line<24 && line>=y && line<y+8) {
+            if(copy) {
+                if(knuckles) {
+                    copy->vram[at&65535]=0;copy->vram[(at+1)&65535]=0;
+                } else {
+                    attr=(attr&0xF800)|(SPECIAL_HUD_NAME+tile-0x1FA);
+                    copy->vram[(at+2)&65535]=p[2]|0x80;
+                    copy->vram[(at+4)&65535]=(uint8_t)(attr>>8);
+                    copy->vram[(at+5)&65535]=(uint8_t)attr;
+                }
+            }
+            changed=1;
+        } else if(knuckles && !(p[2]&0x80) && (attr&0x6000)==0x2000 &&
+                  tile>=0x1BC && tile+cells<=0x1FA && line>=y && line<y+((p[2]&3)+1)*8) {
+            if(copy)copy->vram[(at+2)&65535]=p[2]|GVDP_SPRITE_PALETTE_ONLY;
+            changed=1;
         }
         slot=p[3]&127;if(!slot)break;
     }
     return changed;
+}
+static int special_actor_sat(const GVDP *v,const SpecialActorFrame *picture,
+                             const S2SpecialArtFrame *art,int line,GVDP *copy)
+{
+    const S2SpecialArtFrame *f=&art[picture->frame];if(!f->count)return 0;
+    unsigned sat=(v->reg[5]&127u)<<9,first=80;
+    for(unsigned i=0;i<80;++i)if(picture->piece[i]){first=i;break;}
+    if(first==80)return 0;
+    unsigned mp=0x34212+scene_read16(0x34212+picture->frame*2)+2+(picture->piece[first]-1)*8;
+    unsigned old_size=scene_read8(mp+1);
+    int dx=(int16_t)scene_read16(mp+6),dy=(int8_t)scene_read8(mp);
+    if(picture->flip&1)dx=-dx-(((old_size>>2)&3)+1)*8;
+    if(picture->flip&2)dy=-dy-((old_size&3)+1)*8;
+    unsigned at=first*8;
+    int x=(int)(((picture->sat[at+6]<<8)|picture->sat[at+7])&1023)-128-dx;
+    int y=(int)(((picture->sat[at]<<8)|picture->sat[at+1])&1023)-128-dy;
+    int affected=0;
+    for(unsigned i=0;i<80;++i)if(picture->piece[i]) {
+        unsigned p=i*8;int sy=((picture->sat[p]<<8)|picture->sat[p+1])-128;
+        if(line>=sy && line<sy+((picture->sat[p+2]&3)+1)*8)affected=1;
+    }
+    for(unsigned i=0;i<f->count;++i) {
+        const S2SpecialPiece *p=&f->pieces[i];int py=p->y,h=((p->size&3)+1)*8;
+        if(picture->flip&2)py=-py-h;
+        if(line>=y+py && line<y+py+h)affected=1;
+    }
+    if(!affected)return 0;
+    *copy=*v;uint8_t sprites[640]={0};unsigned slot=0,count=0;int inserted=0;
+    for(unsigned n=0;n<64;++n) {
+        const uint8_t *native=picture->sat+slot*8;
+        if(picture->piece[slot]) {
+            if(!inserted)for(unsigned i=0;i<f->count && count<64;++i) {
+                const S2SpecialPiece *p=&f->pieces[i];int px=p->x,py=p->y;
+                if(picture->flip&1)px=-px-(((p->size>>2)&3)+1)*8;
+                if(picture->flip&2)py=-py-((p->size&3)+1)*8;
+                unsigned attr=(p->attr&0x9800)|((unsigned)(native[4]&0x60)<<8)|
+                    (picture->frame*S2_SPECIAL_TILES+(p->attr&2047));
+                attr^=(picture->flip&1?0x800:0)|(picture->flip&2?0x1000:0);
+                uint8_t *dst=sprites+count++*8;unsigned sx=(x+px+128)&1023,sy=(y+py+128)&1023;
+                dst[0]=(uint8_t)(sy>>8);dst[1]=(uint8_t)sy;dst[2]=p->size|0x80;
+                dst[4]=(uint8_t)(attr>>8);dst[5]=(uint8_t)attr;
+                dst[6]=(uint8_t)(sx>>8);dst[7]=(uint8_t)sx;
+            }
+            inserted=1;
+        } else if(count<64)memcpy(sprites+count++*8,native,8);
+        slot=native[3]&127;if(!slot || slot>=80)break;
+    }
+    if(!inserted || !count)return 0;
+    for(unsigned i=0;i<count;++i)sprites[i*8+3]=(uint8_t)(i+1<count?i+1:0);
+    for(unsigned i=0;i<640;++i)copy->vram[(sat+i)&65535]=sprites[i];
+    return 1;
 }
 void s2_video_special_actor(const GVDP *v,int line,uint32_t *out,int width)
 {
@@ -835,11 +903,6 @@ void s2_video_special_actor(const GVDP *v,int line,uint32_t *out,int width)
     static int valid;
     const uint16_t *palette=NULL;
     const S2SpecialArtFrame *art=special_actor_art(&palette);
-    if(art && !strcmp(s2_party.roster.character[0],"amy") &&
-       (v->reg[1]&64) && (v->reg[12]&15)==8 && line>=16 && line<24) {
-        GVDP copy=*v;
-        if(special_amy_hud_sat(&copy,line))special_actor_compose(v,&copy,palette,line,out,width);
-    }
     if(!line) {
         valid=0;
         if(art && (v->reg[12]&15)==8) {
@@ -851,54 +914,13 @@ void s2_video_special_actor(const GVDP *v,int line,uint32_t *out,int width)
             if(best){picture=*best;s_special_display=*best;valid=1;}
         }
     }
-    if(!valid || !art || !(v->reg[1]&64) || (v->reg[12]&15)!=8)return;
-    const S2SpecialArtFrame *f=&art[picture.frame];if(!f->count)return;
-    unsigned sat=(v->reg[5]&127u)<<9,first=80;
-    for(unsigned i=0;i<80;++i)if(picture.piece[i]){first=i;break;}
-    if(first==80)return;
-    unsigned mp=0x34212+scene_read16(0x34212+picture.frame*2)+2+(picture.piece[first]-1)*8;
-    unsigned old_size=scene_read8(mp+1);
-    int dx=(int16_t)scene_read16(mp+6),dy=(int8_t)scene_read8(mp);
-    if(picture.flip&1)dx=-dx-(((old_size>>2)&3)+1)*8;
-    if(picture.flip&2)dy=-dy-((old_size&3)+1)*8;
-    unsigned at=first*8;
-    int x=(int)(((picture.sat[at+6]<<8)|picture.sat[at+7])&1023)-128-dx;
-    int y=(int)(((picture.sat[at]<<8)|picture.sat[at+1])&1023)-128-dy;
-    int affected=0;
-    for(unsigned i=0;i<80;++i)if(picture.piece[i]) {
-        unsigned p=i*8;int sy=((picture.sat[p]<<8)|picture.sat[p+1])-128;
-        if(line>=sy && line<sy+((picture.sat[p+2]&3)+1)*8)affected=1;
-    }
-    for(unsigned i=0;i<f->count;++i) {
-        const S2SpecialPiece *p=&f->pieces[i];int py=p->y,h=((p->size&3)+1)*8;
-        if(picture.flip&2)py=-py-h;
-        if(line>=y+py && line<y+py+h)affected=1;
-    }
-    if(!affected)return;
-    GVDP copy=*v;uint8_t sprites[640]={0};unsigned slot=0,count=0;int inserted=0;
-    for(unsigned n=0;n<64;++n) {
-        const uint8_t *native=picture.sat+slot*8;
-        if(picture.piece[slot]) {
-            if(!inserted)for(unsigned i=0;i<f->count && count<64;++i) {
-                const S2SpecialPiece *p=&f->pieces[i];int px=p->x,py=p->y;
-                if(picture.flip&1)px=-px-(((p->size>>2)&3)+1)*8;
-                if(picture.flip&2)py=-py-((p->size&3)+1)*8;
-                unsigned attr=(p->attr&0x9800)|((unsigned)(native[4]&0x60)<<8)|
-                    (picture.frame*S2_SPECIAL_TILES+(p->attr&2047));
-                attr^=(picture.flip&1?0x800:0)|(picture.flip&2?0x1000:0);
-                uint8_t *dst=sprites+count++*8;unsigned sx=(x+px+128)&1023,sy=(y+py+128)&1023;
-                dst[0]=(uint8_t)(sy>>8);dst[1]=(uint8_t)sy;dst[2]=p->size|0x80;
-                dst[4]=(uint8_t)(attr>>8);dst[5]=(uint8_t)attr;
-                dst[6]=(uint8_t)(sx>>8);dst[7]=(uint8_t)sx;
-            }
-            inserted=1;
-        } else if(count<64)memcpy(sprites+count++*8,native,8);
-        slot=native[3]&127;if(!slot || slot>=80)break;
-    }
-    if(!inserted || !count)return;
-    for(unsigned i=0;i<count;++i)sprites[i*8+3]=(uint8_t)(i+1<count?i+1:0);
-    for(unsigned i=0;i<640;++i)copy.vram[(sat+i)&65535]=sprites[i];
-    if(!strcmp(s2_party.roster.character[0],"amy"))special_amy_hud_sat(&copy,line);
+    if(!art || !(v->reg[1]&64) || (v->reg[12]&15)!=8)return;
+    int ui=special_primary_ui_sat(v,NULL,line);
+    GVDP copy;
+    int body=valid?special_actor_sat(v,&picture,art,line,&copy):0;
+    if(!body && !ui)return;
+    if(!body)copy=*v;
+    if(ui)special_primary_ui_sat(&copy,&copy,line);
     special_actor_compose(v,&copy,palette,line,out,width);
 }
 static void special_results_begin(void)
@@ -1279,6 +1301,15 @@ static void publish_sprites(void)
 int s2_video_hook(uint32_t pc)
 {
     switch (pc) {
+    case 0x5300:
+        /* Half-pipe results reuse the level V-int, including its tile
+         * streaming. Retire pending world redraws before ClearScreen, so
+         * that first results V-int cannot repopulate the cleared planes. */
+        if ((g_ram[0xF600]&127)==16) {
+            memset(g_ram+0xEE50,0,16); /* both players' source scroll flags */
+            memset(g_ram+0xEEA0,0,16); /* pending V-int/H-int copies */
+        }
+        break;
     case 0x4450: s_donor_fade=(DonorFade){0}; /* fresh level retires SS publications */
         /* fall through */
     case 0x4F64:
