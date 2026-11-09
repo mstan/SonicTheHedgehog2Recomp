@@ -3,6 +3,7 @@
 #include "sonic2_save_draw.h"
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
+#include "sonic2_video.h"
 #include "genesis_runtime.h"
 #include <stdio.h>
 #include <string.h>
@@ -407,26 +408,9 @@ int s2_save_menu_overlay(int line,uint32_t *out,int width)
         display.data.slots[view.selection-1].state==S2_SAVE_COMPLETE)
         display.replay_selected=s2_campaign_select_stage(&display.data.slots[view.selection-1],replay_stage);
     s2_save_draw_line(s2_resource_save_assets(),&display,line,out,width);
-    /* The host composition includes donor art, native stage thumbnails and
-     * text. Fade all of it with the native menu's palette envelope, including
-     * the extended margins. REV01 Normal/Target_palette are $FB00/$FB80.
-     * Use their total channel intensity so independently coloured thumbnail
-     * pixels participate too, without altering guest palettes or timing. */
-    unsigned current=0,target=0;
-    for (unsigned i=0;i<64;++i) {
-        unsigned c=word(0xFB00+i*2),t=word(0xFB80+i*2);
-        current+=(c&14)+((c>>4)&14)+((c>>8)&14);
-        target+=(t&14)+((t>>4)&14)+((t>>8)&14);
-    }
-    if (!current || current<target) for (int x=0;x<width;++x) {
-        uint32_t c=out[x];
-        unsigned r=0,g=0,b=0;
-        if (target) {
-            r=((c>>16)&255)*current/target;
-            g=((c>>8)&255)*current/target;
-            b=(c&255)*current/target;
-        }
-        out[x]=0xFF000000u|(r<<16)|(g<<8)|b;
-    }
+    /* Both original games fade B/G/R on entry and R/G/B on exit. Retain
+     * that sequence across the complete imported composition and margins,
+     * using the displayed native phase without changing guest palettes. */
+    s2_video_donor_rgb_row(out,width);
     return 1;
 }

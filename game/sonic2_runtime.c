@@ -974,9 +974,11 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1DE4A || pc==0x1DE88) {
         unsigned parent=pc==0x1DE4A?word((g_cpu.A[0]&65535)+0x3E):g_cpu.A[2]&65535;
         for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==parent && kind(p)==S2_CHAR_KNUCKLES &&
-            characters[p].special==S2_SK_SLIDE && !(g_ram[parent+0x22]&2)) {
+            characters[p].special==S2_SK_SLIDE) {
             if (pc==0x1DE4A) {
-                /* Original KiS2 CheckSkid also accepts slide state 3. */
+                /* Original KiS2 CheckSkid also accepts slide state 3.
+                 * Its separate glide contact result need not clear the
+                 * ordinary in-air status bit; do not add that condition. */
                 g_cpu.A[2]=0xFFFF0000u|parent;
                 recomp_tail_call(0x1DE64); return 1;
             }
@@ -1249,13 +1251,14 @@ void s2_runtime_capture(void)
     /* Extra party roles have no fixed native dust object/VRAM strip. Create
      * the same short-lived Obj08 children after the object tick, respecting
      * its pool/air constraints. Native animation/deletion still own them.
+     * Slide state owns ground contact separately from the in-air status bit.
      * Their original 16-tile skid atlas is read privately below, so a Sonic
      * companion's simultaneous spindash cannot overwrite these clouds. */
     for (unsigned p=2;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p) {
         unsigned o=objects[p];
         if (!o || kind(p)!=S2_CHAR_KNUCKLES || characters[p].special!=S2_SK_SLIDE ||
             (characters[p].age&3) || dust_emit_age[p]==characters[p].age ||
-            g_ram[o+0x24]!=2 || (g_ram[o+0x22]&2) || g_ram[o+0x28]<12) continue;
+            g_ram[o+0x24]!=2 || g_ram[o+0x28]<12) continue;
         dust_emit_age[p]=characters[p].age;
         for (unsigned at=0xB400;at<0xD000;at+=64) if (!g_ram[at]) {
             int reserved=0;
@@ -1324,11 +1327,12 @@ static void knuckles_hud(const GVDP *v,int line,uint32_t *out,int width,int draw
         !knuckles_available() || word(0xFFD8) || !presented_level() || !g_ram[0xF711]) return;
     int origin=s2_video_hud_origin(width);
     if (origin<=-width) return;
-    /* The wide renderer substitutes art directly in its existing HUD pass.
-     * Native output needs the old shape removed before donor actors, then
-     * the original high-priority glyphs drawn after them. Render only a
-     * private VDP copy; guest VRAM/status/CRAM are never changed. */
-    if (!draw && sonic2_video.enabled()) return;
+    /* The expanded renderer owns the complete HUD substitution. Replaying
+     * native SAT positions here would also redraw world rewards that share
+     * the life-icon tiles, using the HUD's different horizontal origin.
+     * Native output still removes the old shape before donor actors and
+     * restores the high-priority glyphs through a private VDP copy. */
+    if (sonic2_video.enabled()) return;
     uint8_t erase[320]={0}; int any=0;
     unsigned table=(v->reg[5]&127u)<<9,slot=0;
     for (unsigned n=0;n<80;++n) {

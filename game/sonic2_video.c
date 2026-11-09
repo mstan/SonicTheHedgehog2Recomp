@@ -14,6 +14,7 @@
 #include "genesis_runtime.h"
 #include "video/genesis_vdp.h"
 #include "video/genesis_dac.h"
+#include "video/genesis_dac_inverse8.h"
 #include "video/genesis_tile_row.h"
 #if OWN_BACKEND
 #include "video/genesis_machine.h"
@@ -68,12 +69,15 @@ typedef struct S2RenderContext {
     int frame_card;
     int frame_card_leaving;
     int frame_sega;
+    int frame_menu_background;
     int frame_vs;
     int vs_ready;
     int vs_world;
 } S2RenderContext;
 static S2RenderContext s_real_render,*s_render=&s_real_render;
 static int s_requested_width=320;
+static uint16_t s_menu_background_row[40];
+static int s_menu_background_ready;
 enum { FADE_NONE,FADE_FROM_BLACK,FADE_TO_BLACK,FADE_FROM_WHITE,FADE_TO_WHITE };
 typedef struct { unsigned mode,steps; } DonorFade;
 static DonorFade s_donor_fade,s_presented_fade;
@@ -96,6 +100,28 @@ static uint16_t donor_fade_color(uint16_t color,DonorFade fade)
 }
 uint16_t s2_video_donor_color(uint16_t shade)
 { return donor_fade_color(shade,s_presented_fade); }
+void s2_video_donor_rgb_row(uint32_t *pixels,int width)
+{
+    if(!pixels || width<=0 || !s_presented_fade.mode)return;
+    static DonorFade cached={~0u,~0u};
+    static uint32_t colors[512];
+    if(cached.mode!=s_presented_fade.mode || cached.steps!=s_presented_fade.steps) {
+        for(unsigned i=0;i<512;++i) {
+            unsigned shade=((i&7)<<1)|((i&0x38)<<2)|((i&0x1C0)<<3);
+            colors[i]=genesis_dac_cram_to_argb(
+                donor_fade_color((uint16_t)shade,s_presented_fade),GENESIS_DAC_NORMAL);
+        }
+        cached=s_presented_fade;
+    }
+    /* Menu portraits, thumbnails and text were composed from the same DAC.
+     * Recover their exact indices and apply the native channel sequence. */
+    for(int x=0;x<width;++x) {
+        uint32_t c=pixels[x];
+        unsigned i=genesis_dac_inverse8[(c>>16)&255]|
+            (genesis_dac_inverse8[(c>>8)&255]<<3)|(genesis_dac_inverse8[c&255]<<6);
+        pixels[x]=colors[i];
+    }
+}
 static int s_interpolation_enabled,s_interpolating;
 static double s_interpolation_phase;
 static void interpolation_reset(void);
@@ -170,6 +196,12 @@ static int outgoing_level(void)
     return (mode==0 || mode==4) && g_ram[0xF711] &&
         (g_ram[0xB000]==1 || g_ram[0xB000]==2);
 }
+static int presented_competition(void)
+{ return competition() || (outgoing_level() && ram16(0xFFD8)); }
+static int presented_gameplay(void)
+{ return gameplay() || (outgoing_level() && !ram16(0xFFD8)); }
+static int native_demo(void)
+{ return (g_ram[0xF600]&127)==8 || (outgoing_level() && ram16(0xFFF0)); }
 static int stage_width(void)
 {
     int last = 1;
@@ -209,9 +241,10 @@ unsigned s2_video_main_cpu_divisor(void)
 {
     /* Level_MainLoop ($4360) still waits for the real V-int every tick.
      * Expanded activation must not inherit the 7.67 MHz object's lag budget.
-     * Loading, special stages and opt-out keep original timing. */
+     * Attract inputs also depend on the original sub-frame CPU timing.
+     * Loading, demos, special stages and opt-out retain that timing. */
     int mode=g_ram[0xF600];
-    return enabled() && (mode==8 || mode==12) && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
+    return enabled() && mode==12 && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
 }
 static int width(int dw, int dh, int nw, int nh)
 {
@@ -306,7 +339,8 @@ static uint16_t plane_attr(const GVDP *v, unsigned base, int x, int y)
  * for the hardware pass and publishes a signature used to align our list
  * with the exact VBlank upload displayed by the VDP. */
 typedef struct { int x, y; uint16_t attr; uint8_t size, hud; } SceneSprite;
-enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024, SCENE_WATER_REPEAT = 16 };
+enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024,
+       SCENE_FOREGROUND_SCREEN = 4, SCENE_WATER_REPEAT = 16 };
 typedef struct {
     SceneSprite sprites[SCENE_SPRITES];
     unsigned count, serial;
@@ -451,6 +485,7 @@ static void video_state(S2StateIO *io, int rollback)
     if (!rollback) { S2_STATE(io,s_display_frame); S2_STATE(io,display); }
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
     S2_STATE(io,s_donor_fade); S2_STATE(io,s_presented_fade);
+    S2_STATE(io,s_menu_background_row);S2_STATE(io,s_menu_background_ready);
     /* This publication is produced entirely by native BuildSprites and
      * sealed roster state. Preserve it in rollback as well, so the first
      * restored half-pipe picture need not wait for another object tick. */
@@ -1097,16 +1132,18 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
     for(int n=0;n<count && dst->count<SCENE_SPRITES;++n,p+=8) {
         int dy=(int8_t)scene_read8(p),size=scene_read8(p+1)&15;
         int dx=(int16_t)scene_read16(p+6);
-        int vs=competition();
+        int vs=presented_competition();
         uint16_t attr=(uint16_t)(scene_read16(p+(vs?4:2))+gfx);
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
-        if(!vs && !s2_runtime_campaign_online() && (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
+        if(!(flags&0x4000) && !vs && !s2_runtime_campaign_online() &&
+           (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
         q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
-                         ((flags&0x1000)?SCENE_WATER_REPEAT:0));
+                         ((flags&0x1000)?SCENE_WATER_REPEAT:0)|
+                         ((flags&0x4000)?SCENE_FOREGROUND_SCREEN:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x2000) && amy_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
         if ((flags&0x100) && knuckles_palette_tile((attr&2047)*(vs?2:1))) q->size|=GVDP_SPRITE_PALETTE_ONLY;
@@ -1208,17 +1245,19 @@ static unsigned rings_end(void)
 static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,uint32_t *keys)
 {
     dst->count=0;if(!read_only){s_visible_count=0;++s_scene_tick;}
-    dst->scene=competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
-    int vs=competition();
+    dst->scene=presented_competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:presented_gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
+    int vs=presented_competition();
     if (vs) activation_bounds(ram16(0xEE20),render_width,&s_vs_other_lo,&s_vs_other_hi);
     int cam=ram16(vs?0xEE00:0xEEF0),cy=ram16(vs?0xEE04:0xEEF4);
     dst->camera_x=cam;dst->camera_y=cy;
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&dst->views[p][0],&dst->views[p][1]);
     int campaign=s2_runtime_campaign_online();
+    int pylon=!vs && g_ram[0xFE10]==13 &&
+        g_ram[0xB340]==0x7C && g_ram[0xB364]>=2 && scene_read32(0xFFB344)==0x2103C;
     int vs_left[2]={0,0};
     if (vs) {vs_left[0]=view_left(cam,render_width);vs_left[1]=view_left(ram16(0xEE20),render_width);}
-    int left=gameplay()?view_left(cam,render_width):cam-(render_width-320)/2;
-    if(gameplay() && g_ram[0xF711]) {
+    int left=presented_gameplay()?view_left(cam,render_width):cam-(render_width-320)/2;
+    if(presented_gameplay() && g_ram[0xF711]) {
         unsigned blink=(g_ram[0xFE05]&8)==0;
         unsigned frame=blink*((ram16(0xFE20)==0?1:0)+(g_ram[0xFE23]==9?2:0));
         /* BuildHUD uses spriteScreenPositionYCentered(24), not Y=24. */
@@ -1243,9 +1282,15 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
         }
     }
     for(unsigned pri=0;pri<8;++pri) {
+        /* Obj7C is a screen-space foreground strip, not a centered menu.
+         * Its native 1024px camera cycle moves 768px. Keep the original
+         * nine-piece map even during its native off-screen submission gap. */
+        if(pri==7 && pylon)
+            add_mapping(dst,keys,0xB3400000u,0x2103C,0,ram16(0xB342),0x4000,384,128,0,0);
         unsigned queue=0xAC00+pri*128,bytes=ram16(queue);if(bytes>126)bytes=126;
         for(unsigned k=2;k<=bytes;k+=2) {
             unsigned o=ram16(queue+k);if(o<0xB000 || o>=0xD400 || !g_ram[o])continue;
+            if(pylon && o==0xB340)continue;
             unsigned flags=g_ram[o+1],multi=flags&64,space=flags&12;
             if(g_ram[o]==0x3A && g_ram[o+0x1A]<=2 && custom_result_name())continue;
             if (s2_runtime_knuckles_item(o)) flags|=0x100;
@@ -1319,7 +1364,11 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
 
 static void capture_objects(void)
 {
-    capture_objects_into(&s_build,s_requested_width,0,
+    /* Expanded presentation must not mark offscreen demo objects visible:
+     * that bit also controls native AI and the outgoing display queue. */
+    int read_only=native_demo() || outgoing_level();
+    if(read_only)s_visible_count=0;
+    capture_objects_into(&s_build,s_requested_width,read_only,
         s_interpolation_enabled && !competition()?s_build_keys:NULL);
 }
 static void native_capture_objects(void)
@@ -1359,7 +1408,14 @@ static void publish_sprites(void)
 }
 int s2_video_hook(uint32_t pc)
 {
+    int demo=(g_ram[0xF600]&127)==8;
     switch (pc) {
+    case 0x8C92:
+        /* MenuScreen has decoded MapEng_MenuBack, before its temporary RAM
+         * is reused for foreground cards. Retain an identity for that plane. */
+        for(unsigned i=0;i<40;++i)s_menu_background_row[i]=ram16(i*2);
+        s_menu_background_ready=1;
+        break;
     case 0x5300:
         /* Half-pipe results reuse the level V-int, including its tile
          * streaming. Retire pending world redraws before ClearScreen, so
@@ -1430,8 +1486,19 @@ int s2_video_hook(uint32_t pc)
         s_placement_base=s_placement_count=0;s_loader_active=0;
         memset(s_active_cells,0,sizeof s_active_cells);s_streaming_pressure=0;
     }
-    if(pc==0x17B84 && gameplay() && (enabled() || s_loader_active)) {spawn_scene();return 1;}
-    if (competition() && s_loader_active && pc==0x17CCC) {spawn_scene();return 1;}
+    /* The native demo fade changes mode before continuing RunObjects and
+     * BuildSprites for sixty ticks. Keep its displayed mapping format and
+     * publication alive, while all loading and CPU timing remain native. */
+    if(enabled() && outgoing_level()) {
+        if(pc==0x16604)capture_objects();
+        if(presented_competition()?(pc==0x16B90 || pc==0x16B98):
+                                  (pc==0x16712 || pc==0x1671A))publish_sprites();
+        return 0;
+    }
+    /* Attract inputs target the original object timing and fixed 2P pools.
+     * Keep wide presentation, but let the native loaders/cullers run. */
+    if(!demo && pc==0x17B84 && gameplay() && (enabled() || s_loader_active)) {spawn_scene();return 1;}
+    if (!demo && competition() && s_loader_active && pc==0x17CCC) {spawn_scene();return 1;}
     if(!enabled()) {
         if(s_interpolation_enabled) {
             if(pc==0x16604)native_capture_objects();
@@ -1442,10 +1509,13 @@ int s2_video_hook(uint32_t pc)
     if (competition()) {
         switch (pc) {
         case 0x17C50:case 0x17CCC:
+            if(demo)return 0;
             write8(0xF76C,4);spawn_scene();return 1;
         case 0x16604:capture_objects();return 0;
         case 0x16B90:case 0x16B98:publish_sprites();return 0;
-        case 0x170D0:g_cpu.A[1]=0xFFFFE806u;g_cpu.A[2]=0xFFFF0000u|rings_end();return 0;
+        case 0x170D0:
+            if(!demo){g_cpu.A[1]=0xFFFFE806u;g_cpu.A[2]=0xFFFF0000u|rings_end();}
+            return 0;
         default:return 0;
         }
     }
@@ -1456,10 +1526,10 @@ int s2_video_hook(uint32_t pc)
     case 0x170D0:
         /* Use the game's original collision/reward/consumption routines for
          * both Sonic and Tails. Only lift the old camera's ring search gate. */
-        if(gameplay()){g_cpu.A[1]=0xFFFFE806u;g_cpu.A[2]=0xFFFF0000u|rings_end();}
+        if(gameplay() && !demo){g_cpu.A[1]=0xFFFFE806u;g_cpu.A[2]=0xFFFF0000u|rings_end();}
         return 0;
     case 0x16F16:case 0x16F3E: {
-        if(!gameplay())return 0;
+        if(!gameplay() || demo)return 0;
         unsigned o=g_cpu.A[0]&65535u;
         int x=ram16(o+8),y=(int16_t)(ram16(o+12)-ram16(0xEE04));
         int radius=pc==0x16F3E?g_ram[o+0x19]:0;
@@ -1470,7 +1540,7 @@ int s2_video_hook(uint32_t pc)
         return 1;
     }
     default:
-        if(gameplay()) {
+            if(gameplay() && !demo) {
             int x=(uint16_t)((uint16_t)g_cpu.D[0]+ram16(0xF7DA));
             int lo,hi;activation_bounds(ram16(0xEE00),enabled()?s_requested_width:320,&lo,&hi);
             g_cpu.D[0]=(g_cpu.D[0]&0xFFFF0000u)|(scene_contains(x,lo,hi)?320u:641u);
@@ -1519,7 +1589,7 @@ static void select_scene(const GVDP *v)
     }
     if(!s_display) {
         ++s_scene_misses;
-        int scene=competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
+        int scene=presented_competition() && (g_ram[0xF711] || ram16(0xB0BE))?3:presented_gameplay() && g_ram[0xF711]?1:(g_ram[0xF600]&127)==16?2:0;
         /* An in-progress native SAT is not a custom-scene publication. Keep
          * the completed scene until its replacement is ready, without
          * flashing the native centered HUD or dropping host-only rings. */
@@ -1553,15 +1623,22 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         const SceneSprite *s=&s_display->sprites[n];
         int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
         unsigned anchor=s->hud&3u;
-        int world=!anchor && (s_display->scene==1 || s_display->scene==3);
-        int repeat=(s->hud&SCENE_WATER_REPEAT) && world &&
-            (width>320 || s_frame_campaign_view);
+        int foreground=!!(s->hud&SCENE_FOREGROUND_SCREEN);
+        int world=!foreground && !anchor && (s_display->scene==1 || s_display->scene==3);
+        int repeat=foreground || ((s->hud&SCENE_WATER_REPEAT) && world &&
+            (width>320 || s_frame_campaign_view));
+        int period=foreground?768:384;
         int cell_height=(v->reg[12]&6)==6?16:8;
         int sx=s->x,sy=s->y;
         if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
-        int y=sy+(world?s_display->camera_y-s_camera_y:0);
+        int y=foreground?sy-(int)(((unsigned)s_camera_y>>1)&63):
+            sy+(world?s_display->camera_y-s_camera_y:0);
         if(line<y || line>=y+ch*cell_height)continue;
         int base=sx+(anchor==1?0:anchor==2?(width-320)/2:origin);
+        if(foreground) {
+            unsigned camera=(unsigned)(s_left+(width-320)/2)&1023;
+            base=sx+(width-320)/2-(int)((camera>>1)+(camera>>2));
+        }
         /* Native camera scroll may advance while a completed host frame is
          * retained. Reproject its world coordinates, not its old screen
          * coordinates; otherwise stationary rings jitter with the camera. */
@@ -1570,7 +1647,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         if(s->attr&0x1000)iy=ch*cell_height-1-iy;
         for(int i=0;i<cw*8;++i) {
             int x=base+i;
-            if(repeat) {x%=384;if(x<0)x+=384;}
+            if(repeat) {x%=period;if(x<0)x+=period;}
             else if(x<0 || x>=width || (s_priority[x]&2))continue;
             int ix=(s->attr&0x800)?cw*8-1-i:i;
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
@@ -1591,7 +1668,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
                 knux=1;
             }
-            for(;x<width;x+=384) {
+            for(;x<width;x+=period) {
                 if(!(s_priority[x]&2)) {
                     s_priority[x]|=2;
                     if(anchor || (s->attr&0x8000) || !(s_priority[x]&1))
@@ -1658,7 +1735,7 @@ static void competition_hud_sprites(const GVDP *v,int line,uint32_t *out,int wid
         unsigned size=v->vram[(at+2)&65535u],cw=((size>>2)&3)+1,ch=(size&3)+1;
         int life=y==200 && (x==16 || x==32);
         int hud=(attr&0x8000) && (life || (y>=0 && y<64 && tile>=0x365 && tile<0x390));
-        int replace=strcmp(s2_party.roster.character[p],p?"tails":"sonic")!=0;
+        int replace=!native_demo() && strcmp(s2_party.roster.character[p],p?"tails":"sonic")!=0;
         if (hud && !(life && replace) && local>=y && local<y+(int)ch*16) {
             int iy=local-y;if(attr&0x1000)iy=(int)ch*16-1-iy;
             for (unsigned i=0;i<cw*8;++i) {
@@ -1703,6 +1780,7 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
         } else {
             int ax=x-margin-hs_a,ay=line+v->vsram[0],py=line+v->vsram[1];
             a=plane_attr(v,base_a,ax,ay);ap=pattern_pixel(v,a,ax,ay);
+            if(x<margin || x>=margin+nw)ap=0;
             b=plane_attr(v,base_b,x-margin-hs_b,py);bp=pattern_pixel(v,b,x-margin-hs_b,py);
         }
         if(!ready) {
@@ -1714,11 +1792,11 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
         out[x]=palette[index];s_priority[x]=(uint8_t)((ap && (a&0x8000)) || (bp && (b&0x8000)));
     }
     s_camera=camera;s_camera_y=cy;s_left=left;s_native_x=origin;
-    if(s_display)draw_scene_sprites(&s_video_frame,y,out,width,ready?origin:margin,palette);
-    if(!ready) {
+    if(s_display)draw_scene_sprites(&s_video_frame,y,out,width,world?origin:margin,palette);
+    if(!ready && !s_display) {
         if(!native)native=native_row(native_ctx);
         memcpy(out+margin,native,(size_t)nw*sizeof *out);
-    } else competition_hud_sprites(v,line,out,width,palette);
+    } else if(ready)competition_hud_sprites(v,line,out,width,palette);
     return 1;
 }
 static void render_source_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
@@ -1759,6 +1837,13 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
             for (unsigned o=0xB080;o<=0xB1C0;o+=64)
                 if (g_ram[o]==0x34) s_frame_card=1;
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
+        /* Game_Mode changes before departure fades. The displayed name table
+         * owns the backdrop until the incoming scene actually replaces it. */
+        s_render->frame_menu_background=s_menu_background_ready &&
+            ((v->reg[4]&7u)<<13)==0xE000 && (v->reg[16]&3)==1;
+        for(unsigned i=0;s_render->frame_menu_background && i<40;++i)
+            if(vram16(v,0xE000+i*2)!=s_menu_background_row[i])
+                s_render->frame_menu_background=0;
         /* Presentation width only. s_requested_width is SIMULATION (object
          * activation, spawn culling) and comes from width() -- the sealed
          * mode -- never from the width this machine could present (GPU
@@ -1868,7 +1953,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         int reference_bx=nx-hs_b,bx=bg_base+x;
         /* MenuScreen loads only 40 columns of its 64-column plane. Repeat
          * the populated composition instead of exposing the unused cells. */
-        if (!level && (g_ram[0xF600]==0x24 || g_ram[0xF600]==0x18) && base_b==0xE000) {
+        if (!level && s_render->frame_menu_background) {
             bx%=320; if (bx<0) bx+=320;
         }
         if(!fg.remaining) {
@@ -2231,7 +2316,8 @@ int s2_video_actor_pixel_visible(const GVDP *v, int wx, int wy, int high, const 
 
 void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
 {
-    if(enabled() && s_priority_capacity>=width && s_front_rgb && (s_frame_level || s_frame_vs)) {
+    if(enabled() && s_priority_capacity>=width && s_front_rgb &&
+       (s_frame_level || s_frame_vs || s_frame_card)) {
         for(int x=0;x<width;++x)if(s_priority[x]&4)out[x]=s_front_rgb[x];
         return;
     }
@@ -2420,7 +2506,7 @@ int s2_video_hud_origin(int width)
 int s2_video_knuckles_hud_pixel(const GVDP *v,unsigned attr,int x,int y,uint32_t *color)
 {
     const S2KnucklesArt *a=s2_resource_knuckles_art(); unsigned tile=attr&2047;
-    if (!a || !s2_party.s3k_enabled || strcmp(s2_party.roster.character[0],"knuckles") ||
+    if (!a || native_demo() || !s2_party.s3k_enabled || strcmp(s2_party.roster.character[0],"knuckles") ||
         tile<0x7D4 || tile>=0x7E0) return 0;
     x&=7; y&=7; if (attr&0x800) x^=7; if (attr&0x1000) y^=7;
     /* Column-major 2-row pieces: the live digits are tiles 9 and 11.

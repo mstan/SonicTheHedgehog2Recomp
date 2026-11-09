@@ -40,6 +40,19 @@ int main(void)
     s2_character_before(&s,&m,0x20,0x20,&c);
     assert(s.special==S2_SK_GLIDE && s.move==S2_MOVE_AIR && m.radius_y==10 && !(m.status&4));
     assert(s2_character_attacking(&s,&m));
+    /* A native tube spring selects Spring while the imported controller
+     * still remembers its prior action. Preserve the actual launch motion. */
+    for(unsigned action=S2_SK_GLIDE;action<=S2_SK_LEDGE;++action) {
+        S2CharacterState spring; s2_character_reset(&spring,S2_CHAR_KNUCKLES);
+        S2Motion launch=standing();spring.special=action;
+        launch.status=2;launch.animation=0x10;launch.vy=-0x1000;
+        launch.x=100*65536;launch.y=80*65536;spring.wall_x=launch.x;
+        s2_character_before(&spring,&launch,2,0,&c);
+        assert(!spring.special && spring.move==S2_MOVE_NATIVE);
+        assert(launch.vy==-0x1000 && !launch.vx && launch.animation==0x10);
+        assert(launch.x==100*65536 && launch.y==80*65536);
+        assert(launch.radius_x==9 && launch.radius_y==19);
+    }
     s2_character_after(&s,&m,&c);
     assert(m.radius_x==9 && m.radius_y==19 && s.special==S2_SK_GLIDE);
     s2_character_before(&s,&m,0x20,0,&c);

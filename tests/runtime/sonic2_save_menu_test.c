@@ -11,6 +11,10 @@ static S2SavePortrait composed[6];
 static unsigned composed_count,drawn_state;
 static unsigned sound_writes,commits;
 static int commit_fails;
+static int fade_black;
+static uint32_t fade_override;
+void s2_video_donor_rgb_row(uint32_t *pixels,int width)
+{ if(fade_black || fade_override)for(int x=0;x<width;++x)pixels[x]=fade_black?0xFF000000:fade_override; }
 void glue_poke8(uint32_t a,uint8_t v)   /* the host write (was m68k_write8) */
 { assert(a==0xFFFFE1 || (a==0xFFFFE4 && v==0xEC)); g_ram[a&65535]=v; ++sound_writes; }
 void recomp_tail_call(uint32_t pc) { (void)pc; assert(0); }
@@ -21,9 +25,10 @@ void recomp_call_addr(uint32_t pc)
     assert(!s2_save_menu_hook(pc)); /* native fade entry must not recurse */
     uint32_t line[398];
     assert(s2_save_menu_overlay(0,line,398));
-    putword(0xFB00,0);
+    fade_black=1;
     assert(s2_save_menu_overlay(0,line,398));
     for (unsigned x=0;x<398;++x) assert(line[x]==0xFF000000);
+    fade_black=0;
 }
 void s2_campaign_file_load(const char *path) { (void)path; }
 const S2CampaignStore *s2_campaign_file_store(void) { return &fixture; }
@@ -130,19 +135,22 @@ int main(void)
     reset(1,S2_SAVE_COMPLETE); s2_party.save_menu_enabled=0;
     menu=1; g_ram[0xF600]=0x24; g_ram[0xF605]=8;
     assert(!s2_save_menu_hook(0x90E0)); assert(!sound_writes);
-    /* Entry owns the complete scene before the native fade begins. Partial
-     * palettes fade every overlay pixel; outgoing game/title fades retain
+    /* Entry owns the complete scene before the native fade begins. The
+     * displayed native fade covers every pixel; outgoing transitions retain
      * the menu until black, even though Game_Mode has already changed. */
     s2_party.save_menu_enabled=1; menu=1; menu_ready=0;
     assert(!s2_save_menu_hook(0x8FCC)); assert(menu_ready);
     uint32_t line[398];
     putword(0xFB80,0xEEE); putword(0xFB00,0);
+    fade_black=1;
     assert(s2_save_menu_overlay(0,line,398));
     for (unsigned x=0;x<398;++x) assert(line[x]==0xFF000000);
     putword(0xFB00,0x666);
+    fade_black=0;fade_override=0xFF0000FF;
     assert(s2_save_menu_overlay(0,line,398));
-    for (unsigned x=0;x<398;++x) assert(line[x]==0xFF66482B);
+    for (unsigned x=0;x<398;++x) assert(line[x]==0xFF0000FF);
     putword(0xFB00,0xEEE);
+    fade_override=0;
     assert(s2_save_menu_overlay(0,line,398));
     for (unsigned x=0;x<398;++x) assert(line[x]==0xFFEEAA66);
     const unsigned outgoing_modes[]={4,12,0x8C}; /* Level sets its loading bit before fading. */

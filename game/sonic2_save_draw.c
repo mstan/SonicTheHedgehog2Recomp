@@ -57,37 +57,66 @@ void s2_save_portraits(const S2SaveAssets *a,const S2SavePortrait *portraits,
     memset(out,0,S2_SAVE_PORTRAIT_WIDTH*S2_SAVE_PORTRAIT_HEIGHT*sizeof *out);
     if (!a || !portraits || !count || count>6) return;
     unsigned cols=count>3?3:count,rows=(count+cols-1)/cols;
-    for (unsigned p=0;p<count;++p) {
-        uint32_t native[64*64]={0};
-        const S2DonorFrame *f=portraits[p].image;
-        unsigned w,h; int sx=0,sy=0;
-        if (f) {
-            if (!f->pixels || !f->width || !f->height || !portraits[p].palette) continue;
-            w=f->width; h=f->height;
-        } else {
-            S2SaveView v={0}; v.frame=1;
-            for (int y=0;y<64;++y) sprite(a,&v,portraits[p].menu_frame,32,56,y,native+y*64,64);
-            int right=0,bottom=0; sx=sy=64;
-            for (int y=0;y<64;++y) for (int x=0;x<64;++x) if (native[y*64+x]) {
-                if (x<sx) sx=x; if (y<sy) sy=y;
-                if (x+1>right) right=x+1; if (y+1>bottom) bottom=y+1;
+    unsigned cellw=(80-2*(cols-1))/cols,cellh=48/rows;
+    for(unsigned row=0;row<rows;++row) {
+        struct Portrait {
+            uint32_t native[64*64];
+            const S2SavePortrait *source;
+            unsigned sx,sy,w,h,ow,oh;
+        } pieces[3]={0};
+        unsigned used=0,total=0;
+        for(unsigned col=0;col<cols && row*cols+col<count;++col) {
+            struct Portrait *p=&pieces[col];
+            p->source=&portraits[row*cols+col];
+            const S2DonorFrame *f=p->source->image;
+            if(f) {
+                if(!f->pixels || !f->width || !f->height || !p->source->palette)continue;
+                p->w=f->width;p->h=f->height;
+                if(count>1) {
+                    unsigned right=0,bottom=0;p->sx=f->width;p->sy=f->height;
+                    for(unsigned y=0;y<f->height;++y)for(unsigned x=0;x<f->width;++x)
+                        if(f->pixels[y*f->width+x]) {
+                            if(x<p->sx)p->sx=x;if(y<p->sy)p->sy=y;
+                            if(x+1>right)right=x+1;if(y+1>bottom)bottom=y+1;
+                        }
+                    if(!right || !bottom)continue;
+                    p->w=right-p->sx;p->h=bottom-p->sy;
+                }
+            } else {
+                S2SaveView v={0};v.frame=1;
+                for(int y=0;y<64;++y)sprite(a,&v,p->source->menu_frame,32,56,y,p->native+y*64,64);
+                unsigned right=0,bottom=0;p->sx=p->sy=64;
+                for(unsigned y=0;y<64;++y)for(unsigned x=0;x<64;++x)if(p->native[y*64+x]) {
+                    if(x<p->sx)p->sx=x;if(y<p->sy)p->sy=y;
+                    if(x+1>right)right=x+1;if(y+1>bottom)bottom=y+1;
+                }
+                if(!right || !bottom)continue;
+                p->w=right-p->sx;p->h=bottom-p->sy;
             }
-            if (sx==64) continue;
-            w=(unsigned)(right-sx); h=(unsigned)(bottom-sy);
+            p->ow=p->w;p->oh=p->h;
+            if(p->ow>cellw){p->ow=cellw;p->oh=p->h*p->ow/p->w;}
+            if(p->oh>cellh){p->oh=cellh;p->ow=p->w*p->oh/p->h;}
+            if(!p->ow || !p->oh)continue;
+            total+=p->ow+(used++?2:0);
         }
-        unsigned cellw=80/cols,cellh=48/rows,ow=w,oh=h;
-        if (ow>cellw) { ow=cellw; oh=h*ow/w; }
-        if (oh>cellh) { oh=cellh; ow=w*oh/h; }
-        if (!ow || !oh) continue;
-        unsigned x0=(p%cols)*cellw+(cellw-ow)/2,y0=(p/cols)*cellh+(cellh-oh)/2;
-        for (unsigned y=0;y<oh;++y) for (unsigned x=0;x<ow;++x) {
-            unsigned ix=x*w/ow,iy=y*h/oh;
-            uint32_t c;
-            if (f) {
-                unsigned ink=f->pixels[iy*w+ix];
-                c=ink?genesis_dac_cram_to_argb(portraits[p].palette[ink],GENESIS_DAC_NORMAL):0;
-            } else c=native[(sy+iy)*64+sx+ix];
-            if (c) out[(y0+y)*80+x0+x]=c;
+        /* Pack visible silhouettes with a small gap, then center the row.
+         * Empty grid cells and transparent donor padding add no spacing. */
+        unsigned x0=(80-total)/2;
+        for(unsigned col=0;col<cols;++col) {
+            const struct Portrait *p=&pieces[col];
+            if(!p->ow || !p->oh)continue;
+            unsigned y0=row*cellh+(cellh-p->oh)/2;
+            const S2DonorFrame *f=p->source->image;
+            for(unsigned y=0;y<p->oh;++y)for(unsigned x=0;x<p->ow;++x) {
+                unsigned ix=p->sx+x*p->w/p->ow,iy=p->sy+y*p->h/p->oh;
+                uint32_t c;
+                if(f) {
+                    unsigned ink=f->pixels[iy*f->width+ix];
+                    c=ink?genesis_dac_cram_to_argb(p->source->palette[ink],GENESIS_DAC_NORMAL):0;
+                } else c=p->native[iy*64+ix];
+                if(c)out[(y0+y)*80+x0+x]=c;
+            }
+            x0+=p->ow+2;
         }
     }
 }
@@ -166,13 +195,15 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
 {
     if (!a || !v || line<0 || line>=224 || width<=0) return;
     int left=(width-320)/2;
+    int bx=0;unsigned phase=0;
     for (int x=0;x<width;++x) {
-        /* The donor's background plane is fixed; only the card plane follows
-         * the selector camera. Tile it across the complete output width. */
-        int bx=(x-left)%320; if (bx<0) bx+=320;
+        /* Keep one complete background composition across the viewport;
+         * only the card plane follows the selector camera. */
         unsigned tile=a->background[(line/8)*40+bx/8];
         unsigned ink=pixel(a,tile,bx%8,line%8);
         out[x]=color(a,tile,ink,1);
+        phase+=320;
+        while(phase>=(unsigned)width){phase-=(unsigned)width;++bx;}
         int ax=x-left+v->scroll;
         if (ax>=0 && ax<1024) {
             tile=plane_tile(a,v,ax/8,line/8); ink=pixel(a,tile,ax%8,line%8);

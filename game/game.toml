@@ -336,6 +336,10 @@ addr = 0x16484
 kind = "game_hook"
 
 [[widescreen_site]]
+addr = 0x8C92 # MenuScreen: decoded background, before temporary-map reuse
+kind = "game_hook"
+
+[[widescreen_site]]
 addr = 0x16604
 kind = "game_hook"
 
