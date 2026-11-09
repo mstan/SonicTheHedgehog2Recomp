@@ -58,7 +58,7 @@ typedef struct S2SpecialStageArt {
 } S2SpecialStageArt;
 typedef struct S2KnucklesArt {
     uint8_t life[12*32],shield_stars[66*32],monitor[8*32],signpost[24*32];
-    uint8_t continue_icons[12*32],font_k[4*32];
+    uint8_t continue_icons[12*32],font_k[4*32],slot[512];
     uint16_t palette[16],water_palette[2][16]; /* KiS2 CPZ and ARZ */
     S2SpecialArtFrame special[S2_SPECIAL_FRAMES];
     uint16_t special_palette[16];
@@ -75,8 +75,17 @@ typedef struct S2NativeHudArt {
 int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out);
 /* REV01's native 34-tile star atlas, retaining S2 animation/geometry. */
 int s2_native_stars_decode(const uint8_t *rom,size_t size,uint8_t out[34*32]);
+enum { S2_NATIVE_SIGNPOST, S2_NATIVE_CAPSULE, S2_NATIVE_EHZ_CAR, S2_NATIVE_SPRITE_ART_COUNT };
+/* Original world art can be visible before the native pattern load finishes.
+ * Returns decoded bytes; the guest's VRAM and load queue remain unchanged. */
+unsigned s2_native_sprite_art_decode(const uint8_t *rom,size_t size,unsigned asset,
+                                    uint8_t *out,size_t capacity);
 /* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
 int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
+/* Match a displayed native slot window, including partial scrolling rows.
+ * Input ROM is immutable; no guest index, RNG or DMA source is changed. */
+int s2_knuckles_slot_patterns(const uint8_t *rom,size_t size,const S2KnucklesArt *art,
+                              unsigned slot,const uint8_t source[512],uint8_t out[512]);
 /* Original Amy 1.7.1 half-pipe mappings and standard ROM DPLCs. */
 int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
 /* Completes an already decoded Amy half-pipe bank transactionally. */

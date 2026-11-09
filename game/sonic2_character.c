@@ -78,6 +78,12 @@ static void knuckles_ledge_step(S2CharacterState *s, S2Motion *m)
 }
 static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
+    /* CPZ's tube spring has its own native launch routine. Its Spring
+     * animation transfers movement back to the original controller before
+     * a retained climb/glide can replace the newly assigned velocity. */
+    if(s->special && (m->status&AIR) && m->animation==0x10) {
+        s->special=S2_SK_NORMAL;m->radius_x=9;m->radius_y=19;
+    }
     /* KiS2 ResetOnFloor_Part3 ends a glide when a solid object catches the
      * player. Solids run after the character tick, so consume that contact
      * before choosing this tick's movement and animation. */

@@ -26,6 +26,23 @@ int main(void)
             assert(!memcmp(still,moving,(size_t)width*sizeof *still));
         }
     }
+    /* Wide output keeps one complete background, rather than repeating its
+     * distinctive ends. Native output remains pixel-for-pixel identical. */
+    memset(assets,0,sizeof *assets);
+    assets->palette[1]=0x00E; assets->palette[2]=0x0E0;
+    memset(assets->tiles+32,0x11,32);
+    memset(assets->tiles+64,0x22,32);
+    for(unsigned row=0;row<28;++row)for(unsigned col=0;col<40;++col)
+        assets->background[row*40+col]=(uint16_t)(col<20?1:2);
+    S2SaveView backdrop={0};
+    static const int background_widths[]={320,398,401,796,896};
+    for(unsigned mode=0;mode<sizeof background_widths/sizeof *background_widths;++mode) {
+        int width=background_widths[mode];
+        uint32_t row[896];
+        s2_save_draw_line(assets,&backdrop,0,row,width);
+        for(int x=0;x<width;++x)
+            assert(row[x]==(x<(width+1)/2?0xFFFF0000:0xFF00FF00));
+    }
     memset(assets,0,sizeof *assets);
     /* Synthetic donor font and counter art; no ROM required. */
     static const uint16_t icons[3][15]={
@@ -115,6 +132,24 @@ int main(void)
     }
     struct { uint32_t before,pixels[80*48],after; } composite;
     composite.before=0x12345678; composite.after=0x87654321;
+    s2_save_portraits(assets,party,1,composite.pixels);
+    for(unsigned x=0;x<80;++x)
+        assert((composite.pixels[16*80+x]!=0)==(x>=30 && x<50));
+    /* A custom pair is a centered composition with a small visible gap,
+     * rather than two portraits centered in distant halves of the card. */
+    s2_save_portraits(assets,party,2,composite.pixels);
+    for(unsigned x=0;x<80;++x) {
+        int occupied=(x>=19 && x<39)||(x>=41 && x<61);
+        assert((composite.pixels[16*80+x]!=0)==occupied);
+    }
+    uint32_t compact[80*48];memcpy(compact,composite.pixels,sizeof compact);
+    uint8_t padding[32*40]={0};
+    for(unsigned y=4;y<36;++y)memset(padding+y*32+6,1,20);
+    S2DonorFrame padded={0,0,32,40,padding};
+    party[0].image=party[1].image=&padded;
+    s2_save_portraits(assets,party,2,composite.pixels);
+    assert(!memcmp(compact,composite.pixels,sizeof compact));
+    party[0].image=&frames[0];party[1].image=&frames[1];
     s2_save_portraits(assets,party,6,composite.pixels);
     assert(composite.before==0x12345678 && composite.after==0x87654321);
     for (unsigned p=0;p<6;++p) {
