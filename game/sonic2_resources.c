@@ -15,6 +15,16 @@ static S2ItemArt amy_items;
 int s2_resources_prepare_stage_images(const unsigned char *rom,unsigned size)
 { return s2_stage_images_decode(rom,size,save_assets); }
 static char errors[S2_RESOURCE_COUNT][192];
+static void prepare_knuckles_water(void)
+{
+    S2DonorBank *b=&banks[S2_RESOURCE_SK];
+    b->water_palette_count=0;
+    if(!owner_verified[S2_RESOURCE_SK] || !owner_verified[S2_RESOURCE_KIS2])return;
+    /* S3&K body pixels and KiS2 item pixels use different palette indices. */
+    s2_donor_water_palette(b->palette,knuckles_art.palette,knuckles_art.water_palette[0],b->water_palette);
+    s2_donor_water_palette(b->palette,knuckles_art.palette,knuckles_art.water_palette[1],b->water_palette_alt);
+    b->water_palette_count=2;
+}
 static int read_palette(const uint8_t *rom,size_t size,unsigned entry,uint16_t out[16])
 {
     if(size<32 || entry>size-4)return 0;
@@ -40,6 +50,7 @@ int s2_resource_set(unsigned i, const char *path)
         s2_donor_free(&banks[i]); resource_path(i)[0] = 0;
         if (i==S2_RESOURCE_MEGAMIX) s2_donor_free(&shadow_bank);
         owner_verified[i]=0;
+        if(i==S2_RESOURCE_SK || i==S2_RESOURCE_KIS2)prepare_knuckles_water();
         if (i==S2_RESOURCE_AMY) {
             memset(&amy_special,0,sizeof amy_special);
             memset(&amy_items,0,sizeof amy_items);
@@ -68,6 +79,7 @@ int s2_resource_set(unsigned i, const char *path)
         int ok=s2_knuckles_art_decode(rom,size,&knuckles_art); free(rom);
         if (!ok) return fail(i,"Invalid original Knuckles artwork");
         owner_verified[i]=1; memmove(resource_path(i),path,strlen(path)+1);
+        prepare_knuckles_water();
         errors[i][0]=0; return 1;
     }
     S2DonorBank candidate={0}, shadow={0}; S2SaveAssets *menu=NULL;
@@ -112,6 +124,7 @@ int s2_resource_set(unsigned i, const char *path)
     if (i==S2_RESOURCE_AMY) { amy_special=special_candidate; amy_items=item_candidate; }
     if (i==S2_RESOURCE_MEGAMIX) { s2_donor_free(&shadow_bank); shadow_bank=shadow; }
     if (i==S2_RESOURCE_SK) { s2_save_assets_free(&save_assets); save_assets=menu; }
+    if (i==S2_RESOURCE_SK) prepare_knuckles_water();
     memmove(resource_path(i), path, strlen(path) + 1);
     errors[i][0] = 0;
     return 1;

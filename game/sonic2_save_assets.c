@@ -316,8 +316,8 @@ int s2_amy_item_art_decode(const uint8_t *r,size_t size,S2ItemArt *out)
 unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,
                                     uint8_t *out,size_t capacity)
 {
-    static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C};
-    static const unsigned lengths[]={1452,908,2027},tiles[]={78,49,128};
+    static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C,0x83BF6,0x84332,0x84F18};
+    static const unsigned lengths[]={1452,908,2027,1852,1374,126},tiles[]={78,49,128,96,111,8};
     if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
        capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;

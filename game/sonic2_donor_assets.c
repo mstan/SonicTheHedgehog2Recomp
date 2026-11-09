@@ -13,6 +13,23 @@ const S2DonorLayout s2_sk_knuckles_layout = {251,0x14A8D6,0x14BD0A,0x1200E0,0xA8
 const S2DonorLayout s2_megamix_mighty_layout = {176,0x2A9D6,0x2C3D2,0xA9364,0x2C60,5,0x1AA1C,38};
 const S2DonorLayout s2_megamix_shadow_layout = {176,0x2B6A4,0x2CA1C,0xBE2E4,0x2C80,5,0x1AA1C,38,0,0,0x1AB5E,38};
 static unsigned word(const uint8_t *p) { return (unsigned)p[0]*256+p[1]; }
+void s2_donor_water_palette(const uint16_t donor[16],const uint16_t normal[16],
+                            const uint16_t water[16],uint16_t out[16])
+{
+    out[0]=water[0];
+    for(unsigned c=1;c<16;++c) {
+        unsigned best=1,distance=~0u;
+        for(unsigned n=1;n<16;++n) {
+            unsigned delta=0;
+            for(unsigned shift=0;shift<=8;shift+=4) {
+                int d=(int)((donor[c]>>shift)&14)-(int)((normal[n]>>shift)&14);
+                delta+=(unsigned)(d*d);
+            }
+            if(delta<distance){distance=delta;best=n;}
+        }
+        out[c]=water[best];
+    }
+}
 static int inside(size_t size,size_t offset,size_t length) { return offset<=size && length<=size-offset; }
 int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out)
 {

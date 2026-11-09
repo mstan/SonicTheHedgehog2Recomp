@@ -75,7 +75,7 @@ typedef struct S2NativeHudArt {
 int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out);
 /* REV01's native 34-tile star atlas, retaining S2 animation/geometry. */
 int s2_native_stars_decode(const uint8_t *rom,size_t size,uint8_t out[34*32]);
-enum { S2_NATIVE_SIGNPOST, S2_NATIVE_CAPSULE, S2_NATIVE_EHZ_CAR, S2_NATIVE_SPRITE_ART_COUNT };
+enum { S2_NATIVE_SIGNPOST, S2_NATIVE_CAPSULE, S2_NATIVE_EHZ_CAR, S2_NATIVE_CPZ_POD, S2_NATIVE_CPZ_PUMP, S2_NATIVE_CPZ_JETS, S2_NATIVE_SPRITE_ART_COUNT };
 /* Original world art can be visible before the native pattern load finishes.
  * Returns decoded bytes; the guest's VRAM and load queue remain unchanged. */
 unsigned s2_native_sprite_art_decode(const uint8_t *rom,size_t size,unsigned asset,
@@ -98,3 +98,7 @@ extern const S2DonorLayout s2_megamix_shadow_layout;
 int s2_donor_decode(const uint8_t *rom, size_t size, const S2DonorLayout *layout,
                     S2DonorBank *out, char *error, size_t error_size);
 void s2_donor_free(S2DonorBank *bank);
+/* Transfer a native water palette to a donor's different colour-index order.
+ * Additional donor shades use the nearest nontransparent native colour. */
+void s2_donor_water_palette(const uint16_t donor[16],const uint16_t normal[16],
+                            const uint16_t water[16],uint16_t out[16]);

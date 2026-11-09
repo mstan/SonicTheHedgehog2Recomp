@@ -43,15 +43,51 @@ int s2_runtime_player_position(unsigned p,int *x,int *y)
 {if(p>=4)return 0;*x=positions[p][0];*y=positions[p][1];return 1;}
 void s2_options_overlay(const GVDP *v,int line,uint32_t *out,int width)
 { (void)v; (void)line; (void)out; (void)width; }
+void s2_runtime_presentation_capture(S2RuntimePresentation *out)
+{ memset(out,0,sizeof *out); }
+int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
+{ (void)a;(void)b;return 1; }
+void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ (void)a;(void)b;(void)phase;(void)v;(void)line;(void)out;(void)width; }
 void glue_poke8(uint32_t a,uint8_t v){g_ram[a&65535]=v;}
 void glue_poke16(uint32_t a,uint16_t v){glue_poke8(a,v>>8);glue_poke8(a+1,v);}
 void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);}
 void cmd_send_response(const char *json){(void)json;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"line %d: %s\n",__LINE__,#c);exit(1);}}while(0)
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
+/* Synthetic stage fixtures replace RAM without running Level_SetPlayerMode. */
+static void clear_guest(void)
+{ memset(g_ram,0,sizeof g_ram);s_level_zone_valid=0;s_boss_preview_complete=0; }
+static void row_parallax_test(void)
+{
+    /* Original deformation table boundaries, including CNZ's ripple row.
+     * MCZ quantizes camera/10 before multiplying each band's speed. */
+    CHECK(arz_parallax(160,336)==16 && arz_parallax(160,432)==48);
+    CHECK(arz_parallax(160,576)==175);
+    CHECK(mcz_parallax(160,0)==144 && mcz_parallax(160,37)==128);
+    CHECK(mcz_parallax(160,95)==32 && mcz_parallax(160,96)==16);
+    CHECK(mcz_parallax(161,97)==16 && mcz_parallax(161,145)==80);
+    CHECK(cnz_parallax(160,0)==160 && cnz_parallax(160,96)==55);
+    CHECK(cnz_parallax(160,112)==10 && cnz_parallax(160,128)==10);
+    CHECK(cnz_parallax(160,144)==20);
+    /* Captured native deformation rows, without custom viewport drawing. */
+    CHECK(htz_scroll(0,484,128)==-64 && htz_scroll(0,484,208)==-214);
+    CHECK(htz_scroll(54,868,136)==-148 && htz_scroll(54,868,176)==-292);
+    CHECK(htz_scroll(360,1396,131)==-254 && htz_scroll(360,1396,208)==-775);
+    CHECK(ooz_parallax(160,80)==20 && ooz_parallax(160,79)==3);
+    CHECK(ooz_parallax(160,64)==2 && ooz_parallax(160,60)==5);
+    CHECK(ooz_parallax(160,32)==0 && ooz_parallax(160,8)==3);
+    CHECK(dez_parallax(160,127)==160 && dez_parallax(160,128)==0);
+    CHECK(dez_parallax(160,383)==0 && dez_parallax(160,384)==160);
+    GVDP v={0};v.reg[13]=0x3F;
+    for(unsigned row=0;row<224;++row)word(v.vram,0xFC02+row*4,(unsigned)htz_scroll(54,868,(int)row));
+    unsigned phase=0;CHECK(htz_display_phase(&v,54,872,&phase) && phase==868);
+    word(v.vram,0xFC02+208*4,0x1234);CHECK(!htz_display_phase(&v,54,872,&phase));
+}
 static void act_runoff_test(void)
 {
-    memset(g_ram,0,sizeof g_ram);memset(s_runoff,0,sizeof s_runoff);
+    clear_guest();memset(s_runoff,0,sizeof s_runoff);
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0xB040]=2;
     word(g_ram,0xFFC8,1);word(g_ram,0xEECA,1000);word(g_ram,0xB010,0x680);
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
@@ -79,12 +115,20 @@ static void act_runoff_test(void)
     capture_objects_into(&s_build,796,0,NULL);
     CHECK(s_visible_count==1 && s_visible_objects[0]==0xB000);
     int found=0;for(unsigned n=0;n<s_build.count;++n)found|=s_build.sprites[n].x==1000 && s_build.sprites[n].y==100;
-    CHECK(found);publish_sprites();CHECK(g_ram[0xB001]==132);
+    CHECK(!found);publish_sprites();CHECK(g_ram[0xB001]==132);
+    /* An attached shield follows the same continuation and standing centre. */
+    word(g_ram,0xAD00,4);word(g_ram,0xAD04,0xD180);
+    memcpy(g_ram+0xD180,g_ram+0xB000,64);g_ram[0xD180]=0x38;
+    word(g_ram,0xD1BE,0xB000);g_ram[0xB016]=14;
+    capture_objects_into(&s_build,796,1,NULL);
+    found=0;for(unsigned n=0;n<s_build.count;++n)
+        found|=s_build.sprites[n].x==1000 && s_build.sprites[n].y==95;
+    CHECK(found);g_ram[0xD180]=0;word(g_ram,0xAD00,2);
     Runoff old_runoff=s_runoff[0];g_ram[0xF600]=4;
     capture_objects_into(&s_build,796,1,NULL);
     CHECK(!memcmp(&old_runoff,&s_runoff[0],sizeof old_runoff));
     found=0;for(unsigned n=0;n<s_build.count;++n)found|=s_build.sprites[n].x==1000 && s_build.sprites[n].y==100;
-    CHECK(found);g_ram[0xF600]=12;
+    CHECK(!found);g_ram[0xF600]=12;
     memcpy(g_rom+0x700,saved_map,sizeof saved_map);
     state.pos=0;state.mode=2;s2_video_rb_state(&state);CHECK(state.ok);free(bytes);
     uint8_t original[65536];memcpy(original,g_ram,sizeof original);
@@ -94,31 +138,38 @@ static void act_runoff_test(void)
     CHECK(s2_video_runoff_x(0,0xB000,1360)==1360);
     g_ram[0xF600]=12;word(g_ram,0xFFD8,1);
     CHECK(s2_video_runoff_x(0,0xB000,1360)==1360);
-    memset(g_ram,0,sizeof g_ram);memset(s_runoff,0,sizeof s_runoff);
+    clear_guest();memset(s_runoff,0,sizeof s_runoff);
 }
 static void parked_car_test(void)
 {
     uint8_t saved_map[256];memcpy(saved_map,g_rom+0x2FA58,sizeof saved_map);
-    memset(g_ram,0,sizeof g_ram);g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
     word(g_ram,0xFE10,1);g_ram[0xEEDF]=4;g_ram[0x807F]=1;
     memset(g_rom+0x2FA58,0,sizeof saved_map);
     for(unsigned f=0;f<7;++f)word(g_rom,0x2FA58+f*2,128);
     word(g_rom,0x2FAD8,1);
     static SceneFrame scene;memset(&scene,0,sizeof scene);
     uint8_t original[65536];memcpy(original,g_ram,sizeof original);
-    parked_ehz_car(&scene,NULL,2,320,0x2940,0x388);CHECK(!scene.count);
-    parked_ehz_car(&scene,NULL,2,796,0x2940,0x388);CHECK(scene.count==3);
-    parked_ehz_car(&scene,NULL,3,796,0x2940,0x388);CHECK(scene.count==5);
-    CHECK(scene.sprites[0].x==0x2AF0-0x2940+28 && scene.sprites[0].y==0x426-0x388+12);
+    parked_boss(&scene,NULL,2,320,0x2940,0x388,0);CHECK(!scene.count);
+    parked_boss(&scene,NULL,2,796,0x2940,0x388,0);CHECK(scene.count==3);
+    parked_boss(&scene,NULL,3,796,0x2940,0x388,0);CHECK(scene.count==5);
+    CHECK(scene.sprites[0].x==0x2AF0-0x2940+28 && scene.sprites[0].y==0x426-0x388+9);
     CHECK(scene.sprites[3].x==0x2AF0-0x2940 && (scene.sprites[3].hud&SCENE_ART_MASK)==SCENE_ART_EHZ_CAR);
     CHECK(!memcmp(original,g_ram,sizeof original));
     scene.count=0;g_ram[0xB400]=0x56;g_ram[0xB424]=6;word(g_ram,0xB404,2);word(g_ram,0xB406,0xFA58);
-    parked_ehz_car(&scene,NULL,2,796,0x2940,0x388);CHECK(!scene.count);
-    g_ram[0xB400]=0;g_ram[0xEEDF]=6;
-    parked_ehz_car(&scene,NULL,2,796,0x2940,0x388);CHECK(!scene.count);
+    word(g_ram,0xB408,0x2AEF);word(g_ram,0xB40C,0x426);g_ram[0xB418]=3;g_ram[0xB401]=4;
+    g_ram[0xEEDF]=6;
+    parked_boss(&scene,NULL,3,796,0x2940,0x388,0);
+    CHECK(scene.count==1 && scene.sprites[0].x==0x2AEF-0x2940 && !s_boss_preview_complete);
+    /* The allocation frame is still drawable. Only completed native queue
+     * ownership retires the preview, and deletion cannot resurrect it. */
+    scene.count=0;word(g_ram,0xAD80,2);word(g_ram,0xAD82,0xB400);
+    parked_boss(&scene,NULL,3,796,0x2940,0x388,0);CHECK(!scene.count && s_boss_preview_complete==1);
+    g_ram[0xB400]=0;word(g_ram,0xAD80,0);
+    parked_boss(&scene,NULL,2,796,0x2940,0x388,0);CHECK(!scene.count);
     g_ram[0xEEDF]=4;word(g_ram,0xFFD8,1);
-    parked_ehz_car(&scene,NULL,2,796,0x2940,0x388);CHECK(!scene.count);
-    memcpy(g_rom+0x2FA58,saved_map,sizeof saved_map);memset(g_ram,0,sizeof g_ram);
+    parked_boss(&scene,NULL,2,796,0x2940,0x388,0);CHECK(!scene.count);
+    memcpy(g_rom+0x2FA58,saved_map,sizeof saved_map);clear_guest();
 }
 static void cloud_edge_test(void)
 {
@@ -133,11 +184,39 @@ static void cloud_edge_test(void)
     unsigned a,b;CHECK(ehz_cloud_x(-1,&a)==ehz_cloud_x(0,&b));
     CHECK(ehz_cloud_x(511,&a)==ehz_cloud_x(512,&b));
 }
+static void half_pipe_width_test(void)
+{
+    clear_guest();CHECK(sonic2_video.configure("32:9"));
+    g_ram[0xF600]=16;g_ram[0xB000]=9;
+    CHECK(sonic2_video.width(1920,1080,256,224)==256);
+    CHECK(sonic2_video.width(5120,1440,256,224)==256);
+    /* A starpost departure still displays the outgoing wide level. */
+    g_ram[0xB000]=1;
+    CHECK(sonic2_video.width(1920,1080,320,224)==796);
+    g_ram[0xF600]=12;
+    CHECK(sonic2_video.width(1920,1080,320,224)==796);
+    clear_guest();
+}
+static void outgoing_zone_test(void)
+{
+    unsigned old_zone=s_level_zone;int old_valid=s_level_zone_valid;
+    clear_guest();word(g_ram,0xFE10,1);
+    CHECK(!s2_video_hook(0x4450));CHECK(s2_video_level_zone()==1);
+    word(g_ram,0xFE10,0xD00);g_ram[0xF600]=0x8C;
+    CHECK(s2_video_level_zone()==1); /* still fading the EHZ display */
+    S2StateIO size={0};s2_video_rb_state(&size);uint8_t *saved=malloc(size.pos);CHECK(saved);
+    S2StateIO io={saved,size.pos,0,0,1};s2_video_rb_state(&io);CHECK(io.ok);
+    CHECK(!s2_video_hook(0x4450));CHECK(s2_video_level_zone()==0xD00);
+    io.pos=0;io.mode=2;s2_video_rb_state(&io);CHECK(io.ok && s2_video_level_zone()==1);
+    CHECK(ram16(0xFE10)==0xD00); /* presentation identity never rewrites the guest */
+    free(saved);s_level_zone=old_zone;s_level_zone_valid=old_valid;
+    clear_guest();
+}
 static void slot_presentation_test(void)
 {
     S2PartyConfig old_party=s2_party;int old_available=hud_available;
     static S2KnucklesArt old_art;old_art=hud_art;
-    memset(g_ram,0,sizeof g_ram);g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    clear_guest();g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
     s2_party.roster.slots=1;s2_party.s3k_enabled=1;strcpy(s2_party.roster.character[0],"knuckles");
     hud_available=slot_mock=1;hud_art.palette[1]=0xEEE;hud_art.palette[2]=0xE0;
     GVDP v={0};v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;
@@ -203,7 +282,7 @@ static void slot_presentation_test(void)
     word(g_ram,0xFFD8,0);strcpy(s2_party.roster.character[0],"sonic");strcpy(s2_party.roster.character[1],"knuckles");
     CHECK(!slot_theme(0));strcpy(s2_party.roster.character[0],"knuckles");g_ram[0xF600]=8;CHECK(!slot_theme(0));
     slot_mock=0;s2_party=old_party;hud_available=old_available;hud_art=old_art;
-    memset(g_ram,0,sizeof g_ram);s2_video_prepare_knuckles_items();
+    clear_guest();s2_video_prepare_knuckles_items();
 }
 static void native_scene_art_test(void)
 {
@@ -211,10 +290,11 @@ static void native_scene_art_test(void)
     GVDP v={0};v.reg[12]=1;
     static SceneFrame scene;memset(&scene,0,sizeof scene);scene.scene=1;scene.count=1;s_display=&scene;
     uint32_t out[796],palette[64]={0};palette[1]=0xFFFF0000;palette[2]=0xFF00FF00;palette[17]=0xFFFFFFFF;
-    static const unsigned bases[]={0x434,0x680,0x400};
-    static const unsigned materials[]={SCENE_ART_SIGNPOST,SCENE_ART_CAPSULE,SCENE_ART_EHZ_CAR};
+    static const unsigned bases[]={0x434,0x680,0x400,0x420,0x500,0x418};
+    static const unsigned materials[]={SCENE_ART_SIGNPOST,SCENE_ART_CAPSULE,SCENE_ART_EHZ_CAR,SCENE_ART_EHZ_CAR,SCENE_ART_EHZ_CAR,SCENE_ART_EHZ_CAR};
     s_camera=s_camera_y=0;s_interpolating=0;
     for(unsigned asset=0;asset<S2_NATIVE_SPRITE_ART_COUNT;++asset) {
+        s_frame_zone=asset>=S2_NATIVE_CPZ_POD?13:0;
         NativeSpriteArt *a=&s_native_sprite_art[asset];a->ready=1;a->bytes=32;memset(a->pixels,0x22,32);
         memset(v.vram+bases[asset]*32,0x11,32);
         scene.sprites[0]=(SceneSprite){700,0,(uint16_t)(0x8000|bases[asset]),0,(uint8_t)materials[asset]};
@@ -227,6 +307,7 @@ static void native_scene_art_test(void)
         CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)(bases[asset]|0x800),0,0,796)==4);
         CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)(bases[asset]|0x1000),0,0,796)==5);
     }
+    s_frame_zone=0;
     /* Capsule ink stays black during the boss flash, while an unmarked
      * object keeps the live white and an actual white fade remains white. */
     memset(s_native_sprite_art[S2_NATIVE_CAPSULE].pixels,0x11,32);v.cram[17]=0xEEE;
@@ -239,7 +320,7 @@ static void native_scene_art_test(void)
     draw_scene_sprites(&v,0,out,796,0,palette);CHECK(out[700]==0xFFFFFFFF);
     /* The mapping identity owns the material, never a coincident tile range. */
     static const unsigned maps[]={0x195BE,0x3F436,0x2FA58};
-    memset(g_ram,0,sizeof g_ram);
+    clear_guest();
     for(unsigned n=0;n<3;++n) {
         unsigned map=maps[n];word(g_rom,map,2);word(g_rom,map+2,1);
         memset(g_rom+map+4,0,8);s_build.count=0;
@@ -257,7 +338,7 @@ static void demo_native_simulation_test(void)
     static uint8_t original[65536];
     static const unsigned hooks[]={0x17B84,0x17C50,0x17CCC,0x170D0,0x16F16,0x16F3E,0xF7D4};
     for(unsigned vs=0;vs<2;++vs)for(unsigned phase=0;phase<3;++phase) {
-        memset(g_ram,0,sizeof g_ram);memset(&g_cpu,0,sizeof g_cpu);
+        clear_guest();memset(&g_cpu,0,sizeof g_cpu);
         g_ram[0xF600]=(uint8_t)(phase==0?8:phase==1?0:4);
         g_ram[0xF711]=1;g_ram[0xB000]=1;word(g_ram,0xFFD8,vs);word(g_ram,0xFFF0,1);
         CHECK(sonic2_video.configure("32:9"));
@@ -276,7 +357,7 @@ static void demo_native_simulation_test(void)
 }
 static void outgoing_competition_mapping_test(void)
 {
-    memset(g_ram,0,sizeof g_ram);memset(s_history,0,sizeof s_history);s_serial=0;
+    clear_guest();memset(s_history,0,sizeof s_history);s_serial=0;
     g_ram[0xF600]=0;g_ram[0xF711]=1;g_ram[0xB000]=1;word(g_ram,0xFFD8,1);
     word(g_ram,0xE808,0xFFFF);
     CHECK(!competition() && presented_competition() && !presented_gameplay());
@@ -293,7 +374,7 @@ static void outgoing_competition_mapping_test(void)
     CHECK(s_build.sprites[0].size==4 && s_build.sprites[0].x==100 && s_build.sprites[0].y==50);
     CHECK(!s2_video_hook(0x16B90));CHECK(s_history[s_serial%3].scene==3);
     g_ram[0xF711]=0;CHECK(!presented_competition());
-    memset(g_ram,0,sizeof g_ram);memset(s_history,0,sizeof s_history);s_serial=0;
+    clear_guest();memset(s_history,0,sizeof s_history);s_serial=0;
 }
 static void widened_card_front_ui_test(void)
 {
@@ -344,7 +425,7 @@ static void demo_readonly_publication_test(void)
     static uint8_t original[65536];
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     for(unsigned phase=0;phase<3;++phase) {
-        memset(g_ram,0,sizeof g_ram);memset(s_history,0,sizeof s_history);s_serial=0;
+        clear_guest();memset(s_history,0,sizeof s_history);s_serial=0;
         g_ram[0xF600]=(uint8_t)(phase==0?8:phase==1?0:4);
         g_ram[0xB000]=1;g_ram[0xF711]=1;word(g_ram,0xFFD8,1);word(g_ram,0xFFF0,1);
         g_ram[0x800A]=1;word(g_ram,0xE808,0xFFFF);
@@ -363,12 +444,12 @@ static void demo_readonly_publication_test(void)
     g_ram[0xF600]=12;word(g_ram,0xFFF0,0);
     CHECK(!s2_video_hook(0x16604));CHECK(!s2_video_hook(0x16B90));
     CHECK(g_ram[0xB401]==0x84 && g_ram[0xC101]==4);
-    memset(g_ram,0,sizeof g_ram);memset(s_history,0,sizeof s_history);s_serial=s_visible_count=0;
+    clear_guest();memset(s_history,0,sizeof s_history);s_serial=s_visible_count=0;
 }
 static void native_demo_hud_test(void)
 {
     S2PartyConfig saved=s2_party;int available=hud_available;
-    memset(g_ram,0,sizeof g_ram);g_ram[0xB000]=1;g_ram[0xF711]=1;
+    clear_guest();g_ram[0xB000]=1;g_ram[0xF711]=1;
     word(g_ram,0xFFD8,1);word(g_ram,0xFFF0,1);
     strcpy(s2_party.roster.character[0],"knuckles");strcpy(s2_party.roster.character[1],"shadow");
     s2_party.s3k_enabled=1;hud_available=1;
@@ -387,7 +468,7 @@ static void native_demo_hud_test(void)
     word(g_ram,0xFFD8,0);g_ram[0xF600]=8;
     CHECK(!s2_video_knuckles_hud_pixel(&v,0x7D4,0,0,&color));
     g_ram[0xF600]=12;CHECK(s2_video_knuckles_hud_pixel(&v,0x7D4,0,0,&color));
-    s2_party=saved;hud_available=available;memset(g_ram,0,sizeof g_ram);
+    s2_party=saved;hud_available=available;clear_guest();
 }
 static void competition_intro_alignment_test(void)
 {
@@ -412,7 +493,7 @@ static void competition_intro_alignment_test(void)
 }
 static void menu_background_lifetime_test(void)
 {
-    memset(g_ram,0,sizeof g_ram);memset(s_history,0,sizeof s_history);
+    clear_guest();memset(s_history,0,sizeof s_history);
     s_display=NULL;s_serial=0;s_menu_background_ready=0;
     GVDP v={0};v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;
     v.reg[12]=1;v.reg[13]=0x28;v.reg[16]=1;
@@ -447,7 +528,7 @@ static void pylon_viewport_test(void)
 {
     static SceneFrame frame;
     static uint32_t keys[SCENE_SPRITES];
-    memset(g_ram,0,sizeof g_ram);memset(&frame,0,sizeof frame);
+    clear_guest();memset(&frame,0,sizeof frame);
     memset(g_rom+0x40A9A,0,32);
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xFE10]=13;g_ram[0xB000]=1;
     g_ram[0xB340]=0x7C;g_ram[0xB364]=2;
@@ -494,7 +575,7 @@ static void pylon_viewport_test(void)
 }
 static void amy_item_art_test(void)
 {
-    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    clear_guest();memset(&s2_party,0,sizeof s2_party);
     s_display=NULL;s_donor_fade=s_presented_fade=(DonorFade){0};
     hud_available=1;amy_special_available=0;amy_items_available=1;
     s2_party.amy_enabled=1;strcpy(s2_party.roster.character[0],"amy");g_ram[0xF600]=12;
@@ -536,7 +617,7 @@ static void amy_item_art_test(void)
     patterns=gvdp_sprite_patterns(0x80,&bytes);CHECK(patterns[0x7D4*32]==hud_art.life[0]);
     amy_items_available=0;hud_available=0;s2_video_prepare_knuckles_items();
     CHECK(!gvdp_sprite_patterns(0x80,&bytes));
-    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    clear_guest();memset(&s2_party,0,sizeof s2_party);
 }
 static unsigned native_fetches;
 static void donor_palette_fade_test(void)
@@ -578,7 +659,7 @@ static const uint32_t *fetch_native(void *ctx)
 static void special_actor_test(void)
 {
     static GVDP v,before;static uint8_t ram_before[65536];uint32_t out[398];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&v,0,sizeof v);clear_guest();memset(&hud_art,0,sizeof hud_art);
     memset(s_special_history,0,sizeof s_special_history);memset(&s_special_display,0,sizeof s_special_display);
     hud_available=0;s2_video_prepare_knuckles_items();hud_available=1;
     s_donor_fade=s_presented_fade=(DonorFade){0};
@@ -668,13 +749,13 @@ static void special_actor_test(void)
     hud_available=0;s2_video_prepare_knuckles_items();out[48]=0x12345678;
     s2_video_special_actor(&v,0,out,256);s2_video_special_actor(&v,32,out,256);
     CHECK(out[48]==0x12345678);
-    memset(g_ram,0,sizeof g_ram);memset(s_special_history,0,sizeof s_special_history);
+    clear_guest();memset(s_special_history,0,sizeof s_special_history);
     memset(&s_special_display,0,sizeof s_special_display);
 }
 static void results_identity_test(void)
 {
     static GVDP v;uint32_t out[398];uint8_t original[65536];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&v,0,sizeof v);clear_guest();memset(&hud_art,0,sizeof hud_art);
     g_ram[0xF600]=12;hud_available=1;strcpy(s2_party.roster.character[0],"knuckles");
     v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
     v.cram[1]=v.cram[6]=0xEEE;v.cram[3]=0xE;
@@ -744,7 +825,7 @@ static void special_results_scroll_test(void)
 static void special_results_identity_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&v,0,sizeof v);clear_guest();memset(&hud_art,0,sizeof hud_art);
     s2_video_hook(0x4F64);hud_available=0;s2_video_prepare_knuckles_items();hud_available=1;
     s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
     g_ram[0xF600]=16;g_ram[0xFFB0]=1;g_ram[0xB800]=g_ram[0xB840]=0x6F;
@@ -784,7 +865,7 @@ static void special_results_identity_test(void)
 static void amy_special_ui_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&amy_special,0,sizeof amy_special);
+    memset(&v,0,sizeof v);clear_guest();memset(&amy_special,0,sizeof amy_special);
     s2_video_hook(0x4F64);hud_available=amy_special_available=0;
     strcpy(s2_party.roster.character[0],"amy");s2_party.roster.slots=1;
     s2_video_prepare_knuckles_items();amy_special_available=1;
@@ -845,7 +926,7 @@ static void amy_special_ui_test(void)
 static void knuckles_special_ui_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&v,0,sizeof v);clear_guest();memset(&hud_art,0,sizeof hud_art);
     s2_video_hook(0x4F64);hud_available=1;amy_special_available=0;
     strcpy(s2_party.roster.character[0],"knuckles");
     strcpy(s2_party.roster.character[1],"tails");s2_party.roster.slots=2;
@@ -916,7 +997,7 @@ static void native_interpolation_test(void)
     static uint32_t ordinary[2][320*224],fraction[320*224];
     static uint8_t original_ram[65536];
     CHECK(sonic2_video.configure("off"));online=0;s_loader_active=0;
-    memset(g_ram,0,sizeof g_ram);memset(g_rom,0,sizeof g_rom);
+    clear_guest();memset(g_rom,0,sizeof g_rom);
     memset(&s2_party,0,sizeof s2_party);s2_party.roster.slots=2;
     strcpy(s2_party.roster.character[0],"sonic");strcpy(s2_party.roster.character[1],"tails");
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0x8003]=1;
@@ -969,7 +1050,7 @@ static void signpost_palette_test(void)
     static GVDP v,before;
     GVDPRasterRow row;uint8_t pixels[GVDP_MAX_WIDTH],ram_before[65536];
     const unsigned tiles[]={0x434,0x440,0x450,0x454,0x456,0x46E,0x472,0x481,0x482};
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&hud_art,0,sizeof hud_art);
+    memset(&v,0,sizeof v);clear_guest();memset(&hud_art,0,sizeof hud_art);
     memset(&s2_party,0,sizeof s2_party);hud_available=0;s2_video_prepare_knuckles_items();
     hud_available=1;s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
     g_ram[0xF600]=12;s_donor_fade=s_presented_fade=(DonorFade){0};
@@ -997,7 +1078,7 @@ static void private_water_palette_test(void)
 {
     static GVDP v;
     uint8_t original[65536];GVDPRasterRow captured;
-    memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    clear_guest();memset(&s2_party,0,sizeof s2_party);
     s2_party.roster.slots=1;strcpy(s2_party.roster.character[0],"knuckles");
     g_ram[0xF600]=12;g_ram[0xFE10]=13;g_ram[0xF64C]=1;hud_available=1;
     for(unsigned c=0;c<16;++c) {
@@ -1024,7 +1105,7 @@ static void special_stage_pixel_shape_test(void)
 {
     static GVDP v;
     uint32_t native[256],out[398],lazy[398];uint8_t ram[65536];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);
+    memset(&v,0,sizeof v);clear_guest();
     memset(&s_build,0,sizeof s_build);memset(s_history,0,sizeof s_history);
     s_display=NULL;g_ram[0xF600]=16;
     v.reg[1]=64;v.reg[12]=8;v.cram[1]=0xE;
@@ -1050,7 +1131,7 @@ static void special_stage_pixel_shape_test(void)
 static void front_ui_and_background_priority_test(void)
 {
     static GVDP v;uint32_t out[398];uint8_t ram[65536];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    memset(&v,0,sizeof v);clear_guest();memset(&s2_party,0,sizeof s2_party);
     presentation_configure(0);CHECK(sonic2_video.configure("off"));
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB800]=0x3A;
     v.reg[1]=64;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;v.cram[1]=0xEEE;
@@ -1153,7 +1234,7 @@ static void front_ui_and_background_priority_test(void)
 static void foreground_world_sprite_test(void)
 {
     static GVDP v;uint32_t out[398];uint8_t ram[65536];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    memset(&v,0,sizeof v);clear_guest();memset(&s2_party,0,sizeof s2_party);
     presentation_configure(0);CHECK(sonic2_video.configure("off"));
     memset(&s_front_build,0,sizeof s_front_build);memset(s_front_history,0,sizeof s_front_history);
     memset(s_front_display,0,sizeof s_front_display);s_front_serial=0;
@@ -1215,7 +1296,7 @@ static void foreground_world_sprite_test(void)
 static void water_surface_span_test(void)
 {
     static GVDP v;uint32_t out[796],palette[64]={0};uint8_t ram[65536];
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(g_rom,0,sizeof g_rom);
+    memset(&v,0,sizeof v);clear_guest();memset(g_rom,0,sizeof g_rom);
     memset(&s2_party,0,sizeof s2_party);online=0;s_interpolating=0;
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
     word(g_ram,0xEEF0,512);word(g_ram,0xEE00,512);
@@ -1256,7 +1337,7 @@ static void competition_hud_replacement_test(void)
 {
     static GVDP v;uint32_t out[320];
     static const char *names[]={"sonic","tails","amy","knuckles","shadow","mighty"};
-    memset(&v,0,sizeof v);memset(g_ram,0,sizeof g_ram);memset(&s2_party,0,sizeof s2_party);
+    memset(&v,0,sizeof v);clear_guest();memset(&s2_party,0,sizeof s2_party);
     CHECK(sonic2_video.configure("off"));g_ram[0xF600]=12;g_ram[0xF711]=1;
     g_ram[0xB000]=1;g_ram[0xB040]=2;
     word(g_ram,0xFFD8,1);v.reg[1]=64;v.reg[5]=0x7C;v.reg[12]=7;v.cram[1]=0xEEE;
@@ -1303,14 +1384,14 @@ int main(void)
      * original loading/fade CPU timing remains unchanged. */
     CHECK(sonic2_video.configure("32:9"));
     for(unsigned destination=0;destination<=4;destination+=4) {
-        memset(g_ram,0,sizeof g_ram);g_ram[0xF600]=(uint8_t)destination;
+        clear_guest();g_ram[0xF600]=(uint8_t)destination;
         g_ram[0xB000]=1;g_ram[0xF711]=1;
         CHECK(outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
         word(g_ram,0xFFD8,1);CHECK(outgoing_level() && !gameplay() && !competition());
         g_ram[0xF711]=0;CHECK(!outgoing_level());
         g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!outgoing_level());
     }
-    memset(g_ram,0,sizeof g_ram);
+    clear_guest();
     CHECK(sonic2_video.configure("off"));
 #if OWN_BACKEND
     /* Avoid palette work in ordinary play, but retain an expiring star's
@@ -1366,7 +1447,7 @@ int main(void)
     g_cpu.A[2]=0xFFFFDD10;word(g_ram,0xDD0C,0x825F);g_ram[0xDD0A]=13;
     s2_video_hook(0x16DEE);CHECK(g_ram[0xDD0A]==0x8D);
     word(g_ram,0xFFD8,0);g_ram[0xDD0A]=13;s2_video_hook(0x1684E);CHECK(g_ram[0xDD0A]==13);
-    item_owner=0;hud_available=0;s2_video_prepare_knuckles_items();memset(g_ram,0,sizeof g_ram);
+    item_owner=0;hud_available=0;s2_video_prepare_knuckles_items();clear_guest();
     GVDP hud={0}; uint32_t colour=0x12345678;
     s2_party.s3k_enabled=1; strcpy(s2_party.roster.character[0],"knuckles");
     CHECK(!s2_video_knuckles_hud_pixel(&hud,0xA7D8,0,0,&colour) && colour==0x12345678);
@@ -1593,7 +1674,7 @@ int main(void)
     free(before);free(after);
     /* Original Sonic uses ink3; the Knuckles card patch uses ink4. Both
      * full-width fills must follow live VRAM, including palette-1 yellow. */
-    memset(g_ram,0,sizeof g_ram);memset(&v,0,sizeof v);
+    clear_guest();memset(&v,0,sizeof v);
     memset(&s_build,0,sizeof s_build);memset(s_history,0,sizeof s_history);
     memset(&s_display_frame,0,sizeof s_display_frame);
     g_ram[0xF600]=0x8C;g_ram[0xB080]=0x34;g_ram[0xB000]=1;
@@ -1634,7 +1715,7 @@ int main(void)
     word(g_ram,0xFFD8,0);CHECK(!s2_video_competition_divider(&v,216,out,320));
     /* Cross-check the actual native VDP's IM2 cell shape. A block is a
      * horizontal pair of8x16 cells; its second map pair is not another row. */
-    memset(g_ram,0,sizeof g_ram);memset(&v,0,sizeof v);
+    clear_guest();memset(&v,0,sizeof v);
     v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=7;v.reg[16]=1;
     memset(v.vram+64,0x11,32);memset(v.vram+96,0x22,32);
     for(unsigned at=0xC000;at<0xD000;at+=2)word(v.vram,at,1);
@@ -1652,7 +1733,7 @@ int main(void)
     /* Adopt an existing native2P spring without duplicating it. Turning
      * widescreen off retains host ownership, releases an out-of-range live
      * object, and permits a clean respawn when its margin is visible again. */
-    memset(g_ram,0,sizeof g_ram);g_ram[0x8000+31]=1;
+    clear_guest();g_ram[0x8000+31]=1;
     g_ram[0xF600]=12;g_ram[0xF711]=1;word(g_ram,0xFFD8,1);
     word(g_ram,0xEE00,512);word(g_ram,0xEE20,512);
     word(g_rom,0xE6800,0x100);word(g_rom,0xE6900,300);word(g_rom,0xE6902,0x8000);
@@ -1670,6 +1751,8 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
+    half_pipe_width_test();
+    outgoing_zone_test();
     donor_palette_fade_test();
     results_identity_test();
     special_results_scroll_test();
@@ -1685,6 +1768,7 @@ int main(void)
     water_surface_span_test();
     competition_hud_replacement_test();
     amy_item_art_test();
+    row_parallax_test();
     act_runoff_test();
     parked_car_test();
     cloud_edge_test();

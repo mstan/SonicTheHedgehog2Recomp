@@ -3,6 +3,7 @@
 void s2_video_rb_state(S2StateIO *io);
 void s2_video_state(S2StateIO *io);
 unsigned s2_video_main_cpu_divisor(void);
+unsigned s2_video_level_zone(void);
 void s2_video_vblank(void);
 #include "game_video.h"
 extern const GameVideo sonic2_video;
@@ -10,6 +11,7 @@ int s2_video_hook(uint32_t pc);
 void s2_video_command(int id, const char *json);
 void s2_video_actor_origin(const struct GVDP *vdp, int line, int width, int *left, int *top);
 int s2_video_runoff_x(unsigned role,unsigned object,int x);
+int s2_video_runoff_velocity(unsigned role);
 int s2_video_actor_pixel_visible(const struct GVDP *vdp, int wx, int wy, int high, const unsigned char *world);
 void s2_video_front_ui(const struct GVDP *vdp,int line,uint32_t *out,int width);
 void s2_video_preserve_foreground_row(const uint32_t *out,int width);
