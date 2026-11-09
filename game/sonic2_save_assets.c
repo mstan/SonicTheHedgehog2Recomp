@@ -313,6 +313,16 @@ int s2_amy_item_art_decode(const uint8_t *r,size_t size,S2ItemArt *out)
     memcpy(candidate.life,life,sizeof candidate.life);
     *out=candidate; return 1;
 }
+unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,
+                                    uint8_t *out,size_t capacity)
+{
+    static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C};
+    static const unsigned lengths[]={1452,908,2027},tiles[]={78,49,128};
+    if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
+       capacity<tiles[asset]*32)return 0;
+    unsigned bytes=tiles[asset]*32;
+    return nemesis(r+addresses[asset],lengths[asset],out,bytes)?bytes:0;
+}
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {
     if (!r || !out || size!=0x340000) return 0;

@@ -19,6 +19,8 @@ const S2DonorBank *s2_resource_bank(unsigned id) {return amy_items_available && 
 const S2DonorBank *s2_resource_shadow_bank(void) { return NULL; }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 { (void)r;(void)size;(void)out;return 0; }
+unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,uint8_t *out,size_t cap)
+{(void)r;(void)size;(void)asset;(void)out;(void)cap;return 0;}
 uint16_t s2_shadow_color(const S2DonorBank *b,unsigned i,int wet,unsigned phase,unsigned frame)
 { (void)b;(void)i;(void)wet;(void)phase;(void)frame;return 0; }
 static int hud_available;
@@ -44,6 +46,53 @@ void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);
 void cmd_send_response(const char *json){(void)json;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"line %d: %s\n",__LINE__,#c);exit(1);}}while(0)
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
+static void native_scene_art_test(void)
+{
+    CHECK(sonic2_video.configure("32:9"));CHECK(reserve_sprite_row(796));
+    GVDP v={0};v.reg[12]=1;
+    static SceneFrame scene;memset(&scene,0,sizeof scene);scene.scene=1;scene.count=1;s_display=&scene;
+    uint32_t out[796],palette[64]={0};palette[1]=0xFFFF0000;palette[2]=0xFF00FF00;palette[17]=0xFFFFFFFF;
+    static const unsigned bases[]={0x434,0x680,0x400};
+    static const unsigned materials[]={SCENE_ART_SIGNPOST,SCENE_ART_CAPSULE,SCENE_ART_EHZ_CAR};
+    s_camera=s_camera_y=0;s_interpolating=0;
+    for(unsigned asset=0;asset<S2_NATIVE_SPRITE_ART_COUNT;++asset) {
+        NativeSpriteArt *a=&s_native_sprite_art[asset];a->ready=1;a->bytes=32;memset(a->pixels,0x22,32);
+        memset(v.vram+bases[asset]*32,0x11,32);
+        scene.sprites[0]=(SceneSprite){700,0,(uint16_t)(0x8000|bases[asset]),0,(uint8_t)materials[asset]};
+        memset(s_priority,0,796);for(unsigned x=0;x<796;++x)out[x]=0xFF123456;
+        draw_scene_sprites(&v,0,out,796,0,palette);
+        for(unsigned x=0;x<796;++x)CHECK(out[x]==(x>=700 && x<708?0xFF00FF00:0xFF123456));
+        CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)bases[asset],0,0,320)==1);
+        a->pixels[0]=0x12;a->pixels[3]=0x34;a->pixels[28]=0x56;
+        CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)bases[asset],0,0,796)==1);
+        CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)(bases[asset]|0x800),0,0,796)==4);
+        CHECK(native_scene_pixel(&v,materials[asset],(uint16_t)(bases[asset]|0x1000),0,0,796)==5);
+    }
+    /* Capsule ink stays black during the boss flash, while an unmarked
+     * object keeps the live white and an actual white fade remains white. */
+    memset(s_native_sprite_art[S2_NATIVE_CAPSULE].pixels,0x11,32);v.cram[17]=0xEEE;
+    scene.sprites[0]=(SceneSprite){700,0,0xA680,0,SCENE_ART_CAPSULE};
+    memset(s_priority,0,796);draw_scene_sprites(&v,0,out,796,0,palette);CHECK(out[700]==0xFF000000);
+    s_presented_fade=(DonorFade){FADE_TO_WHITE,22};
+    memset(s_priority,0,796);draw_scene_sprites(&v,0,out,796,0,palette);CHECK(out[700]==0xFFFFFFFF);
+    s_presented_fade=(DonorFade){0};scene.sprites[0].hud=0;
+    memset(v.vram+0x680*32,0x11,32);memset(s_priority,0,796);
+    draw_scene_sprites(&v,0,out,796,0,palette);CHECK(out[700]==0xFFFFFFFF);
+    /* The mapping identity owns the material, never a coincident tile range. */
+    static const unsigned maps[]={0x195BE,0x3F436,0x2FA58};
+    memset(g_ram,0,sizeof g_ram);
+    for(unsigned n=0;n<3;++n) {
+        unsigned map=maps[n];word(g_rom,map,2);word(g_rom,map+2,1);
+        memset(g_rom+map+4,0,8);s_build.count=0;
+        add_mapping(&s_build,NULL,0,map,0,bases[n],0,0,0,0,0);
+        CHECK(s_build.count==1 && (s_build.sprites[0].hud&SCENE_ART_MASK)==materials[n]);
+        word(g_ram,0xFFD8,1);g_ram[0xF600]=12;s_build.count=0;
+        add_mapping(&s_build,NULL,0,map,0,bases[n],0,0,0,0,0);
+        CHECK(s_build.count==1 && !(s_build.sprites[0].hud&SCENE_ART_MASK));
+        word(g_ram,0xFFD8,0);g_ram[0xF600]=0;
+    }
+    memset(s_native_sprite_art,0,sizeof s_native_sprite_art);s_display=NULL;s_build.count=0;
+}
 static void demo_native_simulation_test(void)
 {
     static uint8_t original[65536];
@@ -1477,6 +1526,7 @@ int main(void)
     water_surface_span_test();
     competition_hud_replacement_test();
     amy_item_art_test();
+    native_scene_art_test();
     demo_native_simulation_test();
     demo_readonly_publication_test();
     native_demo_hud_test();

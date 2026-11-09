@@ -340,7 +340,33 @@ static uint16_t plane_attr(const GVDP *v, unsigned base, int x, int y)
  * with the exact VBlank upload displayed by the VDP. */
 typedef struct { int x, y; uint16_t attr; uint8_t size, hud; } SceneSprite;
 enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024,
-       SCENE_FOREGROUND_SCREEN = 4, SCENE_WATER_REPEAT = 16 };
+       SCENE_FOREGROUND_SCREEN = 4, SCENE_WATER_REPEAT = 16,
+       SCENE_ART_SIGNPOST = 8, SCENE_ART_CAPSULE = 32,
+       SCENE_ART_EHZ_CAR = 40, SCENE_ART_MASK = 40 };
+typedef struct { uint8_t pixels[4096]; unsigned ready,bytes; } NativeSpriteArt;
+static NativeSpriteArt s_native_sprite_art[S2_NATIVE_SPRITE_ART_COUNT];
+static uint8_t native_scene_pixel(const GVDP *v,unsigned material,uint16_t attr,int x,int y,int width)
+{
+    unsigned asset,base;
+    switch(material&SCENE_ART_MASK) {
+    case SCENE_ART_SIGNPOST:asset=S2_NATIVE_SIGNPOST;base=0x434;break;
+    case SCENE_ART_CAPSULE:asset=S2_NATIVE_CAPSULE;base=0x680;break;
+    case SCENE_ART_EHZ_CAR:asset=S2_NATIVE_EHZ_CAR;base=0x400;break;
+    default:return pattern_pixel(v,attr,x,y);
+    }
+    if(!enabled() || width<=320 || (v->reg[12]&6)==6)return pattern_pixel(v,attr,x,y);
+    NativeSpriteArt *art=&s_native_sprite_art[asset];
+    if(!art->ready) {
+        art->bytes=s2_native_sprite_art_decode(g_rom,0x100000,asset,art->pixels,sizeof art->pixels);
+        art->ready=art->bytes?1:2;
+    }
+    unsigned tile=(attr&2047)-base;
+    if(art->ready!=1 || tile>=art->bytes/32)return pattern_pixel(v,attr,x,y);
+    unsigned fx=x&7,fy=y&7;
+    if(attr&0x800)fx^=7;if(attr&0x1000)fy^=7;
+    unsigned byte=art->pixels[tile*32+fy*4+fx/2],ink=fx&1?byte&15:byte>>4;
+    return ink?(uint8_t)(((attr>>9)&48)|ink):0;
+}
 typedef struct {
     SceneSprite sprites[SCENE_SPRITES];
     unsigned count, serial;
@@ -1141,7 +1167,9 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
-        q->hud=(uint8_t)(anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
+        unsigned art=vs?0:map==0x195BE?SCENE_ART_SIGNPOST:map==0x3F436?SCENE_ART_CAPSULE:
+            map==0x2FA58?SCENE_ART_EHZ_CAR:0;
+        q->hud=(uint8_t)(art|anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
                          ((flags&0x1000)?SCENE_WATER_REPEAT:0)|
                          ((flags&0x4000)?SCENE_FOREGROUND_SCREEN:0));
         if ((flags&0x100) && knuckles_item_tile((attr&2047)*(vs?2:1))) q->size|=0x80;
@@ -1654,7 +1682,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
             uint32_t custom=0;
             int knux=!s_interpolating && anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
-            uint8_t p=knux?(custom!=0):pattern_pixel(v,cell,ix,iy);
+            uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
                 unsigned at=(cell&2047)*((v->reg[12]&6)==6?64:32)+(iy&(((v->reg[12]&6)==6)?15:7))*4+(ix&7)/2;
@@ -1666,6 +1694,12 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             int extra=gvdp_sprite_palette_line(s->size,cell&2047,(cell>>13)&3);
             if (extra) {
                 custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
+                knux=1;
+            }
+            /* Native boss hits toggle palette1 ink1. Its capsule is normally
+             * outside that view; wider presentation retains its black ink. */
+            if((s->hud&SCENE_ART_MASK)==SCENE_ART_CAPSULE && p==17 && v->cram[17]==0xEEE) {
+                custom=genesis_dac_cram_to_argb(s2_video_donor_color(0),GENESIS_DAC_NORMAL);
                 knux=1;
             }
             for(;x<width;x+=period) {
