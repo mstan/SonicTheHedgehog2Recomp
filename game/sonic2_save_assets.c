@@ -321,7 +321,64 @@ unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset
     if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
        capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
+    if((be16(r+addresses[asset])&0x7FFF)!=tiles[asset])return 0;
     return nemesis(r+addresses[asset],lengths[asset],out,bytes)?bytes:0;
+}
+typedef struct { uint32_t hash;uint16_t phase; } SlotPattern;
+static uint32_t slot_hash(const uint8_t *p)
+{
+    uint32_t h=2166136261u;
+    for(unsigned i=0;i<512;++i)h=(h^p[i])*16777619u;
+    return h;
+}
+static int slot_pattern_compare(const void *a,const void *b)
+{
+    uint32_t x=((const SlotPattern *)a)->hash,y=((const SlotPattern *)b)->hash;
+    return x<y?-1:x>y?1:0;
+}
+static void slot_window(const uint8_t *r,unsigned slot,unsigned phase,
+                        const uint8_t *replacement,uint8_t out[512])
+{
+    unsigned index=phase>>5,row=phase&31,first=r[0x2C401+slot*8+index]&7;
+    unsigned second=r[0x2C401+slot*8+((index+1)&7)]&7,count=32-row;
+    const uint8_t *a=replacement && !first?replacement:r+0x4EEFE+first*512;
+    const uint8_t *b=replacement && !second?replacement:r+0x4EEFE+second*512;
+    /* GetPixelRow copies four column-major longwords, wrapping to the
+     * next original strip symbol after row31. */
+    for(unsigned col=0;col<4;++col) {
+        memcpy(out+col*128,a+col*128+row*4,count*4);
+        memcpy(out+col*128+count*4,b+col*128,row*4);
+    }
+}
+int s2_knuckles_slot_patterns(const uint8_t *r,size_t size,const S2KnucklesArt *art,
+                              unsigned slot,const uint8_t source[512],uint8_t out[512])
+{
+    if(!r || size!=0x100000 || !art || slot>=3 || !source || !out)return 0;
+    static const uint8_t *cached_rom;
+    static SlotPattern patterns[3][256];
+    uint8_t native[512],replacement[512],found[512];
+    if(cached_rom!=r) {
+        for(unsigned s=0;s<3;++s) {
+            for(unsigned phase=0;phase<256;++phase) {
+                slot_window(r,s,phase,NULL,native);
+                patterns[s][phase]=(SlotPattern){slot_hash(native),(uint16_t)phase};
+            }
+            qsort(patterns[s],256,sizeof patterns[s][0],slot_pattern_compare);
+        }
+        cached_rom=r;
+    }
+    uint32_t hash=slot_hash(source);unsigned lo=0,hi=256;int matched=0;
+    while(lo<hi) {unsigned mid=(lo+hi)/2;if(patterns[slot][mid].hash<hash)lo=mid+1;else hi=mid;}
+    for(unsigned n=lo;n<256 && patterns[slot][n].hash==hash;++n) {
+        slot_window(r,slot,patterns[slot][n].phase,NULL,native);
+        if(memcmp(native,source,512))continue;
+        slot_window(r,slot,patterns[slot][n].phase,art->slot,replacement);
+        /* Identical native windows must not select conflicting donor art. */
+        if(matched && memcmp(found,replacement,512))return 0;
+        memcpy(found,replacement,512);matched=1;
+    }
+    if(matched)memcpy(out,found,512);
+    return matched;
 }
 int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
 {
@@ -378,6 +435,7 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
         }
     }
     memcpy(candidate.font_k,r+0x312096,sizeof candidate.font_k);
+    memcpy(candidate.slot,r+0x33B1F0,sizeof candidate.slot);
     for (unsigned i=0;i<16;++i) {
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
         /* c336fede Pal_CPZ_U/Pal_ARZ_U explicitly contain Knuckles' colours.

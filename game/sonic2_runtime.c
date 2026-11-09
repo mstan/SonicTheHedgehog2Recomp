@@ -1283,14 +1283,14 @@ void s2_runtime_capture(void)
         unsigned o=objects[p];
         if (!o || !g_ram[o] || (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2)) continue;
         PartySprite *s=&published_sprites[p];
-        s->x=(int16_t)word(o+8); s->y=(int16_t)word(o+12); s->art=word(o+2);
+        s->x=(int16_t)s2_video_runoff_x(p,o,word(o+8)); s->y=(int16_t)word(o+12); s->art=word(o+2);
         s->frame=g_ram[o+0x1A]; s->visible=displayed[p];
         s->flip=kind(p)==S2_CHAR_AMY || kind(p)==S2_CHAR_KNUCKLES || kind(p)==S2_CHAR_SHADOW?characters[p].render_flip:g_ram[o+1]&3;
         s->wet=!!(g_ram[o+0x22]&64);
     }
     if (displayed_tails && kind(0)==S2_CHAR_TAILS) {
         PartySprite *s=&published_sprites[S2_MAX_PLAYERS];
-        s->x=(int16_t)word(0xD008); s->y=(int16_t)word(0xD00C); s->art=word(0xD002);
+        s->x=(int16_t)(word(0xD008)+s2_video_runoff_x(0,0xB000,word(0xB008))-word(0xB008)); s->y=(int16_t)word(0xD00C); s->art=word(0xD002);
         s->frame=g_ram[0xD01A]; s->visible=1; s->flip=g_ram[0xD001]&3;
     }
 }
@@ -1500,6 +1500,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     s2_video_special_results(v,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
     if (!frame_active || !(v->reg[1]&64)) return;
+    v=s2_video_slots_overlay(v,line,out,width);
     int overlay_drawn=frame_green_card;
     knuckles_hud(v,line,out,width,0);
     competition_hud(v,line,out,width,0);

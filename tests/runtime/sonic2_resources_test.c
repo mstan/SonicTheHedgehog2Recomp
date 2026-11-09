@@ -14,6 +14,43 @@ int genesis_replay_playing(void) { return playback; }
 static int count(void *ctx) { assert(ctx == &delegated); return 1; }
 static int enable(void *ctx, const char *p, const char *f, int on)
 { assert(ctx == &delegated && !strcmp(p,"base") && !strcmp(f,"wide") && on); ++delegated; return 1; }
+static void slot_window_test(void)
+{
+    uint8_t *rom=calloc(1,0x100000),*ambiguous=calloc(1,0x100000);assert(rom && ambiguous);
+    S2KnucklesArt art={0};uint8_t source[512],before[512],out[512],expected[512];
+    for(unsigned i=0;i<512;++i)art.slot[i]=(uint8_t)(((i%15+1)<<4)|((i/4)%15+1));
+    for(unsigned icon=0;icon<8;++icon)memset(rom+0x4EEFE+icon*512,(int)((icon+1)*17),512);
+    for(unsigned s=0;s<3;++s)for(unsigned i=0;i<8;++i)rom[0x2C401+s*8+i]=(uint8_t)((i*3+s)&7);
+    for(unsigned slot=0;slot<3;++slot)for(unsigned index=0;index<8;++index)for(unsigned offset=0;offset<32;++offset) {
+        for(unsigned col=0;col<4;++col)for(unsigned row=0;row<32;++row) {
+            unsigned entry=(index+(row+offset>=32))&7,icon=rom[0x2C401+slot*8+entry];
+            unsigned at=col*128+((row+offset)&31)*4,dest=col*128+row*4;
+            memcpy(source+dest,rom+0x4EEFE+icon*512+at,4);
+            memcpy(expected+dest,icon?source+dest:art.slot+at,4);
+        }
+        memcpy(before,source,512);memset(out,0xA5,512);
+        assert(s2_knuckles_slot_patterns(rom,0x100000,&art,slot,source,out));
+        assert(!memcmp(out,expected,512) && !memcmp(source,before,512));
+    }
+    memset(source,0xFF,512);memset(out,0xA5,512);memcpy(before,out,512);
+    assert(!s2_knuckles_slot_patterns(rom,0x100000,&art,0,source,out));
+    assert(!memcmp(out,before,512));
+    assert(!s2_knuckles_slot_patterns(rom,0xFFFFF,&art,0,source,out));
+    assert(!s2_knuckles_slot_patterns(rom,0x100000,&art,3,source,out));
+    /* Conflicting donor interpretations of identical native bytes are not
+     * guessed. This also exercises a distinct immutable ROM identity. */
+    memset(ambiguous+0x4EEFE,0x11,8*512);
+    for(unsigned i=0;i<8;++i)ambiguous[0x2C401+i]=(uint8_t)i;
+    memset(source,0x11,512);
+    assert(!s2_knuckles_slot_patterns(ambiguous,0x100000,&art,0,source,out));
+    assert(!memcmp(out,before,512));
+    /* A syntactically empty stream cannot claim a complete native atlas. */
+    rom[0x79BE0]=0xFF;memset(out,0xA5,512);
+    uint8_t atlas[4096];memset(atlas,0xA5,sizeof atlas);
+    assert(!s2_native_sprite_art_decode(rom,0x100000,S2_NATIVE_SIGNPOST,atlas,sizeof atlas));
+    for(unsigned i=0;i<sizeof atlas;++i)assert(atlas[i]==0xA5);
+    free(ambiguous);free(rom);
+}
 static void amy_item_art_bounds_test(void)
 {
     uint8_t *rom=calloc(1,0x200000);assert(rom);
@@ -40,6 +77,7 @@ static void amy_item_art_bounds_test(void)
 }
 int main(int argc, char **argv)
 {
+    slot_window_test();
     amy_item_art_bounds_test();
     assert(argc == 2 || argc == 3 || argc == 4);
     s2_party_load(argv[1]); s2_resources_load(argv[1]);
