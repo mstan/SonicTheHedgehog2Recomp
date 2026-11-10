@@ -72,7 +72,11 @@ a backup. No Save also uses the native 3/0 defaults.
 
 SAVE STATES
 -----------
-Escape > Save states offers slots 1-9. Shift+F1...F9 saves; F1...F9 loads.
+Escape > Save states offers slots 1-9. Shift+F1...F9 quick saves.
+Hold F1...F6 or F9 for 1.5 seconds to quick load. Hold Ctrl+F7/F8 for slots
+7 and 8. With a 3-button controller layout, press LB to save slot 1 and
+hold RB to load it. A progress bar fills during the hold. Release early
+to cancel.
 Quickstates capture the complete local party, campaign session, video and
 audio at a safe native gameplay boundary. Gameplay, native pause, VS and
 special stages are supported; menus/loading/results are not save points.

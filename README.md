@@ -18,7 +18,12 @@ original rate.
 ## Save states
 
 Open **Escape -> Save states**, choose slot 1–9, and save or load.
-**Shift+F1…F9** saves; **F1…F9** loads the corresponding slot. Files are
+Press **Shift+F1–F9** to quick save. Hold **F1–F6** or **F9** for 1.5 seconds
+to quick load, or hold **Ctrl+F7/F8** for slots 7 and 8. With a 3-button
+controller layout, press **LB** to save slot 1 and hold **RB** to load it.
+The loading progress bar fills during the hold. Releasing early cancels it.
+
+Files are
 `native_save_<slot>.bin` beside the executable. Quicksaves capture the next
 completed gameplay tick, including the full party, campaign session and
 widescreen objects. Levels, paused gameplay and special stages are supported;
