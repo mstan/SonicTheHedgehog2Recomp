@@ -1,4 +1,5 @@
 #include "sonic2_options.h"
+#include "sonic2_sound_driver.h"
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_runtime.h"
@@ -29,6 +30,7 @@ static int online(void)
 
 void s2_options_load(const char *settings_path)
 {
+    s2_sound_load_settings(settings_path);
     s2_party_load(settings_path);
     s2_resources_load(settings_path);
     if (!s2_resource_verified(S2_RESOURCE_SK)) s2_party.s3k_enabled = 0;
@@ -48,7 +50,7 @@ int s2_options_netplay_allowed(void)
     S2Roster r = s2_party.roster;
     /* s2_roster_validate REPAIRS and returns 1 when it had to change
      * something: a roster it leaves untouched is a valid one. */
-    return r.slots<=S2_NETPLAY_PLAYERS && !s2_party.save_menu_enabled && !s2_roster_validate(&r);
+    return s2_sound_netplay_allowed() && r.slots<=S2_NETPLAY_PLAYERS && !s2_party.save_menu_enabled && !s2_roster_validate(&r);
 }
 
 /* Stable compact IDs keep six long character names within the shared lobby's
@@ -82,6 +84,7 @@ void s2_netplay_config_image(char *out, size_t cap)
 
 int s2_netplay_config_adopt(const char *line)
 {
+    if(!s2_sound_netplay_allowed()) return -1;
     const char *practice=line?strstr(line," c="):NULL;
     int lives=0,time=0;
     if (practice) {

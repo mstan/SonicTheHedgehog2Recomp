@@ -17,6 +17,9 @@ assets folder next to the executable. No ROM or save data is included.
 
 ONLINE PLAY
 -----------
+Leave Clone Driver + Mega PCM disabled for netplay. This experimental alternate
+sound driver is for local play; disable it and restart before joining a room.
+
 Everyone must use this exact package: the lobby checks the executable and ROM.
 Use Online in the launcher to host or join the same room. Online rooms support
 up to six players; LAN / Direct IP currently supports two.
@@ -33,6 +36,16 @@ Quickstates and turbo are disabled during netplay.
 This patch restores the enhanced party Options menu during netplay, including
 Amy, Knuckles, Mighty and Shadow selection and six-player parties. Menu edits rewind with
 rollback. It includes the rc2 online startup fix. Everyone must update together.
+
+OPTIONAL SOUND DRIVER
+---------------------
+Mods > Audio > Clone Driver + Mega PCM enables an experimental alternate
+sequencer and PCM driver for local play. It is off by default. Music, effects,
+instruments and samples are prepared automatically from your verified Sonic 2
+ROM; no separate sound pack is needed. Restart after changing drivers.
+Current-build save states require the same driver selection. Campaign SRAM
+remains independent. See docs/SOUND_DRIVER_MODS.md and
+docs/CLONE_DRIVER_NOTICES.txt for setup, source identity and notices.
 
 OPTIONAL SAVE MENU AND CAMPAIGN SRAM
 -----------------------------------
@@ -105,15 +118,13 @@ viewports, with independent cameras, roster-aware HUDs and an opaque divider.
 HIGH REFRESH RATE AND PRACTICE
 -----------------------------
 Mods > Presentation > High refresh rate offers 120 Hz, 144 Hz and Display
-refresh. Off by default. Camera and actors interpolate between normal ticks;
-this adds one tick of visual latency. Controls, game speed and audio keep
-their original cadence. Widescreen can remain disabled. Fractional motion is
-supported for Sonic with optional Tails; larger parties and donor characters
-retain original-rate motion.
-
-Interpolation currently supports regular Sonic/Tails play with up to two
-party slots. Donor characters, larger parties, transitions, menus, special
-stages and split-screen retain ordinary completed images.
+refresh. Off by default. Supported camera and actor movement interpolates
+between normal simulation ticks, including imported characters and party
+overlays. This adds one tick of visual latency. Controls, gameplay, audio,
+animation poses and palettes retain their original simulation cadence.
+Widescreen can remain disabled. Competition, online campaigns, teleports,
+transitions, menus, special stages and unsafe effects retain completed frames.
+Higher presentation rates require additional rendering work.
 
 Mods > Practice has separate Infinite lives and Infinite time options, both
 off by default. Lives remain after death/retry; the stage timer stops at 9:59.

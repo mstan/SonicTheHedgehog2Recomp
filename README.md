@@ -1,5 +1,20 @@
 # SonicTheHedgehog2Recomp
 
+## Optional sound driver
+
+**Mods -> Audio -> Clone Driver + Mega PCM** enables an experimental alternate
+sound driver for local play. It is off by default and prepares music, effects
+and samples automatically from your verified Sonic 2 ROM. Restart after
+changing drivers; disable it and restart before netplay. See
+[sound driver setup and build notes](docs/SOUND_DRIVER_MODS.md).
+
+**Mods -> Presentation -> High refresh rate** offers 120 Hz, 144 Hz and Display
+refresh interpolation with either sound driver. Supported camera and actor
+movement includes imported characters and party overlays; unsafe scenes use
+completed images.
+This adds one tick of visual latency while simulation and audio keep their
+original rate.
+
 ## Save states
 
 Open **Escape -> Save states**, choose slot 1–9, and save or load.

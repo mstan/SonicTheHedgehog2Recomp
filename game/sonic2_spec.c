@@ -12,11 +12,8 @@
  * oracle and is the canonical state-sync sample point. This is the
  * field divergence_diff.py matches on instead of wall-frame number.
  *
- * Deliberately NULL/empty (vs Sonic 1):
- *   - on_post_reset       — Sonic 2's SMPS driver init is reached via
- *                           normal recompiled flow; no RAM seeding
- *                           required for the native build.
- *   - call_periodic       — no PLC-style periodic hook wired yet.
+ * The optional sound-driver bank is prepared after reset. Stock SMPS init
+ * still runs through normal recompiled flow when that mod is disabled.
  */
 #include "game_spec.h"
 #include "genesis_runtime.h"
@@ -25,6 +22,7 @@
 #include "sonic2_options.h"
 #include "sonic2_party.h"
 #include "sonic2_mods.h"
+#include "sonic2_sound_driver.h"
 #include "sonic2_runtime.h"
 #include "sonic2_campaign_file.h"
 #include "sonic2_state_build.h"
@@ -53,7 +51,17 @@ extern void func_000206(void);   /* EntryPoint    ($000206) */
 extern void func_000408(void);   /* VBlank IRQ6   ($000408) */
 extern void func_000F54(void);   /* HBlank IRQ4   ($000F54) */
 
-static void s2_call_entry_point(void) { recomp_call_addr(0x000206u); }
+static void s2_call_entry_point(void) {
+    s2_sound_post_reset();
+    recomp_call_addr(0x000206u);
+}
+static void s2_call_resume(uint32_t pc) {
+    /* Cold snapshots can bypass the ROM's sound initialisation entirely.
+     * Rebuild only immutable ROM-derived banks here; restored sequencer and
+     * Z80 state already belong to the snapshot and must stay intact. */
+    s2_sound_post_reset();
+    recomp_call_addr(pc);
+}
 static void s2_call_vblank(void)      { s2_video_vblank(); recomp_call_addr(0x000408u); }
 static void s2_call_hblank(void)      { recomp_call_addr(0x000F54u); }
 
@@ -239,6 +247,7 @@ static const GameDebugCommand sonic2_commands[] = {
 #include "sonic2_save_menu.h"
 static int s2_instruction_hook(uint32_t pc)
 {
+    if (s2_sound_hook(pc)) return 1;
     if (s2_save_menu_hook(pc)) return 1;
     if (pc==0x16604) s2_runtime_capture();
     switch (pc) {
@@ -313,6 +322,7 @@ const GameSpec g_game_spec = {
 #endif
 
     .call_entry_point       = s2_call_entry_point,
+    .call_resume            = s2_call_resume,
     .call_vblank            = s2_call_vblank,
     .call_hblank            = s2_call_hblank,
     .resume_main_loop_pc    = 0x004360u,
@@ -320,14 +330,14 @@ const GameSpec g_game_spec = {
     .dispatch_main_loop_pc  = 0x000394u,
     .call_periodic          = NULL,
 
-    .on_post_reset          = NULL,
+    .on_post_reset          = s2_sound_post_reset,
+    .dispatch_override      = s2_sound_dispatch_miss,
     .on_frame_pre           = NULL,
     .on_frame_post          = NULL,
     .on_hblank              = NULL,
 
     .handle_arg             = NULL,
     .arg_usage              = NULL,
-    .dispatch_override      = NULL,
 
     .fill_frame_record      = sonic2_fill_frame_record,
     .frame_record_version   = SONIC_GAME_DATA_VERSION,

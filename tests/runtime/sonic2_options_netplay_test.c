@@ -6,6 +6,9 @@
 
 uint8_t g_ram[65536];
 M68KState g_cpu;
+void s2_sound_load_settings(const char *path) { (void)path; }
+static int sound_netplay_allowed=1;
+int s2_sound_netplay_allowed(void) { return sound_netplay_allowed; }
 static int net_active = 1, saves, save_ok = 1, save_overlay_calls;
 static uint32_t tail_pc;
 int genesis_netplay_active(void) { return net_active; }
@@ -108,6 +111,12 @@ int main(void)
     net_active=0;
     s2_roster_slots(&s2_party.roster,6);
     assert(s2_options_netplay_allowed());
+    sound_netplay_allowed=0;
+    S2PartyConfig keep=s2_party;
+    assert(!s2_options_netplay_allowed());
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 c=00")==-1);
+    assert(!memcmp(&keep,&s2_party,sizeof keep));
+    sound_netplay_allowed=1;
     assert(s2_roster_set(&s2_party.roster,4,"amy") && s2_roster_set(&s2_party.roster,5,"mighty"));
     puts("PASS online four-character Options, visible overlay, rollback replay, no online disk writes, offline save");
     return 0;

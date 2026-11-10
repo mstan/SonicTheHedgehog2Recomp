@@ -1007,3 +1007,11 @@ kind = "game_hook"
 [[widescreen_site]]
 addr = 0x1AF2C # Knuckles gliding uses the original KiS2 floor acceptance
 kind = "game_hook"
+
+# Optional ROM-derived sound driver; stock execution remains the default.
+[[widescreen_site]]
+addr = 0xEC000
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1084
+kind = "game_hook"
