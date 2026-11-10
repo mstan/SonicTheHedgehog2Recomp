@@ -47,11 +47,7 @@ const uint8_t *s2_runtime_ui_font(void) {return hud_art_ready?hud_art.font:NULL;
  * parent links stay valid across ticks (no temporary Sidekick alias). */
 static uint8_t solid_flags[S2_MAX_PLAYERS-2][144], solid_ids[144];
 static int inside_solid;
-typedef struct {
-    int16_t x,y;
-    uint16_t art;
-    uint8_t frame,flip,visible,wet;
-} PartySprite;
+typedef S2RuntimeSprite PartySprite;
 /* Final sprite is native Obj05 (P1 Tails' separate tails). */
 static PartySprite published_sprites[S2_MAX_PLAYERS+1];
 enum { DUST_SLOTS=(0xD000-0xB400)/64 };
@@ -84,6 +80,18 @@ static const S2DonorBank *bank(unsigned p)
 }
 /* Donor controllers adapt native motion and replace animation/art. Mighty
  * retains Sonic's controller and maps its frames at presentation. */
+/* The original Walk/Run sequences are also needed by display-only runoff.
+ * Native control continues to own all normal gameplay animation. */
+static void prepare_native_bank(unsigned k)
+{
+    if(k>=2 || native_banks[k].count)return;
+    S2DonorLayout l=k==0?(S2DonorLayout){214,0x6FBE0,0x714E0,0x50000,0x29E2,8,0x1B618,2}:
+        (S2DonorLayout){139,0x739E2,0x7446C,0x64320,0x29E2,8,0x1D038,2};
+    char error[160];
+    if(!s2_donor_decode(g_rom,0x100000,&l,&native_banks[k],error,sizeof error)) {
+        fprintf(stderr,"Sonic 2 native presentation art: %s\n",error);exit(2);
+    }
+}
 static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_AMY || kind((unsigned)actor)==S2_CHAR_KNUCKLES || kind((unsigned)actor)==S2_CHAR_SHADOW); }
 void s2_runtime_load(void)
 {
@@ -464,7 +472,7 @@ static void reserve_extras(void)
     /* P1 Tails uses his native body AND Obj05 tail mappings while glowing.
      * Decode ahead of gameplay, not at transformation or on a render thread. */
     if (kind(0)==S2_CHAR_TAILS && !native_banks[1].count) {
-        S2DonorLayout l={139,0x739E2,0x7446C,0x64320,0x29E2,8,0,0};
+        S2DonorLayout l={139,0x739E2,0x7446C,0x64320,0x29E2,8,0x1D038,2};
         char error[160];
         if (!s2_donor_decode(g_rom,0x100000,&l,&native_banks[1],error,sizeof error)) {
             fprintf(stderr,"Sonic 2 P1 Tails art: %s\n",error); exit(2);
@@ -479,8 +487,8 @@ static void reserve_extras(void)
         objects[p]=o; spawn_extra(o,p);
         unsigned k=kind(p);
         if (k<2 && !native_banks[k].count) {
-            S2DonorLayout l=k==0?(S2DonorLayout){214,0x6FBE0,0x714E0,0x50000,0x29E2,8,0,0}:
-                (S2DonorLayout){139,0x739E2,0x7446C,0x64320,0x29E2,8,0,0};
+            S2DonorLayout l=k==0?(S2DonorLayout){214,0x6FBE0,0x714E0,0x50000,0x29E2,8,0x1B618,2}:
+                (S2DonorLayout){139,0x739E2,0x7446C,0x64320,0x29E2,8,0x1D038,2};
             char error[160];
             if (!s2_donor_decode(g_rom,0x100000,&l,&native_banks[k],error,sizeof error)) {
                 fprintf(stderr,"Sonic 2 party: native character art: %s\n",error); exit(2);
@@ -561,9 +569,9 @@ int s2_runtime_state_load(const void *data,size_t size,int apply)
         const S2Character *c=s2_character_find(s2_party.roster.character[p]);
         if (c && !c->available()) return 0;
         unsigned k=kind(p);
-        if ((p<2 && !(p==0 && k==S2_CHAR_TAILS)) || k>=2 || native_banks[k].count) continue;
-        S2DonorLayout l=k==0?(S2DonorLayout){214,0x6FBE0,0x714E0,0x50000,0x29E2,8,0,0}:
-            (S2DonorLayout){139,0x739E2,0x7446C,0x64320,0x29E2,8,0,0};
+        if (k>=2 || native_banks[k].count) continue;
+        S2DonorLayout l=k==0?(S2DonorLayout){214,0x6FBE0,0x714E0,0x50000,0x29E2,8,0x1B618,2}:
+            (S2DonorLayout){139,0x739E2,0x7446C,0x64320,0x29E2,8,0x1D038,2};
         char error[160];
         if (!s2_donor_decode(g_rom,0x100000,&l,&native_banks[k],error,sizeof error)) return 0;
     }
@@ -946,6 +954,7 @@ int s2_runtime_hook(uint32_t pc)
     }
     if (pc==0x4450) { /* Level_SetPlayerMode: attract demos remain byte-identical */
         s2_video_hook(pc); /* title-card initialization installs a fresh palette directly */
+        for(unsigned p=0;p<s2_party.roster.slots && p<2;++p)prepare_native_bank(kind(p));
         active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_online());
         gvdp_set_unlimited_sprites(active);
         memset(published_sprites,0,sizeof published_sprites);
@@ -1244,10 +1253,12 @@ void s2_runtime_capture(void)
      * BuildSprites. Keep the last displayed donor actors while the native
      * level SAT is held through the entry fade. Incoming SS objects retire
      * that publication after the level objects have actually been cleared. */
-    if (!level() && presented_level()) return;
+    int native_only=!active && g_ram[0xF711] && !word(0xFFD8) &&
+        (g_ram[0xB000]==1 || g_ram[0xB000]==2);
+    if (!level() && (presented_level() || (native_only && (g_ram[0xF600]&127)!=12))) return;
     memset(published_sprites,0,sizeof published_sprites);
     memset(published_dust,0,sizeof published_dust);
-    if (!level()) return;
+    if (!level() && !native_only) return;
     /* Extra party roles have no fixed native dust object/VRAM strip. Create
      * the same short-lived Obj08 children after the object tick, respecting
      * its pool/air constraints. Native animation/deletion still own them.
@@ -1280,13 +1291,33 @@ void s2_runtime_capture(void)
         s->frame=g_ram[at+0x1A]; s->flip=g_ram[at+1]&3; s->visible=1;
     }
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
-        unsigned o=objects[p];
-        if (!o || !g_ram[o] || (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2)) continue;
+        unsigned o=native_only?(p<2 && p<s2_party.roster.slots?0xB000+p*64:0):objects[p];
+        if(!o || !g_ram[o])continue;
+        int display_x=s2_video_runoff_x(p,o,word(o+8));
+        int runoff=s2_video_runoff_velocity(p);
+        if (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2 && !runoff) continue;
+        if(native_only && !runoff)continue;
         PartySprite *s=&published_sprites[p];
-        s->x=(int16_t)s2_video_runoff_x(p,o,word(o+8)); s->y=(int16_t)word(o+12); s->art=word(o+2);
+        s->x=(int16_t)display_x; s->y=(int16_t)word(o+12); s->art=word(o+2);
         s->frame=g_ram[o+0x1A]; s->visible=displayed[p];
         s->flip=kind(p)==S2_CHAR_AMY || kind(p)==S2_CHAR_KNUCKLES || kind(p)==S2_CHAR_SHADOW?characters[p].render_flip:g_ram[o+1]&3;
         s->wet=!!(g_ram[o+0x22]&64);
+        if(runoff) {
+            /* Only the offscreen continuation changes pose. Native movement,
+             * rolling flags, radius, animation state and tally remain intact. */
+            S2Motion m=motion(o);S2CharacterState gait=characters[p];
+            const S2DonorBank *b=bank(p);
+            m.animation=0;m.angle=m.flip_angle=0;m.inertia=(int16_t)runoff;
+            m.status&=~(1u|32u); /* cosmetic continuation faces right, without a stale push pose */
+            gait.special=0;gait.animation=0;gait.animation_timer=0;
+            unsigned anim=runoff>=0x600?1:0;
+            unsigned length=b && anim<b->animation_count?b->animation_length[anim]:0;
+            unsigned delay=runoff<0x800?(0x800-runoff)>>8:0;
+            gait.animation_index=length>2?(word(0xFE04)/(delay+1))%(length-2):0;
+            s2_character_animate(&gait,&m,b);
+            s->frame=m.frame;s->flip=gait.render_flip;s->visible=1;
+            if(g_ram[o+0x16]<19)s->y-=19-g_ram[o+0x16];
+        }
     }
     if (displayed_tails && kind(0)==S2_CHAR_TAILS) {
         PartySprite *s=&published_sprites[S2_MAX_PLAYERS];
@@ -1455,93 +1486,63 @@ static void competition_hud(const GVDP *v,int line,uint32_t *out,int width,int d
         if (ink) out[dx]=hud_color(v,shade);
     }
 }
-void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
+static S2RuntimePresentation s_overlay_frame;
+static int actor_lerp(int a,int b,double phase)
+{ return a+(int)((b-a)*phase+((b>=a)?0.5:-0.5)); }
+static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width,
+                                  const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,double phase)
 {
-    static PartySprite frame_sprites[S2_MAX_PLAYERS+1];
-    static PartySprite frame_dust[DUST_SLOTS];
-    static GVDP frame_vdp;
-    static uint8_t frame_world[65536];
-    static int frame_active,frame_vs,left,top,vs_left,vs_top,frame_green_card;
-    if (!line) {
-        frame_active=presented_level() && (g_ram[0xF711] || !word(0xFFD8));
-        memcpy(frame_sprites,published_sprites,sizeof frame_sprites);
-        memcpy(frame_dust,published_dust,sizeof frame_dust);
-        frame_vdp=*v; memcpy(frame_world,g_ram,sizeof frame_world);
-        frame_vs=word(0xFFD8);
-        frame_green_card=0;
-        if (!frame_vs && (g_ram[0xF600]&127)==12 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available() &&
-            frame_vdp.vram[0xBB40]==0x44 && frame_vdp.vram[0xBB7F]==0x44) {
-            /* The actual fill is plane A, not a sprite. Follow its displayed
-             * tilemap through the exit, after producer objects can be gone. */
-            unsigned table=(frame_vdp.reg[2]&0x38u)<<10;
-            for (unsigned cell=0;cell<64*32;++cell) {
-                unsigned attr=card_vram_word(&frame_vdp,table+cell*2),tile=attr&2047u;
-                if ((tile==0x5DA || tile==0x5DB) && !(attr&0x6000u)) { frame_green_card=1; break; }
-            }
-        }
-        s2_video_actor_origin(&frame_vdp,0,width,&left,&top);
-        if (!frame_world[0xF711] && !s2_video_intro_world_visible()) {
-            /* Title-card scroll belongs to the card, not the actor camera.
-             * Native actors are submitted before Level_started becomes true. */
-            left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
-        }
-        if (frame_vs) {
-            if (s2_video_competition_extended()) {
-                s2_video_actor_origin(v,0,width,&left,&top);
-                s2_video_actor_origin(v,224,width,&vs_left,&vs_top);
-            } else {
-                left=word(0xEE60)-(width-320)/2; top=(int16_t)word(0xEE64);
-                vs_left=word(0xEE80)-(width-320)/2; vs_top=(int16_t)word(0xEE84)-224;
-            }
-        }
-    }
-    if (frame_green_card && (v->reg[1]&64)) green_title_card(&frame_vdp,line,out,width);
+    const GVDP *visibility=previous?v:&picture->vdp;
+    if (picture->green_card && (v->reg[1]&64)) green_title_card(visibility,line,out,width);
     s2_video_special_actor(v,line,out,width);
     s2_video_special_results(v,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
-    if (!frame_active || !(v->reg[1]&64)) return;
+    if (!picture->active || !(v->reg[1]&64)) return;
     v=s2_video_slots_overlay(v,line,out,width);
-    int overlay_drawn=frame_green_card;
+    int overlay_drawn=picture->green_card;
     knuckles_hud(v,line,out,width,0);
     competition_hud(v,line,out,width,0);
     s2_video_results_name(v,line,out,width,0);
-    int origin_x=left,origin_y=top;
-    if (frame_vs) {
+    int origin_x=picture->left,origin_y=picture->top;
+    if(previous) {origin_x=actor_lerp(previous->left,picture->left,phase);origin_y=actor_lerp(previous->top,picture->top,phase);}
+    if (picture->vs) {
         /* Native interlace pass is 448 rows. Each competitor's 224-row world
          * view contains both characters, with the stock central SAT mask. */
         if (line>=216 && line<224) return;
-        if (line>=224) { origin_x=vs_left; origin_y=vs_top; }
+        if (line>=224) { origin_x=picture->vs_left; origin_y=picture->vs_top; }
     }
     s2_video_preserve_foreground_row(out,width);
     for (int index=S2_MAX_PLAYERS;index>=0;--index) {
         unsigned p=index==S2_MAX_PLAYERS?0:(unsigned)index;
-        const PartySprite *s=&frame_sprites[index];
+        const PartySprite *s=&picture->sprites[index];
         if (!s->visible) continue;
         const S2DonorBank *b=bank(p); unsigned frame=s->frame;
         unsigned actor_kind=kind(p);
         int shadow=actor_kind==S2_CHAR_SHADOW;
         if (actor_kind==S2_CHAR_MIGHTY) frame=s2_mighty_frame(frame);
-        const S2KnucklesArt *original=actor_kind==S2_CHAR_KNUCKLES?s2_resource_knuckles_art():NULL;
-        unsigned zone=frame_world[0xFE10];
+        unsigned zone=picture->world[0xFE10];
         /* Native H-int split, including a partly submerged body. The physics
          * underwater flag describes the center, not the current scanline. */
-        int wet=!frame_vs && s2_video_water_palette(v);
-        const uint16_t *knux_water=original && wet && (zone==13 || zone==15)?
-            original->water_palette[zone==15]:NULL;
-        const uint16_t *donor_water=knux_water;
-        if(!donor_water && wet && b && b->water_palette_count)
+        int wet=!picture->vs && s2_video_water_palette(v);
+        const uint16_t *donor_water=NULL;
+        if(wet && b && b->water_palette_count)
             donor_water=zone==15 && b->water_palette_count>1?b->water_palette_alt:b->water_palette;
         const S2DonorFrame *f=b && frame<b->count?&b->frames[frame]:NULL;
         if (!f) continue;
         int x=s->x-origin_x,y=s->y-origin_y;
+        if(previous) {
+            const PartySprite *old=&previous->sprites[index];
+            x=actor_lerp(old->x,s->x,phase)-origin_x;
+            y=actor_lerp(old->y,s->y,phase)-origin_y;
+        }
         unsigned flip=s->flip;
         int fy=line-y-(flip&2?-f->y-f->height:f->y);
         if (fy<0 || fy>=f->height) continue;
         if (flip&2) fy=f->height-1-fy;
         int x0=x+(flip&1?-f->x-f->width:f->x);
         uint32_t palette[16];
-        unsigned phase=!p && !frame_vs?frame_world[0xF65F]:0;
-        unsigned super_frame=((unsigned)frame_world[0xF65C]<<8)|frame_world[0xF65D];
+        unsigned phase=!p && !picture->vs?picture->world[0xF65F]:0;
+        unsigned super_frame=((unsigned)picture->world[0xF65C]<<8)|picture->world[0xF65D];
         for(unsigned color=0;color<16;++color) {
             uint16_t shade=shadow?s2_shadow_color(b,color,wet,phase,super_frame):
                 actor_kind<S2_CHAR_AMY?v->cram[color]:donor_water?donor_water[color]:b->palette[color];
@@ -1553,14 +1554,14 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             int dx=x0+px; if (dx<0 || dx>=width) continue;
             unsigned color=f->pixels[fy*f->width+(flip&1?f->width-1-px:px)];
             if (!color) continue;
-            if (!frame_world[0xF711]) {
-                if (!s2_video_intro_pixel_visible(&frame_vdp,dx-(width-320)/2,line,s->art&0x8000)) continue;
-            } else if (!s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) continue;
+            if (!picture->world[0xF711]) {
+                if (!s2_video_intro_pixel_visible(visibility,dx-(width-320)/2,line,s->art&0x8000)) continue;
+            } else if (!s2_video_actor_pixel_visible(visibility,dx+origin_x,line+origin_y,s->art&0x8000,picture->world)) continue;
             out[dx]=palette[color];overlay_drawn=1;
         }
     }
     for (unsigned n=0;n<DUST_SLOTS;++n) {
-        const PartySprite *s=&frame_dust[n]; if (!s->visible) continue;
+        const PartySprite *s=&picture->dust[n]; if (!s->visible) continue;
         int row=line-(s->y-origin_y-8); if (row<0 || row>=16) continue;
         int fy=s->flip&2?15-row:row;
         for (int px=0;px<16;++px) {
@@ -1571,7 +1572,7 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
             unsigned tile=(s->frame-17)*4+(fx/8)*2+fy/8;
             unsigned byte=g_rom[0x7373C+tile*32+(fy&7)*4+(fx&7)/2];
             unsigned ink=fx&1?byte&15:byte>>4;
-            if (ink && s2_video_actor_pixel_visible(&frame_vdp,dx+origin_x,line+origin_y,s->art&0x8000,frame_world)) {
+            if (ink && s2_video_actor_pixel_visible(visibility,dx+origin_x,line+origin_y,s->art&0x8000,picture->world)) {
                 out[dx]=genesis_dac_cram_to_argb(v->cram[((s->art>>9)&48)+ink],GENESIS_DAC_NORMAL);
                 overlay_drawn=1;
             }
@@ -1579,12 +1580,72 @@ void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
     }
     /* Native UI is already in out. Reapply it on modified rows and retain
      * each viewport's first-row selection of the displayed SAT publication. */
-    if(overlay_drawn || !line || (frame_vs && line==224))
+    if(overlay_drawn || !line || (picture->vs && line==224))
         s2_video_front_ui(v,line,out,width);
     s2_video_results_name(v,line,out,width,1);
     knuckles_hud(v,line,out,width,1);
     competition_hud(v,line,out,width,1);
 }
+void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
+{
+    S2RuntimePresentation *f=&s_overlay_frame;
+    if(!line) {
+        int native_runoff=!active && g_ram[0xF711] && !word(0xFFD8) &&
+            (g_ram[0xB000]==1 || g_ram[0xB000]==2) &&
+            (published_sprites[0].visible || published_sprites[1].visible);
+        f->active=(presented_level() || native_runoff) && (g_ram[0xF711] || !word(0xFFD8));
+        memcpy(f->sprites,published_sprites,sizeof f->sprites);
+        memcpy(f->dust,published_dust,sizeof f->dust);
+        f->vdp=*v; memcpy(f->world,g_ram,sizeof f->world);
+        if(f->active) {
+            unsigned zone=s2_video_level_zone();
+            f->world[0xFE10]=(uint8_t)(zone>>8);f->world[0xFE11]=(uint8_t)zone;
+        }
+        f->vs=word(0xFFD8);
+        f->green_card=0;
+        if (!f->vs && (g_ram[0xF600]&127)==12 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available() &&
+            f->vdp.vram[0xBB40]==0x44 && f->vdp.vram[0xBB7F]==0x44) {
+            /* The actual fill is plane A, not a sprite. Follow its displayed
+             * tilemap through the exit, after producer objects can be gone. */
+            unsigned table=(f->vdp.reg[2]&0x38u)<<10;
+            for (unsigned cell=0;cell<64*32;++cell) {
+                unsigned attr=card_vram_word(&f->vdp,table+cell*2),tile=attr&2047u;
+                if ((tile==0x5DA || tile==0x5DB) && !(attr&0x6000u)) { f->green_card=1; break; }
+            }
+        }
+        s2_video_actor_origin(&f->vdp,0,width,&f->left,&f->top);
+        if (!f->world[0xF711] && !s2_video_intro_world_visible()) {
+            /* Title-card scroll belongs to the card, not the actor camera.
+             * Native actors are submitted before Level_started becomes true. */
+            f->left=word(0xEE60)-(width-320)/2; f->top=(int16_t)word(0xEE64);
+        }
+        if (f->vs) {
+            if (s2_video_competition_extended()) {
+                s2_video_actor_origin(v,0,width,&f->left,&f->top);
+                s2_video_actor_origin(v,224,width,&f->vs_left,&f->vs_top);
+            } else {
+                f->left=word(0xEE60)-(width-320)/2; f->top=(int16_t)word(0xEE64);
+                f->vs_left=word(0xEE80)-(width-320)/2; f->vs_top=(int16_t)word(0xEE84)-224;
+            }
+        }
+    }
+    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+}
+void s2_runtime_presentation_capture(S2RuntimePresentation *out)
+{ *out=s_overlay_frame; }
+int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
+{
+    if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
+    for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
+        const PartySprite *p=&a->sprites[i],*q=&b->sprites[i];
+        if(p->visible!=q->visible || (q->visible &&
+           (p->art!=q->art || abs(p->x-q->x)>48 || abs(p->y-q->y)>48)))return 0;
+    }
+    return 1;
+}
+void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ runtime_overlay_frame(v,line,out,width,b,a,phase); }
 
 /* ---- rollback state (GameSpec rb_state_save/load) --------------------------
  * Everything this adapter keeps outside guest RAM that a tick reads, at ANY

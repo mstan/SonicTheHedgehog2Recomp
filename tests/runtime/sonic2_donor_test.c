@@ -30,6 +30,16 @@ static void amy_special_bounds_test(void)
 }
 int main(void)
 {
+    /* Identical shades occupy different indices in the two sprite banks.
+     * In particular, donor white must not become the native black's tint. */
+    uint16_t donor[16]={0},normal[16]={0},water[16]={0},mapped[16];
+    for(unsigned i=1;i<16;++i){normal[i]=0x222;water[i]=0x622;donor[i]=0x222;}
+    normal[3]=0xEEE;water[3]=0xEEC;donor[1]=0xEEE;
+    normal[7]=0x64E;water[7]=0xE2A;donor[2]=0x64E;
+    donor[4]=0xECC; /* additional near-white donor shade */
+    s2_donor_water_palette(donor,normal,water,mapped);
+    CHECK(mapped[1]==0xEEC && mapped[2]==0xE2A && mapped[4]==0xEEC);
+    CHECK(mapped[15]==0x622 && !mapped[0]);
     uint8_t rom[256]={0}; char error[160]; S2DonorBank bank={0};
     S2DonorLayout layout={1,0,2,128,64,6};
     rom[1]=4; /* mapping ->4 */ rom[3]=20; /* DPLC ->22 */

@@ -1,6 +1,25 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include "sonic2_party.h"
+#include "video/genesis_vdp.h"
+typedef struct S2RuntimeSprite {
+    int16_t x,y;
+    uint16_t art;
+    uint8_t frame,flip,visible,wet;
+} S2RuntimeSprite;
+enum { S2_PRESENTATION_DUST=(0xD000-0xB400)/64 };
+/* Immutable presentation snapshot; never part of simulation or rollback. */
+typedef struct S2RuntimePresentation {
+    S2RuntimeSprite sprites[S2_MAX_PLAYERS+1],dust[S2_PRESENTATION_DUST];
+    GVDP vdp;
+    uint8_t world[65536];
+    int active,vs,left,top,vs_left,vs_top,green_card;
+} S2RuntimePresentation;
+void s2_runtime_presentation_capture(S2RuntimePresentation *out);
+int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b);
+void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                double phase,const GVDP *v,int line,uint32_t *out,int width);
 size_t s2_runtime_state_size(void);
 int s2_runtime_state_save(void *data,size_t size);
 int s2_runtime_state_load(const void *data,size_t size,int apply);
