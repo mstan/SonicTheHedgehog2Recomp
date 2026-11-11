@@ -1037,6 +1037,44 @@ static void native_interpolation_test(void)
     CHECK(!memcmp(original_ram,g_ram,sizeof g_ram));
     state.pos=0;state.data=after;s2_video_rb_state(&state);
     CHECK(state.ok && !memcmp(before,after,size.pos));
+
+    /* Keep the donor life icon on fractional pictures. The stock VRAM tile
+     * intentionally has different ink, as it does in an imported campaign. */
+    s2_party.s3k_enabled=1;
+    strcpy(s2_party.roster.character[0],"knuckles");
+    hud_available=1;
+    memset(&hud_art,0,sizeof hud_art);
+    hud_art.palette[1]=0xE00;
+    memset(hud_art.life,0x11,32);
+    for(unsigned frame=0;frame<2;++frame) {
+        PresentationFrame *f=&s_present[frame];
+        unsigned icon=f->scene.count++;
+        f->scene.sprites[icon]=(SceneSprite){16,200,0x87D4,0,1};
+        f->keys[icon]=0xD4000000u;
+        memset(f->render.video_frame.vram+0x7D4*32,0x22,32);
+        for(unsigned y=200;y<208;++y)f->cram[y][2]=0x0E0;
+    }
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[200*320+16]==0xFF0000FF);
+    hud_available=0;
+    s2_party.s3k_enabled=0;
+    strcpy(s2_party.roster.character[0],"sonic");
+
+    /* A new object can precede the player in publication order. Its appearance
+     * must preserve the player's midpoint and leave the new piece in place. */
+    PresentationFrame *current=&s_present[s_present_front];
+    unsigned added=current->scene.count++;
+    current->scene.sprites[added]=current->scene.sprites[0];
+    current->keys[added]=current->keys[0];
+    current->scene.sprites[0]=(SceneSprite){100,40,0x8004,0,0};
+    current->keys[0]=0xC0000000u;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000);
+    CHECK(fraction[40*320+100]==0xFFFF0000);
+    current->scene.sprites[0]=current->scene.sprites[added];
+    current->keys[0]=current->keys[added];
+    --current->scene.count;
+
     /* New source identities and teleports repeat an ordinary picture. */
     s_present[s_present_front].keys[0]^=1;CHECK(!interpolate(.5,fraction,320,224));
     s_present[s_present_front].keys[0]^=1;
@@ -1293,22 +1331,22 @@ static void foreground_world_sprite_test(void)
     CHECK(sonic2_video.configure("off"));
 }
 
-static void water_surface_span_test(void)
+static void water_surface_span_test(unsigned map)
 {
     static GVDP v;uint32_t out[796],palette[64]={0};uint8_t ram[65536];
     memset(&v,0,sizeof v);clear_guest();memset(g_rom,0,sizeof g_rom);
     memset(&s2_party,0,sizeof s2_party);online=0;s_interpolating=0;
     g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
     word(g_ram,0xEEF0,512);word(g_ram,0xEE00,512);
-    /* REV01 Obj04's three 32x16 pieces, repeated by its two native objects. */
-    word(g_rom,0x20A0E,12);word(g_rom,0x20A1A,3);
+    /* Both REV01 Obj04 maps use three 32x16 pieces in their first frame. */
+    word(g_rom,map,12);word(g_rom,map+12,3);
     for(unsigned n=0;n<3;++n) {
-        unsigned at=0x20A1C+n*8;g_rom[at]=0xF8;g_rom[at+1]=0x0D;
+        unsigned at=map+14+n*8;g_rom[at]=0xF8;g_rom[at+1]=0x0D;
         word(g_rom,at+6,(unsigned)(-96+(int)n*64));
     }
     for(unsigned n=0;n<2;++n) {
         unsigned o=0xB380+n*64;g_ram[o]=4;g_ram[o+1]=4;g_ram[o+0x19]=128;
-        word(g_ram,o+2,0x8400);word(g_ram,o+4,2);word(g_ram,o+6,0xA0E);
+        word(g_ram,o+2,0x8400);word(g_ram,o+4,map>>16);word(g_ram,o+6,map);
         word(g_ram,o+8,640+n*192);word(g_ram,o+12,8);
         word(g_ram,0xAC02+n*2,o);
     }
@@ -1765,7 +1803,8 @@ int main(void)
     knuckles_special_ui_test();
     front_ui_and_background_priority_test();
     foreground_world_sprite_test();
-    water_surface_span_test();
+    water_surface_span_test(0x20A0E);
+    water_surface_span_test(0x20AFE);
     competition_hud_replacement_test();
     amy_item_art_test();
     row_parallax_test();

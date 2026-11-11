@@ -1648,10 +1648,9 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
-            /* Obj04's two original surface objects form a 384-pixel cycle.
-             * Repeat their completed artwork in presentation only; native
-             * animation, camera phase and object lifetimes stay in charge. */
-            if(!vs && g_ram[o]==4 && map==0x20A0E)flags|=0x1000;
+            /* Chemical Plant and Aquatic Ruin use separate Obj04 maps.
+             * Both use two surface objects to form a 384-pixel cycle. */
+            if(!vs && g_ram[o]==4 && (map==0x20A0E || map==0x20AFE))flags|=0x1000;
             if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
             /* Playable actors use priority 2. Native world objects in the
              * earlier queues, including Grabber legs, must stay in front. */
@@ -1968,7 +1967,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
             uint32_t custom=0;
-            int knux=!s_interpolating && anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+            int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
@@ -2550,6 +2549,7 @@ typedef struct {
 static PresentationFrame s_present[2];
 static unsigned s_present_front;
 static const PresentationFrame *s_lerp_old,*s_lerp_new;
+static int s_lerp_sprite[SCENE_SPRITES];
 
 static void interpolation_reset(void)
 {
@@ -2648,8 +2648,10 @@ static int lerp_position(int a,int b)
 static void interpolation_sprite(unsigned index,int *x,int *y)
 {
     const SceneFrame *a=&s_lerp_old->scene,*b=&s_lerp_new->scene;
-    *x=lerp_position(a->sprites[index].x+a->camera_x,b->sprites[index].x+b->camera_x)-b->camera_x;
-    *y=lerp_position(a->sprites[index].y+a->camera_y,b->sprites[index].y+b->camera_y)-b->camera_y;
+    int previous=s_lerp_sprite[index];
+    if(previous<0)return;
+    *x=lerp_position(a->sprites[previous].x+a->camera_x,b->sprites[index].x+b->camera_x)-b->camera_x;
+    *y=lerp_position(a->sprites[previous].y+a->camera_y,b->sprites[index].y+b->camera_y)-b->camera_y;
 }
 static int interpolate(double phase,uint32_t *image,int stride,int height)
 {
@@ -2657,15 +2659,44 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     if(!s_interpolation_enabled || !image || height!=224 || !(phase>=0 && phase<=1) ||
        !a->valid || !b->valid || a->lines!=224 || b->lines!=224 ||
        a->width!=b->width || stride<b->width || a->zone!=b->zone ||
-       (uint16_t)(b->tick-a->tick)>2 || a->scene.count!=b->scene.count ||
+       (uint16_t)(b->tick-a->tick)>2 ||
        abs(a->render.frame_fg_x-b->render.frame_fg_x)>128 ||
        abs(a->render.frame_fg_y-b->render.frame_fg_y)>128 ||
        !s2_runtime_presentation_matches(&a->party,&b->party))return 0;
+    /* Mapping pieces keep their object/piece identity when neighboring objects
+     * enter, retire or change animation. Unmatched pieces use their completed
+     * position while stable pieces and the camera continue to interpolate. */
+    enum { MATCH_SLOTS=SCENE_SPRITES*2 };
+    static uint32_t match_keys[MATCH_SLOTS];
+    static int match_indices[MATCH_SLOTS];
+    memset(match_indices,0xFF,sizeof match_indices);
+    for(unsigned i=0;i<a->scene.count;++i) {
+        uint32_t key=a->keys[i];
+        unsigned slot=(key*2654435761u)>>(32-16);
+        while(match_indices[slot]!=-1 && match_keys[slot]!=key)
+            slot=(slot+1)&(MATCH_SLOTS-1);
+        if(match_indices[slot]==-1) {
+            match_keys[slot]=key;match_indices[slot]=(int)i;
+        } else match_indices[slot]=-2; /* Ambiguous sources retain their picture. */
+    }
     for(unsigned i=0;i<b->scene.count;++i) {
-        const SceneSprite *p=&a->scene.sprites[i],*q=&b->scene.sprites[i];
-        if(a->keys[i]!=b->keys[i] || p->attr!=q->attr || p->size!=q->size || p->hud!=q->hud ||
-                       (!(q->hud&3) && (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
-                       abs(p->y+a->scene.camera_y-q->y-b->scene.camera_y)>48)))return 0;
+        uint32_t key=b->keys[i];
+        unsigned slot=(key*2654435761u)>>(32-16);
+        while(match_indices[slot]!=-1 && match_keys[slot]!=key)
+            slot=(slot+1)&(MATCH_SLOTS-1);
+        int previous=match_indices[slot];
+        const SceneSprite *q=&b->scene.sprites[i];
+        int player=(key>>16)==0xB000 || (key>>16)==0xB040;
+        if(previous<0) {
+            if(player)return 0;
+            s_lerp_sprite[i]=-1;continue;
+        }
+        const SceneSprite *p=&a->scene.sprites[previous];
+        int jump=!(q->hud&3) &&
+            (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
+             abs(p->y+a->scene.camera_y-q->y-b->scene.camera_y)>48);
+        if(player && jump)return 0;
+        s_lerp_sprite[i]=!jump && p->size==q->size && p->hud==q->hud?previous:-1;
     }
     if(phase==0 || phase==1) {
         const PresentationFrame *f=phase==0?a:b;
