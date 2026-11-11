@@ -1312,6 +1312,10 @@ void s2_runtime_capture(void)
         s->flip=kind(p)==S2_CHAR_AMY || kind(p)==S2_CHAR_KNUCKLES || kind(p)==S2_CHAR_SHADOW?characters[p].render_flip:g_ram[o+1]&3;
         s->wet=!!(g_ram[o+0x22]&64);
         if(runoff) {
+            s->visible=1;
+            /* A glide can cross the signpost and reach the native camera
+             * limit before Knuckles lands. Keep the published air pose. */
+            if (kind(p)==S2_CHAR_KNUCKLES && (g_ram[o+0x22]&2)) continue;
             /* Only the offscreen continuation changes pose. Native movement,
              * rolling flags, radius, animation state and tally remain intact. */
             S2Motion m=motion(o);S2CharacterState gait=characters[p];
@@ -1324,7 +1328,7 @@ void s2_runtime_capture(void)
             unsigned delay=runoff<0x800?(0x800-runoff)>>8:0;
             gait.animation_index=length>2?(word(0xFE04)/(delay+1))%(length-2):0;
             s2_character_animate(&gait,&m,b);
-            s->frame=m.frame;s->flip=gait.render_flip;s->visible=1;
+            s->frame=m.frame;s->flip=gait.render_flip;
             if(g_ram[o+0x16]<19)s->y-=19-g_ram[o+0x16];
         }
     }

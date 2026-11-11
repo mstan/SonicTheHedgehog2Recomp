@@ -1648,10 +1648,9 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
-            /* Obj04's two original surface objects form a 384-pixel cycle.
-             * Repeat their completed artwork in presentation only; native
-             * animation, camera phase and object lifetimes stay in charge. */
-            if(!vs && g_ram[o]==4 && map==0x20A0E)flags|=0x1000;
+            /* Chemical Plant and Aquatic Ruin use separate Obj04 maps.
+             * Both use two surface objects to form a 384-pixel cycle. */
+            if(!vs && g_ram[o]==4 && (map==0x20A0E || map==0x20AFE))flags|=0x1000;
             if(g_ram[o]==0x3A || g_ram[o]==0x34 || g_ram[o]==0x0A)flags|=0x400;
             /* Playable actors use priority 2. Native world objects in the
              * earlier queues, including Grabber legs, must stay in front. */
@@ -1968,7 +1967,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint16_t cell=(uint16_t)((s->attr&0xE000u)|
                 (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
             uint32_t custom=0;
-            int knux=!s_interpolating && anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+            int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
