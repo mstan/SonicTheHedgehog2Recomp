@@ -2,6 +2,26 @@
 set(S2_GAME "${CMAKE_CURRENT_LIST_DIR}/../game")
 set(S2_TOOLS "${CMAKE_CURRENT_LIST_DIR}/../tools")
 
+add_executable(sonic2_sound_assets_test runtime/sonic2_sound_assets_test.c
+    "${S2_GAME}/sonic2_sound_assets.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
+target_include_directories(sonic2_sound_assets_test PRIVATE "${S2_GAME}" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
+target_compile_options(sonic2_sound_assets_test PRIVATE $<IF:$<C_COMPILER_ID:MSVC>,/UNDEBUG,-UNDEBUG>)
+add_test(NAME sonic2_sound_assets COMMAND sonic2_sound_assets_test "${CMAKE_SOURCE_DIR}/game/sonic2.bin")
+add_executable(sonic2_sound_driver_test runtime/sonic2_sound_driver_test.c
+    "${S2_GAME}/sonic2_sound_driver.c" "${S2_GAME}/sonic2_sound_mods.c" "${S2_GAME}/sonic2_sound_assets.c"
+    "${RUNNER_ROOT}/host_atomic_file.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
+target_compile_definitions(sonic2_sound_driver_test PRIVATE RECOMP_LAUNCHER=1)
+target_include_directories(sonic2_sound_driver_test PRIVATE "${S2_GAME}" "${RUNNER_ROOT}" "${RUNNER_ROOT}/include"
+    "${RUNNER_ROOT}/external/superzazu" "${CMAKE_SOURCE_DIR}/recomp-ui/src" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
+target_link_libraries(sonic2_sound_driver_test PRIVATE SDL2::SDL2)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sound-fixtures")
+add_test(NAME sonic2_sound_driver COMMAND sonic2_sound_driver_test "${CMAKE_SOURCE_DIR}/game/sonic2.bin"
+    "${CMAKE_CURRENT_BINARY_DIR}/sound-fixtures/settings.ini")
+if(WIN32)
+    add_custom_command(TARGET sonic2_sound_driver_test POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:SDL2::SDL2> $<TARGET_FILE_DIR:sonic2_sound_driver_test>)
+endif()
+
 function(s2_test name)
     add_executable(${name}_test runtime/${name}_test.c ${ARGN})
     target_include_directories(${name}_test PRIVATE "${S2_GAME}" "${RUNNER_ROOT}" "${RUNNER_ROOT}/include")

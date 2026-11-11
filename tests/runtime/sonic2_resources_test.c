@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 static int delegated;
+const RecompLauncherCModProvider *s2_sound_mods(const RecompLauncherCModProvider *base) { return base; }
 static int playback, online;
 int genesis_netplay_active(void) { return online; }
 int genesis_replay_playing(void) { return playback; }

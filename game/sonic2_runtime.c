@@ -1,6 +1,7 @@
 /* Sonic 2 host adapter. Stock object execution owns the world tick. These
  * callbacks adapt player roles only, never replay a level or enemy update. */
 #include "sonic2_runtime.h"
+#include "sonic2_sound_driver.h"
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_character.h"
@@ -496,8 +497,16 @@ static void reserve_extras(void)
         }
     }
 }
+static void sound_state(S2StateIO *io)
+{
+    uint8_t expected[S2_SOUND_STATE_BYTES];s2_sound_state_save(expected);
+    if(io->data && io->mode && (io->pos>io->size || sizeof expected>io->size-io->pos ||
+       !s2_sound_state_valid(io->data+io->pos))) {io->ok=0;return;}
+    s2_state_bytes(io,expected,sizeof expected);
+}
 static void runtime_state(S2StateIO *io)
 {
+    sound_state(io);
     unsigned header[3+S2_MAX_PLAYERS+7]={4,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
@@ -509,8 +518,8 @@ static void runtime_state(S2StateIO *io)
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
         unsigned saved[3+S2_MAX_PLAYERS+7];
-        if (!io->data || io->size<sizeof saved) { io->ok=0; return; }
-        memcpy(saved,io->data,sizeof saved);
+        if (!io->data || io->pos>io->size || sizeof saved>io->size-io->pos) { io->ok=0; return; }
+        memcpy(saved,io->data+io->pos,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
         header[1]=saved[1];
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
@@ -1673,6 +1682,7 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
 }
 static void rb_all(S2StateIO *io)
 {
+    sound_state(io);
     s2_options_rb_state(io);
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);

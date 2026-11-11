@@ -146,9 +146,10 @@ set(FM_SOURCES
 # cosim build).
 # ---------------------------------------------------------------------------
 
+include("${CMAKE_SOURCE_DIR}/cmake/Sonic2CloneDriver.cmake")
 include("${RECOMP_ROOT}/cmake/GenesisRecompGenerated.cmake")
 genesisrecomp_add_generated_sources(
-    SONIC2_GENERATED_SOURCES sonic2 "${CMAKE_CURRENT_SOURCE_DIR}/game" sonic2.bin
+    SONIC2_GENERATED_SOURCES sonic2 "${SONIC_GENERATION_GAME}" sonic2.bin
     REVERSE_DEBUG "${SONIC_REVERSE_DEBUG}")
 
 # Prod-vs-debug TCP strip (see SonicTheHedgehogRecomp/CMakeLists.txt). ON keeps
@@ -196,6 +197,9 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_video.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_party.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_options.c"
+    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_driver.c"
+    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_mods.c"
+    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_donor_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_resources.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_assets.c"
@@ -330,6 +334,13 @@ add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/game/assets/megamix"
         "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/assets/megamix"
     COMMENT "Staging Megamix author credits")
+add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/docs/SOUND_DRIVER_MODS.md"
+        "${CMAKE_SOURCE_DIR}/docs/CLONE_DRIVER_NOTICES.txt"
+        "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs"
+    COMMENT "Staging alternate sound driver documentation and notices")
 
 # Up to six-player rollback netplay. The engine owns the transport,
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.
