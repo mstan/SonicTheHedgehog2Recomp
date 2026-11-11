@@ -1060,6 +1060,21 @@ static void native_interpolation_test(void)
     s2_party.s3k_enabled=0;
     strcpy(s2_party.roster.character[0],"sonic");
 
+    /* A new object can precede the player in publication order. Its appearance
+     * must preserve the player's midpoint and leave the new piece in place. */
+    PresentationFrame *current=&s_present[s_present_front];
+    unsigned added=current->scene.count++;
+    current->scene.sprites[added]=current->scene.sprites[0];
+    current->keys[added]=current->keys[0];
+    current->scene.sprites[0]=(SceneSprite){100,40,0x8004,0,0};
+    current->keys[0]=0xC0000000u;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000);
+    CHECK(fraction[40*320+100]==0xFFFF0000);
+    current->scene.sprites[0]=current->scene.sprites[added];
+    current->keys[0]=current->keys[added];
+    --current->scene.count;
+
     /* New source identities and teleports repeat an ordinary picture. */
     s_present[s_present_front].keys[0]^=1;CHECK(!interpolate(.5,fraction,320,224));
     s_present[s_present_front].keys[0]^=1;
