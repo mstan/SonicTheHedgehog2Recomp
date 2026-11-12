@@ -264,7 +264,8 @@ static S2Contacts contacts(unsigned o)
     if (knux && (special==S2_SK_GLIDE || special==S2_SK_SLIDE || special==S2_SK_CLIMB))
         g_ram[o+0x16]=g_ram[o+0x17]=10;
     uint8_t angles[4]; memcpy(angles,g_ram+0xF768,4);
-    c.floor=host_call(0x1EC4E); /* also selects the player's collision plane */
+    M68KState floor=native_helper(0x1EC4E); /* also selects the collision plane */
+    c.floor=(int16_t)floor.D[1];c.floor_angle=(uint8_t)floor.D[3];
     g_cpu.D[5]=g_ram[o+0x3F];
     c.wall=host_call((g_ram[o+0x22]&1)?0x1F05E:0x1EEDC);
     c.ceiling=host_call(0x1EF2E);
@@ -796,7 +797,16 @@ static int update_player(unsigned p, uint32_t entry)
         }
     }
     if (imported() && g_ram[object+0x24]==2) {
-        S2Motion m=motion(object); S2Contacts c=contacts(object);
+        S2Motion m=motion(object);
+        int moved_early=0;
+        if (s2_character_moves_before(&characters[p],&m)) {
+            /* KiS2 $3156AE moves before climb/slide/ledge control. World bumpers
+             * assign impulses after the previous player tick; apply one
+             * movement before clearing velocity or applying slide friction. */
+            host_call(0x163AC);
+            m=motion(object);moved_early=1;
+        }
+        S2Contacts c=contacts(object);
         shadow_contacts(object,&c);
         unsigned input=g_ram[0xF7CC]?0xF602:0xF604;
         s2_character_before(&characters[p],&m,g_ram[input],g_ram[input+1],&c);
@@ -806,14 +816,15 @@ static int update_player(unsigned p, uint32_t entry)
         g_ram[0xF605]=g_ram[0xF603]=characters[p].native_pressed;
         if (characters[p].move!=S2_MOVE_NATIVE) {
             if (characters[p].move!=S2_MOVE_FIXED) {
-                host_call(0x163AC); /* ObjectMove, no gravity */
+                if(!moved_early)host_call(0x163AC); /* ObjectMove, no gravity */
                 int gliding=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_GLIDE;
                 int falling=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_FALL;
+                int sliding=kind(p)==S2_CHAR_KNUCKLES && characters[p].special==S2_SK_SLIDE;
                 if(falling) {
                     host_call(0x1A8E8); /* KiS2 steers/applies gravity after movement */
                     putword(object+0x12,word(object+0x12)+((g_ram[object+0x22]&64)?0x10:0x38));
                 }
-                if(gliding || falling)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding);
+                if(gliding || falling || sliding)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding || sliding);
                 else host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
             }
             host_call(0x1A974); /* LevelBound remains authoritative */

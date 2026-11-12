@@ -41,6 +41,7 @@ typedef struct S2CharacterState {
     uint8_t glide_collision; /* valid bit 7, KiS2 airborne/pushing contact bits */
 } S2CharacterState;
 void s2_character_reset(S2CharacterState *s, unsigned kind);
+int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m);
 void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t pressed, const S2Contacts *c);
 void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c);
 void s2_character_animate(S2CharacterState *s, S2Motion *m, const S2DonorBank *bank);

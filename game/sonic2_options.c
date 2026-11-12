@@ -17,6 +17,7 @@
 static unsigned s_cursor;
 static int s_ready;
 enum { NOTICE_NONE, NOTICE_VS_PLAYERS, NOTICE_SAVE_FAILED };
+enum { SOUND_ROW=S2_MAX_PLAYERS+1, LEVEL_ROW, BACK_ROW, OPTIONS_ROWS };
 static unsigned s_notice;
 
 static int online(void)
@@ -163,8 +164,14 @@ int s2_options_hook(uint32_t pc)
     case 0x90E0: {
         s_ready = 1;
         unsigned press = g_ram[0xF605] | g_ram[0xF607];
-        if ((press & 3) == 1) s_cursor = (s_cursor + S2_MAX_PLAYERS+1) % (S2_MAX_PLAYERS+2);
-        if ((press & 3) == 2) s_cursor = (s_cursor + 1) % (S2_MAX_PLAYERS+2);
+        if ((press & 3) == 1) s_cursor = (s_cursor + OPTIONS_ROWS-1) % OPTIONS_ROWS;
+        if ((press & 3) == 2) s_cursor = (s_cursor + 1) % OPTIONS_ROWS;
+        if (s_cursor==SOUND_ROW && !(press&(3|128)) && (press&0x7C)) {
+            /* The original third row owns sound selection, playback and
+             * CheckCheats. Keep its controller and command handling intact. */
+            g_ram[0xFF8C]=2;
+            return 0;
+        }
         int direction = (press & 12) == 4 ? -1 : (press & 12) == 8 ? 1 : 0;
         if (direction) {
             s_notice = NOTICE_NONE;
@@ -177,8 +184,9 @@ int s2_options_hook(uint32_t pc)
                 s2_roster_cycle(&s2_party.roster, s_cursor - 1, direction);
             }
         }
-        /* B anywhere, or A/C on BACK: reuse the native Start exit branch. */
-        if ((press & 16) || (s_cursor == S2_MAX_PLAYERS+1 && (press & 96))) g_ram[0xF605] |= 128;
+        if (press&16) s_cursor=BACK_ROW;
+        /* Native Start exits this loop before the selected game mode runs. */
+        if ((press & 16) || (s_cursor>=LEVEL_ROW && (press&96))) g_ram[0xF605] |= 128;
         return 1;
     }
     case 0x909A:
@@ -191,7 +199,7 @@ int s2_options_hook(uint32_t pc)
         } else {
             s_ready = 0;
             s_notice = NOTICE_NONE;
-            g_ram[0xF600] = 4; /* native TitleScreen, not Sega or a level */
+            g_ram[0xF600] = s_cursor==LEVEL_ROW?0x28:4;
         }
         return 1;
     default: return 0;
@@ -255,8 +263,8 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
         }
     }
     text_row(v,line,out,width,left+104,28,"OPTIONS",0xFFFFD85Cu);
-    for (unsigned row = 0; row < S2_MAX_PLAYERS+2; ++row) {
-        int y = 44 + row * 18;
+    for (unsigned row = 0; row < OPTIONS_ROWS; ++row) {
+        int y = 44 + row * 14;
         int disabled = row >= 1 && row <= S2_MAX_PLAYERS && row > s2_party.roster.slots;
         uint32_t color = disabled ? 0xFF6C7390u : row == s_cursor ? 0xFFFFD85Cu : 0xFFF4F5FFu;
         if (row == s_cursor && line >= y && line < y + 8) {
@@ -271,12 +279,17 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
             snprintf(label,sizeof label,"PLAYER %u",row);
             const S2Character *c = s2_character_find(s2_party.roster.character[row-1]);
             snprintf(value,sizeof value,"%s",c ? c->label : "NONE");
-        } else strcpy(label,"BACK");
+        } else if(row==SOUND_ROW) {
+            strcpy(label,"SOUND TEST");
+            snprintf(value,sizeof value,"%02X",(g_ram[0xFF84]<<8)|g_ram[0xFF85]);
+        } else strcpy(label,row==LEVEL_ROW?"LEVEL SELECT":"BACK");
         text_row(v,line,out,width,left+28,y,label,color);
         text_row(v,line,out,width,left+176,y,value,color);
     }
     const char *hint = s_notice == NOTICE_VS_PLAYERS ? "VS NEEDS PLAYER 1 AND PLAYER 2"
                      : s_notice == NOTICE_SAVE_FAILED ? "SETTINGS SAVE FAILED"
+                     : s_cursor==SOUND_ROW ? "LEFT RIGHT CHANGE A TEN B C PLAY"
+                     : s_cursor==LEVEL_ROW ? "A C OPEN   B BACK   START OPEN"
                      : online() ? "D PAD SELECT    START APPLY"
                      : "D PAD SELECT    START SAVE";
     text_row(v,line,out,width,(width-(int)strlen(hint)*8)/2,188,hint,0xFFB5C5F5u);

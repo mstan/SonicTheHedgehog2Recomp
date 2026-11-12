@@ -52,6 +52,9 @@ discovery_files = [
 # ---------------------------------------------------------------------------
 # Opt-in custom renderer sites: canonical REV01 s2_canonical.lst.
 [[widescreen_site]]
+addr = 0x2ABAC # Obj85 spring launcher uses D1 for its deletion range
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x23C6 # Pal_FadeFromBlack: donor palette starts at black
 kind = "game_hook"
 [[widescreen_site]]

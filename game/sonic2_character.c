@@ -11,6 +11,15 @@ static int absword(int value) { return value<0?-value:value; }
 static int direction(const S2Motion *m) { return m->status&FACE?-1:1; }
 void s2_character_reset(S2CharacterState *s, unsigned kind)
 { memset(s,0,sizeof *s); s->kind=kind; s->animation=~0u; }
+int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m)
+{
+    if(s->kind!=S2_CHAR_KNUCKLES || m->hurt || m->control_locked || m->animation==0x10)return 0;
+    if(s->special==S2_SK_CLIMB)return !!(m->status&AIR);
+    /* A solid-object landing ends the slide in before(). Its native ground
+     * controller owns movement; applying the old special's step doubles it. */
+    return (s->special==S2_SK_SLIDE || s->special==S2_SK_LEDGE) &&
+        ((m->status&AIR) || !(m->status&ON_OBJECT));
+}
 static void amy_before(S2CharacterState *s, S2Motion *m)
 {
     s->native_held&=~A; s->native_pressed&=~A;
@@ -126,25 +135,28 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
     }
     case S2_SK_FALL:
         s->move=S2_MOVE_AIR;m->animation=0x21; break;
-    case S2_SK_SLIDE:
+    case S2_SK_SLIDE: {
         s->move=S2_MOVE_GROUND;
-        m->radius_x=m->radius_y=10;
-        if (!(s->held&JUMP) || absword(m->vx)<=0x20 || c->floor>=14) {
-            if (c->floor>=14) { s->special=S2_SK_FALL; m->status|=AIR; }
-            else {
-                s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
-                m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
-                m->jumping=0; m->move_lock=15; m->animation=0x22;
-            }
+        int vx=m->vx<0?m->vx+0x20:m->vx-0x20;
+        if (!(s->held&JUMP) || (m->vx<0?vx>=0:vx<0)) {
+            s->move=S2_MOVE_FIXED; /* movement already preceded this reset */
+            s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
+            m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+            m->jumping=0; m->move_lock=15; m->animation=0x22;
             m->radius_x=9; m->radius_y=19;
-        } else {m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx;}
+        } else {
+            m->radius_x=m->radius_y=10;
+            m->vx=(int16_t)vx;
+        }
         break;
+    }
     case S2_SK_CLIMB:
         s->climb_delta=0;
-        s->move=S2_MOVE_FIXED; m->vx=m->vy=m->inertia=0;
-        if (m->x!=s->wall_x || (m->status&ON_OBJECT)) {
+        s->move=S2_MOVE_FIXED;
+        if (((uint32_t)m->x>>16)!=((uint32_t)s->wall_x>>16) || (m->status&ON_OBJECT)) {
             s->special=S2_SK_FALL; m->animation=0x21; break;
         }
+        m->vx=m->vy=m->inertia=0;
         if (s->pressed&JUMP) {
             m->status^=FACE; m->status|=AIR|ROLL; m->jumping=1;
             m->vx=(int16_t)(direction(m)*0x400); m->vy=-0x380;
@@ -252,6 +264,14 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
                     m->radius_x=9;m->radius_y=19;m->animation=0;
                 } else {s->special=S2_SK_SLIDE;s->frame=0xCC;s->age=0;}
             }
+        } else if (s->special==S2_SK_SLIDE) {
+            /* KiS2 $315958 follows the floor after movement and terrain
+             * collision. A bumper's upward impulse can leave a small gap;
+             * retain the slide by snapping gaps below fourteen pixels. */
+            if(c->floor>=14) {
+                s->special=S2_SK_FALL;m->status|=AIR;m->animation=0x21;
+            } else {m->y+=c->floor*65536;m->angle=c->floor_angle;}
+            s->glide_collision=0;
         } else if (s->special==S2_SK_FALL) {
             unsigned collision=(s->glide_collision&0x80)?s->glide_collision:m->status;
             s->glide_collision=0;

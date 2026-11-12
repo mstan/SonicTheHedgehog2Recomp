@@ -1842,6 +1842,15 @@ int s2_video_hook(uint32_t pc)
          * both Sonic and Tails. Only lift the old camera's ring search gate. */
         if(gameplay() && !demo){g_cpu.A[1]=0xFFFFE806u;g_cpu.A[2]=0xFFFF0000u|rings_end();}
         return 0;
+    case 0x2ABAC: {
+        /* Obj85 keeps its culling distance in D1. D0 remains the native
+         * display parameter used after this comparison. */
+        if(!gameplay() || demo)return 0;
+        int x=(uint16_t)((uint16_t)g_cpu.D[1]+ram16(0xF7DA));
+        int lo,hi;activation_bounds(ram16(0xEE00),s_requested_width,&lo,&hi);
+        g_cpu.D[1]=(g_cpu.D[1]&0xFFFF0000u)|(scene_contains(x,lo,hi)?320u:641u);
+        return 0;
+    }
     case 0x16F16:case 0x16F3E: {
         if(!gameplay() || demo)return 0;
         unsigned o=g_cpu.A[0]&65535u;

@@ -117,6 +117,22 @@ int main(void)
     assert(s2_netplay_config_adopt("r=0,1 m=0000 c=00")==-1);
     assert(!memcmp(&keep,&s2_party,sizeof keep));
     sound_netplay_allowed=1;
+    g_ram[0xF600]=0x24;
+    assert(!s2_options_hook(0x8FCC));
+    for(unsigned row=0;row<SOUND_ROW;++row)press(0,2);
+    g_ram[0xF605]=8;g_ram[0xF607]=0;
+    assert(!s2_options_hook(0x90E0) && g_ram[0xFF8C]==2);
+    g_ram[0xF605]=0x20;
+    assert(!s2_options_hook(0x90E0));
+    press(0,2); /* Level Select uses the original menu game mode. */
+    press(0,0x20);
+    assert(g_ram[0xF605]&128);
+    assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==0x28);
+    g_ram[0xF600]=0x24;
+    assert(!s2_options_hook(0x8FCC));
+    for(unsigned row=0;row<LEVEL_ROW;++row)press(0,2);
+    press(0,16); /* B returns to the title even on Level Select. */
+    assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==4);
     assert(s2_roster_set(&s2_party.roster,4,"amy") && s2_roster_set(&s2_party.roster,5,"mighty"));
     puts("PASS online four-character Options, visible overlay, rollback replay, no online disk writes, offline save");
     return 0;
