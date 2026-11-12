@@ -128,16 +128,16 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
         s->move=S2_MOVE_AIR;m->animation=0x21; break;
     case S2_SK_SLIDE:
         s->move=S2_MOVE_GROUND;
-        m->radius_x=m->radius_y=10;
-        if (!(s->held&JUMP) || absword(m->vx)<=0x20 || c->floor>=14) {
-            if (c->floor>=14) { s->special=S2_SK_FALL; m->status|=AIR; }
-            else {
-                s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
-                m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
-                m->jumping=0; m->move_lock=15; m->animation=0x22;
-            }
+        if (!(s->held&JUMP) || absword(m->vx)<=0x20) {
+            s->move=S2_MOVE_FIXED; /* movement already preceded this reset */
+            s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
+            m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+            m->jumping=0; m->move_lock=15; m->animation=0x22;
             m->radius_x=9; m->radius_y=19;
-        } else {m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx;}
+        } else {
+            m->radius_x=m->radius_y=10;
+            m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx;
+        }
         break;
     case S2_SK_CLIMB:
         s->climb_delta=0;
@@ -252,6 +252,14 @@ void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
                     m->radius_x=9;m->radius_y=19;m->animation=0;
                 } else {s->special=S2_SK_SLIDE;s->frame=0xCC;s->age=0;}
             }
+        } else if (s->special==S2_SK_SLIDE) {
+            /* KiS2 $315958 follows the floor after movement and terrain
+             * collision. A bumper's upward impulse can leave a small gap;
+             * retain the slide by snapping gaps below fourteen pixels. */
+            if(c->floor>=14) {
+                s->special=S2_SK_FALL;m->status|=AIR;m->animation=0x21;
+            } else {m->y+=c->floor*65536;m->angle=c->floor_angle;}
+            s->glide_collision=0;
         } else if (s->special==S2_SK_FALL) {
             unsigned collision=(s->glide_collision&0x80)?s->glide_collision:m->status;
             s->glide_collision=0;

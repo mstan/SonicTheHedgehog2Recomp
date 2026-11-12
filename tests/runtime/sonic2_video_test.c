@@ -1570,11 +1570,17 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));sonic2_video.width(1,1,320,224);
     s2_video_hook(0x17B84);CHECK(g_ram[0xB440]==0x19);
     CHECK(g_ram[0xB441]==3 && g_ram[0xB462]==3); /* placement flip bits 13/14 */
+    g_cpu.D[0]=0xA5000200;g_cpu.D[1]=0x12340000u|(uint16_t)(1000-ram16(0xF7DA));
+    s2_video_hook(0x2ABAC);
+    CHECK(g_cpu.D[0]==0xA5000200 && (g_cpu.D[1]>>16)==0x1234 && (uint16_t)g_cpu.D[1]<=640);
+    g_cpu.D[1]=0x12340000u|(uint16_t)(5000-ram16(0xF7DA));
+    s2_video_hook(0x2ABAC);CHECK((uint16_t)g_cpu.D[1]>640);
     /* Both Sonic and Tails retain the native ring collision code. */
     word(g_ram,0xE808,100);word(g_ram,0xE80E,65535);g_cpu.A[0]=0xFFFFB040;
     s2_video_hook(0x170D0);CHECK(g_cpu.A[1]==0xFFFFE806 && g_cpu.A[2]==0xFFFFE80C);
     CHECK(sonic2_video.configure("off"));
     g_cpu.D[0]=12345;s2_video_hook(0x105C6);CHECK(g_cpu.D[0]==12345);
+    g_cpu.D[1]=0x12345678;s2_video_hook(0x2ABAC);CHECK(g_cpu.D[1]==0x12345678);
     /* H32 special-stage scenery fills the wide canvas while retaining the
      * original track/sprite projection. Snapshot art stays immutable, CRAM
      * remains live for genuine HBlank palette effects. */

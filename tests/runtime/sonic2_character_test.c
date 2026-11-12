@@ -79,6 +79,25 @@ int main(void)
     s.special=S2_SK_SLIDE; m.radius_y=m.radius_x=10; m.y=0; c.floor=0;
     s2_character_before(&s,&m,0,0,&c);
     assert(m.animation==0x22 && m.move_lock==15 && m.y==-9*65536 && m.radius_y==19);
+    /* Sliding follows the post-movement floor probe, even after an upward
+     * bumper impulse. A fourteen-pixel gap actually releases the slide. */
+    {
+        S2Contacts floor=c;floor.floor=64;
+        S2CharacterState slide;s2_character_reset(&slide,S2_CHAR_KNUCKLES);
+        S2Motion bounce=standing();slide.special=S2_SK_SLIDE;
+        bounce.status=3;bounce.vx=-490;bounce.vy=-2510;
+        s2_character_before(&slide,&bounce,0x20,0,&floor);
+        assert(slide.special==S2_SK_SLIDE && bounce.vx==-458 && bounce.vy==-2510);
+        floor.floor=10;floor.floor_angle=8;
+        s2_character_after(&slide,&bounce,&floor);
+        assert(slide.special==S2_SK_SLIDE && bounce.y==10*65536 && bounce.angle==8);
+        assert(bounce.radius_y==19 && bounce.radius_x==9 && bounce.vy==-2510);
+        floor.floor=14;s2_character_after(&slide,&bounce,&floor);
+        assert(slide.special==S2_SK_FALL && bounce.animation==0x21 && (bounce.status&2));
+        slide.special=S2_SK_SLIDE;bounce=standing();bounce.status=2;bounce.vx=0x200;
+        bounce.y=80*65536;s2_character_before(&slide,&bounce,0,0,&floor);
+        assert(!slide.special && slide.move==S2_MOVE_FIXED && bounce.y==80*65536 && !bounce.vx && !bounce.vy);
+    }
     /* The KiS2 glide box is local to terrain collision, including a slide.
      * Solid-object landing uses the full box and returns directly to Walk,
      * preserving the object's movement rather than the terrain get-up lock. */
@@ -91,7 +110,7 @@ int main(void)
     assert(s2_character_attacking(&s,&m));
     m.y=80*65536;
     s2_character_before(&s,&m,0,0,&c);
-    assert(m.y==71*65536 && m.animation==0x22 && !m.jumping && m.radius_y==19);
+    assert(m.y==80*65536 && m.animation==0x22 && !m.jumping && m.radius_y==19);
     for (unsigned action=S2_SK_GLIDE;action<=S2_SK_LEDGE;++action) {
         s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
         s.special=action; m.status=8; m.animation=0x20; m.jumping=1;
