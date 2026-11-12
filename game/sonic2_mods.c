@@ -1,3 +1,8 @@
+#ifdef SONIC2_MUSIC_CUSTOMIZATION
+#include "sonic2_music.h"
+#else
+#define s2_music_mods(provider) (provider)
+#endif
 /* Owner-resource feature provider. There is deliberately no ROM patch plan. */
 #include "sonic2_mods.h"
 #include "sonic2_sound_driver.h"
@@ -224,8 +229,8 @@ const RecompLauncherCModProvider *s2_mods(const RecompLauncherCModProvider *comm
     p.feature_resource_count = resource_count; p.feature_resource_get = resource_get; p.feature_resource_set_path = resource_set;
     p.commit = commit; p.commit_netplay = commit_netplay; p.last_error = last_error;
     p.archive_extension = ".genmod"; p.archive_description = "GenesisRecomp mod package";
-    return s2_sound_mods(&p);
+    return s2_music_mods(s2_sound_mods(&p));
 }
 #else
-const struct RecompLauncherCModProvider *s2_mods(const struct RecompLauncherCModProvider *common) { return s2_sound_mods(common); }
+const struct RecompLauncherCModProvider *s2_mods(const struct RecompLauncherCModProvider *common) { return s2_music_mods(s2_sound_mods(common)); }
 #endif

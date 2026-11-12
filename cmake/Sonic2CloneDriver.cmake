@@ -62,10 +62,27 @@ if(SONIC_CLONE_DRIVER_PROBE_DIR AND NOT SONIC_CLONE_DRIVER_SUPPORT STREQUAL "OFF
         "${SONIC_CLONE_DRIVER_PROBE_DIR}/probe.json"
         "${SONIC_CLONE_DRIVER_PROBE_DIR}/driver.lst"
         "${SONIC_CLONE_DRIVER_PROBE_DIR}/clone-driver.bin")
+    set(SONIC_MUSIC_DRIVER_PROGRAM_DIR "" CACHE PATH "Optional prebuilt software-only music sequencer")
+    if(NOT SONIC_MUSIC_DRIVER_PROGRAM_DIR)
+        file(SHA256 "${CMAKE_SOURCE_DIR}/tools/music_driver/build.py" _music_build_hash)
+        file(SHA256 "${CMAKE_SOURCE_DIR}/tools/music_driver/driver.asm" _music_asm_hash)
+        string(SHA256 _music_identity "${_music_build_hash};${_music_asm_hash}")
+        string(SUBSTRING "${_music_identity}" 0 20 _music_identity)
+        set(SONIC_MUSIC_DRIVER_PROGRAM_DIR "${CMAKE_BINARY_DIR}/music-driver/program-${_music_identity}")
+        if(NOT EXISTS "${SONIC_MUSIC_DRIVER_PROGRAM_DIR}/program.json")
+            execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/tools/music_driver/build.py"
+                --cache "${CMAKE_BINARY_DIR}/music-driver/cache" --output "${SONIC_MUSIC_DRIVER_PROGRAM_DIR}"
+                ${_s2_clone_tools} COMMAND_ERROR_IS_FATAL ANY)
+        endif()
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/tools/music_driver/build.py" "${CMAKE_SOURCE_DIR}/tools/music_driver/driver.asm"
+        "${SONIC_MUSIC_DRIVER_PROGRAM_DIR}/program.json" "${SONIC_MUSIC_DRIVER_PROGRAM_DIR}/clone-driver.bin")
     execute_process(COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tools/clone_driver_probe/prepare_native.py"
         --probe "${SONIC_CLONE_DRIVER_PROBE_DIR}" --game "${CMAKE_SOURCE_DIR}/game"
         --engine "${RECOMP_ROOT}" --output "${SONIC_GENERATION_GAME}"
+        --music-program "${SONIC_MUSIC_DRIVER_PROGRAM_DIR}"
         COMMAND_ERROR_IS_FATAL ANY)
     include_directories("${SONIC_GENERATION_GAME}")
     add_compile_definitions(SONIC2_CLONE_DRIVER=1)

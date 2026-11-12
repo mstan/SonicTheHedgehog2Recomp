@@ -3,7 +3,11 @@
 #include <stddef.h>
 #include <stdint.h>
 struct RecompLauncherCModProvider;
+#ifdef SONIC2_MUSIC_DRIVER
+enum { S2_SOUND_STATE_BYTES = 72 };
+#else
 enum { S2_SOUND_STATE_BYTES = 40 };
+#endif
 void s2_sound_load_settings(const char *settings);
 void s2_sound_post_reset(void);
 int s2_sound_hook(uint32_t pc);
