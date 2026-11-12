@@ -115,10 +115,19 @@ int main(void)
         s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
         s.special=action; m.status=8; m.animation=0x20; m.jumping=1;
         m.vx=m.inertia=0x180; m.y=123*65536;
+        assert(!s2_character_moves_before(&s,&m));
         s2_character_before(&s,&m,0x20,0,&c);
         assert(s.special==S2_SK_NORMAL && s.move==S2_MOVE_NATIVE);
         assert(m.animation==0 && !m.jumping && !m.move_lock);
         assert(m.y==123*65536 && m.vx==0x180 && m.radius_y==19);
+    }
+    {
+        S2CharacterState climb;s2_character_reset(&climb,S2_CHAR_KNUCKLES);
+        S2Motion hit=standing();climb.special=S2_SK_CLIMB;hit.status=2;hit.vy=-0xA00;
+        assert(s2_character_moves_before(&climb,&hit));
+        hit.status=0;assert(!s2_character_moves_before(&climb,&hit));
+        hit.status=2;hit.animation=0x10;assert(!s2_character_moves_before(&climb,&hit));
+        hit.animation=0x20;hit.control_locked=1;assert(!s2_character_moves_before(&climb,&hit));
     }
     s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
     s.special=S2_SK_GLIDE;m.radius_x=m.radius_y=10;m.hurt=1;

@@ -11,6 +11,14 @@ static int absword(int value) { return value<0?-value:value; }
 static int direction(const S2Motion *m) { return m->status&FACE?-1:1; }
 void s2_character_reset(S2CharacterState *s, unsigned kind)
 { memset(s,0,sizeof *s); s->kind=kind; s->animation=~0u; }
+int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m)
+{
+    if(s->kind!=S2_CHAR_KNUCKLES || m->hurt || m->control_locked || m->animation==0x10)return 0;
+    if(s->special==S2_SK_CLIMB)return !!(m->status&AIR);
+    /* A solid-object landing ends the slide in before(). Its native ground
+     * controller owns movement; applying the old special's step doubles it. */
+    return s->special==S2_SK_SLIDE && ((m->status&AIR) || !(m->status&ON_OBJECT));
+}
 static void amy_before(S2CharacterState *s, S2Motion *m)
 {
     s->native_held&=~A; s->native_pressed&=~A;
