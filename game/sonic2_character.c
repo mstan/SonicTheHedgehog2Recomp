@@ -17,7 +17,8 @@ int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m)
     if(s->special==S2_SK_CLIMB)return !!(m->status&AIR);
     /* A solid-object landing ends the slide in before(). Its native ground
      * controller owns movement; applying the old special's step doubles it. */
-    return s->special==S2_SK_SLIDE && ((m->status&AIR) || !(m->status&ON_OBJECT));
+    return (s->special==S2_SK_SLIDE || s->special==S2_SK_LEDGE) &&
+        ((m->status&AIR) || !(m->status&ON_OBJECT));
 }
 static void amy_before(S2CharacterState *s, S2Motion *m)
 {
@@ -134,9 +135,10 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
     }
     case S2_SK_FALL:
         s->move=S2_MOVE_AIR;m->animation=0x21; break;
-    case S2_SK_SLIDE:
+    case S2_SK_SLIDE: {
         s->move=S2_MOVE_GROUND;
-        if (!(s->held&JUMP) || absword(m->vx)<=0x20) {
+        int vx=m->vx<0?m->vx+0x20:m->vx-0x20;
+        if (!(s->held&JUMP) || (m->vx<0?vx>=0:vx<0)) {
             s->move=S2_MOVE_FIXED; /* movement already preceded this reset */
             s->special=S2_SK_NORMAL; m->vx=m->vy=m->inertia=0;
             m->y+=(m->radius_y-19)*65536; m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
@@ -144,15 +146,17 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
             m->radius_x=9; m->radius_y=19;
         } else {
             m->radius_x=m->radius_y=10;
-            m->vx+=(m->vx<0)?0x20:-0x20; m->inertia=m->vx;
+            m->vx=(int16_t)vx;
         }
         break;
+    }
     case S2_SK_CLIMB:
         s->climb_delta=0;
-        s->move=S2_MOVE_FIXED; m->vx=m->vy=m->inertia=0;
-        if (m->x!=s->wall_x || (m->status&ON_OBJECT)) {
+        s->move=S2_MOVE_FIXED;
+        if (((uint32_t)m->x>>16)!=((uint32_t)s->wall_x>>16) || (m->status&ON_OBJECT)) {
             s->special=S2_SK_FALL; m->animation=0x21; break;
         }
+        m->vx=m->vy=m->inertia=0;
         if (s->pressed&JUMP) {
             m->status^=FACE; m->status|=AIR|ROLL; m->jumping=1;
             m->vx=(int16_t)(direction(m)*0x400); m->vy=-0x380;

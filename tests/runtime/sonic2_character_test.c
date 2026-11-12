@@ -97,6 +97,11 @@ int main(void)
         slide.special=S2_SK_SLIDE;bounce=standing();bounce.status=2;bounce.vx=0x200;
         bounce.y=80*65536;s2_character_before(&slide,&bounce,0,0,&floor);
         assert(!slide.special && slide.move==S2_MOVE_FIXED && bounce.y==80*65536 && !bounce.vx && !bounce.vy);
+        slide.special=S2_SK_SLIDE;bounce=standing();bounce.status=2;bounce.vx=0x20;bounce.inertia=0x400;
+        s2_character_before(&slide,&bounce,0x20,0,&floor);
+        assert(slide.special==S2_SK_SLIDE && !bounce.vx && bounce.inertia==0x400);
+        bounce.vx=-0x20;s2_character_before(&slide,&bounce,0x20,0,&floor);
+        assert(!slide.special && !bounce.vx);
     }
     /* The KiS2 glide box is local to terrain collision, including a slide.
      * Solid-object landing uses the full box and returns directly to Walk,
@@ -128,6 +133,17 @@ int main(void)
         hit.status=0;assert(!s2_character_moves_before(&climb,&hit));
         hit.status=2;hit.animation=0x10;assert(!s2_character_moves_before(&climb,&hit));
         hit.animation=0x20;hit.control_locked=1;assert(!s2_character_moves_before(&climb,&hit));
+        hit.control_locked=0;hit.x=10*65536;hit.vx=0x9CE;hit.vy=-490;climb.wall_x=0;
+        s2_character_before(&climb,&hit,0,0,&c);
+        assert(climb.special==S2_SK_FALL && hit.vx==0x9CE && hit.vy==-490);
+        climb.special=S2_SK_CLIMB;hit.x=256;hit.vx=1;hit.vy=0;
+        s2_character_before(&climb,&hit,0,0,&c);
+        assert(climb.special==S2_SK_CLIMB && !hit.vx && !hit.vy);
+        climb.special=S2_SK_LEDGE;climb.age=climb.ledge=0;hit=standing();hit.status=2;hit.vy=-0xA00;
+        assert(s2_character_moves_before(&climb,&hit));
+        hit.y+=hit.vy*256; /* native ObjectMove precedes the first ledge pose */
+        s2_character_before(&climb,&hit,0,0,&c);
+        assert(hit.y==-13*65536 && climb.frame==0xBD);
     }
     s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
     s.special=S2_SK_GLIDE;m.radius_x=m.radius_y=10;m.hurt=1;

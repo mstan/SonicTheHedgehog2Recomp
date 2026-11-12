@@ -800,7 +800,7 @@ static int update_player(unsigned p, uint32_t entry)
         S2Motion m=motion(object);
         int moved_early=0;
         if (s2_character_moves_before(&characters[p],&m)) {
-            /* KiS2 $3156AE moves before climb/slide control. World bumpers
+            /* KiS2 $3156AE moves before climb/slide/ledge control. World bumpers
              * assign impulses after the previous player tick; apply one
              * movement before clearing velocity or applying slide friction. */
             host_call(0x163AC);
