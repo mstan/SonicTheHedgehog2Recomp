@@ -341,8 +341,8 @@ static void slot_window(const uint8_t *r,unsigned slot,unsigned phase,
 {
     unsigned index=phase>>5,row=phase&31,first=r[0x2C401+slot*8+index]&7;
     unsigned second=r[0x2C401+slot*8+((index+1)&7)]&7,count=32-row;
-    const uint8_t *a=replacement && !first?replacement:r+0x4EEFE+first*512;
-    const uint8_t *b=replacement && !second?replacement:r+0x4EEFE+second*512;
+    const uint8_t *a=replacement && !first?replacement:r+0x4EEFE + first*512;
+    const uint8_t *b=replacement && !second?replacement:r+0x4EEFE + second*512;
     /* GetPixelRow copies four column-major longwords, wrapping to the
      * next original strip symbol after row31. */
     for(unsigned col=0;col<4;++col) {
@@ -440,9 +440,9 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
         candidate.palette[i]=(uint16_t)be16(r+0x60BEA+i*2);
         /* c336fede Pal_CPZ_U/Pal_ARZ_U explicitly contain Knuckles' colours.
          * Read from the verified owner image, never embed donor palette data. */
-        candidate.water_palette[0][i]=(uint16_t)be16(r+0x3029BE+i*2);
-        candidate.water_palette[1][i]=(uint16_t)be16(r+0x302AFE+i*2);
-        candidate.special_palette[i]=(uint16_t)be16(r+0x302CDE+i*2);
+        candidate.water_palette[0][i]=(uint16_t)be16(r+0x3029BE + i*2);
+        candidate.water_palette[1][i]=(uint16_t)be16(r+0x302AFE + i*2);
+        candidate.special_palette[i]=(uint16_t)be16(r+0x302CDE + i*2);
     }
     *out=candidate; return 1;
 }
