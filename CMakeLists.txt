@@ -273,6 +273,10 @@ set(SONIC2_FLOOR_SOURCES
 list(APPEND SONIC2_INCLUDES_NATIVE "${RECOMP_ROOT}/recompiler/src")   # m68k_decoder.h
 
 set(SONIC2_LIBS SDL2::SDL2main SDL2::SDL2)
+if(MINGW)
+    # recomp-ui uses the real main(); SDL2main adds an incompatible SDL_main shim.
+    list(REMOVE_ITEM SONIC2_LIBS SDL2::SDL2main)
+endif()
 if(WIN32)
     list(APPEND SONIC2_LIBS ws2_32 comdlg32)
 endif()
