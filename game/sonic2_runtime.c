@@ -1,3 +1,6 @@
+#ifdef SONIC2_MUSIC_DRIVER
+#include "sonic2_cd_themes.h"
+#endif
 /* Sonic 2 host adapter. Stock object execution owns the world tick. These
  * callbacks adapt player roles only, never replay a level or enemy update. */
 #include "sonic2_runtime.h"
@@ -508,6 +511,9 @@ static void sound_state(S2StateIO *io)
 static void runtime_state(S2StateIO *io)
 {
     sound_state(io);
+#ifdef SONIC2_MUSIC_DRIVER
+    s2_cd_theme_state(io);
+#endif
     unsigned header[3+S2_MAX_PLAYERS+7]={4,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
@@ -1698,6 +1704,9 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
 static void rb_all(S2StateIO *io)
 {
     sound_state(io);
+#ifdef SONIC2_MUSIC_DRIVER
+    s2_cd_theme_state(io);
+#endif
     s2_options_rb_state(io);
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);

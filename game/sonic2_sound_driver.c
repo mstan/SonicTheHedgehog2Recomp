@@ -1,5 +1,10 @@
 #include "sonic2_sound_driver.h"
 #include "genesis_runtime.h"
+#ifdef SONIC2_MUSIC_DRIVER
+#include "sonic2_music.h"
+#include "sonic2_cd_themes.h"
+#include "sonic2_music_clone_metadata.h"
+#endif
 #include "host_atomic_file.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -14,6 +19,13 @@
 #endif
 
 static int selected, active, verified, bound;
+#ifdef SONIC2_MUSIC_DRIVER
+static int music_active;
+static uint8_t music_identity[32];
+#define DRIVER(name) (music_active?S2_MUSIC_CLONE_##name:S2_CLONE_##name)
+#else
+#define DRIVER(name) S2_CLONE_##name
+#endif
 static char settings_file[1200], error[256];
 
 int s2_sound_available(void)
@@ -41,11 +53,17 @@ int s2_sound_select(int enabled)
     if(enabled && !s2_sound_available()) {
         snprintf(error,sizeof error,"This build does not include Clone Driver with the standard Z80 backend.");return 0;
     }
+#ifdef SONIC2_MUSIC_DRIVER
+    if(!enabled&&s2_themes_enabled()){snprintf(error,sizeof error,"Disable Music Customization sections before disabling Clone Driver.");return 0;}
+#endif
     selected=enabled!=0;verified=s2_sound_available();error[0]=0;return 1;
 }
 void s2_sound_load_settings(const char *settings)
 {
     selected=verified=active=bound=0;error[0]=0;
+#ifdef SONIC2_MUSIC_DRIVER
+    music_active=0;memset(music_identity,0,sizeof music_identity);
+#endif
     const char *slash1=strrchr(settings,'/'), *slash2=strrchr(settings,'\\');
     const char *slash=slash1;
     if (!slash || (slash2 && slash2>slash)) slash=slash2;
@@ -69,6 +87,9 @@ void s2_sound_load_settings(const char *settings)
         SDL_RWclose(f);
     }
     verified=s2_sound_available();
+#ifdef SONIC2_MUSIC_DRIVER
+    s2_music_load(settings);
+#endif
     fprintf(stderr,"[sound-driver] Selected %s from %s\n",selected?"Clone Driver":"original",settings_file);
 }
 int s2_sound_commit(void)
@@ -93,6 +114,13 @@ void s2_sound_post_reset(void)
     if(!s2_sound_build_assets(g_rom,0x100000,g_rom,0x400000,&layout,error,sizeof error)) {
         fprintf(stderr,"[sound-driver] %s\n",error);exit(1);
     }
+#ifdef SONIC2_MUSIC_DRIVER
+    music_active=s2_themes_enabled();
+    s2_music_config_identity(music_identity);
+    if(music_active&&!s2_music_prepare(g_rom,0x400000,layout.music_index,layout.sfx_index,layout.psg_index,layout.sample_table,error,sizeof error)){
+        fprintf(stderr,"[music] %s\n",error);exit(1);
+    }
+#endif
     verified=1;fprintf(stderr,"[sound-driver] Clone Driver + Mega PCM; sound assets prepared locally from ROM\n");
 #endif
 }
@@ -103,12 +131,18 @@ static int queue(unsigned id,unsigned slot)
 {
 #ifdef SONIC2_CLONE_DRIVER
     if(id>=0xFE) {
-        m68k_write8(S2_CLONE_RAM_ADDRESS+S2_CLONE_PAUSE_OFFSET,id==0xFE?1:0x80);
+        m68k_write8(DRIVER(RAM_ADDRESS)+DRIVER(PAUSE_OFFSET),id==0xFE?1:0x80);
         return 1;
     }
     unsigned mapped=id>=0x81 && id<=0xF0?id-0x80:id>=0xF8 && id<=0xFD?id+2:0;
-    uint32_t address=S2_CLONE_RAM_ADDRESS+S2_CLONE_QUEUE_OFFSET+slot*2;
+#ifdef SONIC2_MUSIC_DRIVER
+    if(music_active&&id>=0xA0&&id<=0xF0)mapped=id-0x60;
+#endif
+    uint32_t address=DRIVER(RAM_ADDRESS)+DRIVER(QUEUE_OFFSET)+slot*2;
     if(m68k_read16(address))return 0;
+#ifdef SONIC2_MUSIC_DRIVER
+    if(music_active&&mapped&&(id<=0x9F||id>=0xF8))s2_cd_theme_request(mapped);
+#endif
     if(mapped)m68k_write16(address,(uint16_t)mapped);
     return 1;
 #else
@@ -125,7 +159,11 @@ int s2_sound_hook(uint32_t pc)
     if(pc==0xEC000u) {
         M68KState saved=g_cpu;
         memset(g_ram+(S2_CLONE_RAM_ADDRESS&65535),0,0x400);
-        recomp_call_addr(S2_CLONE_INITIALISE);g_cpu=saved;return 1;
+        recomp_call_addr(DRIVER(INITIALISE));
+#ifdef SONIC2_MUSIC_DRIVER
+        if(music_active)s2_cd_theme_request(0xFF);
+#endif
+        g_cpu=saved;return 1;
     }
     if(pc==0x1084u) {
         M68KState saved=g_cpu;
@@ -136,7 +174,11 @@ int s2_sound_hook(uint32_t pc)
         for(unsigned i=0;i<3;i++)if(g_ram[0xFFE1+i]) {
             if(queue(g_ram[0xFFE1+i],i+1))m68k_write8(0xFFFFE1u+i,0);
         }
-        recomp_call_addr(S2_CLONE_GUARDED_UPDATE);
+        recomp_call_addr(DRIVER(GUARDED_UPDATE));
+#ifdef SONIC2_MUSIC_DRIVER
+        if(music_active)s2_cd_theme_frame((m68k_read8(DRIVER(RAM_ADDRESS)+DRIVER(PAUSE_OFFSET))&1)!=0,
+            (m68k_read8(DRIVER(RAM_ADDRESS)+S2_MUSIC_CLONE_TEMPO_OFFSET+1)&1)!=0);
+#endif
         g_cpu=saved;return 1;
     }
 #else
@@ -153,6 +195,11 @@ int s2_sound_dispatch_miss(uint32_t pc)
 #ifdef S2_CLONE_ASSETS_FROM_ROM
     end=S2_SOUND_ASSETS_END;
 #endif
+#ifdef SONIC2_MUSIC_DRIVER
+    if(music_active&&pc>=S2_MUSIC_CLONE_LOAD_ADDRESS&&pc<S2_MUSIC_CLONE_LOAD_ADDRESS+S2_MUSIC_CLONE_PAYLOAD_SIZE){
+        fprintf(stderr,"[music] Missing native sequencer target $%06X\n",pc);exit(1);
+    }
+#endif
     if(active && pc>=S2_CLONE_LOAD_ADDRESS && pc<end) {
         fprintf(stderr,"[sound-driver] Missing native sound target $%06X; refusing to skip driver code\n",pc);
         exit(1);
@@ -164,7 +211,7 @@ int s2_sound_dispatch_miss(uint32_t pc)
 }
 void s2_sound_state_save(void *out)
 {
-    uint8_t bytes[S2_SOUND_STATE_BYTES]={'S','2','S','D',1,0,0,0};
+    uint8_t bytes[S2_SOUND_STATE_BYTES]={'S','2','S','D',2,0,0,0};
     /* The frame-0 snapshot can precede entry into the game fiber. Its driver
      * identity must already match the first running tick. Selection becomes
      * immutable for this process at entry; later UI edits are for a restart. */
@@ -173,6 +220,14 @@ void s2_sound_state_save(void *out)
     if(bytes[5])for(unsigned i=0;i<32;i++) {
         unsigned a=S2_CLONE_SHA256[2*i],b=S2_CLONE_SHA256[2*i+1];
         bytes[8+i]=(uint8_t)(((a<='9'?a-'0':a-'a'+10)<<4)|(b<='9'?b-'0':b-'a'+10));
+    }
+#endif
+#ifdef SONIC2_MUSIC_DRIVER
+    bytes[6]=(uint8_t)(bound?music_active:(selected&&s2_themes_enabled()));
+    if(bytes[6]){
+        const char *sha=S2_MUSIC_CLONE_SHA256;
+        for(unsigned i=0;i<32;i++){unsigned a=sha[2*i],b=sha[2*i+1];bytes[8+i]=(uint8_t)(((a<='9'?a-'0':a-'a'+10)<<4)|(b<='9'?b-'0':b-'a'+10));}
+        if(bound)memcpy(bytes+40,music_identity,32);else s2_music_config_identity(bytes+40);
     }
 #endif
     memcpy(out,bytes,sizeof bytes);

@@ -24,6 +24,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ("probe", "game", "engine", "output"):
         p.add_argument("--" + name, type=Path, required=True)
+    p.add_argument("--music-program",type=Path)
     a = p.parse_args()
     probe, game, engine, out = (getattr(a, k).resolve() for k in ("probe", "game", "engine", "output"))
     if any(out.is_relative_to(x) or x.is_relative_to(out) for x in (probe,game,engine)):
@@ -61,8 +62,35 @@ def main():
     entries = {info[k] for k in ("initialise", "update", "queue_music", "queue_sfx", "queue_extra",
                                 "megapcm_load_driver", "megapcm_load_table", "guarded_update")}
     entries.update(labels)
+    music_info=None
+    if a.music_program:
+        music_root=a.music_program.resolve()
+        music_info=json.loads((music_root/'program.json').read_text())
+        code=(music_root/'clone-driver.bin').read_bytes()
+        base=music_info['load_address']
+        if base!=0x2A0000 or hashlib.sha256(code).hexdigest()!=music_info['sha256'] or len(code)!=music_info['payload_size']:
+            p.error('Custom music program identity mismatch')
+        if music_info['ram_address']!=0xFFFFF200 or music_info['ram_size']>0x400 or base+len(code)>0x400000:
+            p.error('Custom music program bounds mismatch')
+        image=image+bytes(base-len(image))+code
+        more=module.symbols(music_root/'driver.lst',image)
+        for pc,names in more.items():
+            if base<=pc<base+len(code):labels[pc]=['Music_'+name for name in names]
+        entries.update(pc for pc in labels if pc>=base)
+        for key in ('initialise','update','queue_music','queue_sfx','queue_extra','guarded_update','pcm_idle','stop_all'):
+            entries.add(music_info[key])
+        header='/* Generated software-only music sequencer; no source audio. */\n#pragma once\n'
+        header+='#define SONIC2_MUSIC_PROGRAM 1\n#define S2_MUSIC_CLONE_SHA256 "'+music_info['sha256']+'"\n'
+        for key,value in music_info.items():
+            if isinstance(value,int):header+='#define S2_MUSIC_CLONE_'+key.upper()+' 0x%Xu\n'%value
+        program='static const unsigned char s2_music_clone_program[] = {\n'+''.join(
+            '    '+','.join('0x%02X'%b for b in code[i:i+16])+',\n'for i in range(0,len(code),16))+'};\n'
+
     out.mkdir(parents=True, exist_ok=True)
     write(marker,"Sonic 2 private clone driver generation inputs\n")
+    if music_info:
+        write(out/'sonic2_music_clone_metadata.h',header)
+        write(out/'sonic2_music_clone_program.h',program)
     for source in (*game.glob("*.toml"), *game.glob("*.csv")):
         if source.name not in ("game.toml","annotations_from_disasm.csv"):write(out / source.name,source.read_bytes())
     config = (game / "game.toml").read_text(encoding="utf-8")
@@ -73,7 +101,9 @@ def main():
     write(out / "sonic2.bin",image)
     write(out / "sonic2.clone_driver.toml",
         "[functions]\nextra = [\n" + "".join(f"    0x{pc:06X},\n" for pc in sorted(entries)) + "]\n")
-    write(out / "clone-code.txt","".join(f"{pc:06X}\n" for pc in sorted(module.instruction_starts(probe / "driver.lst", image))))
+    code_starts=module.instruction_starts(probe/"driver.lst",image)
+    if music_info:code_starts.update(module.instruction_starts(music_root/"driver.lst",image))
+    write(out/"clone-code.txt","".join(f"{pc:06X}\n"for pc in sorted(code_starts)))
     subprocess.run([sys.executable, "-B", str(engine / "tests/tools/gen_disasm_jumptables.py"),
                     "--lst", str(probe / "driver.lst"), "--code-addrs", str(out / "clone-code.txt"),
                     "--output", str(out / "clone_tables.next"), "--prefix", "sonic2.clone"], check=True)

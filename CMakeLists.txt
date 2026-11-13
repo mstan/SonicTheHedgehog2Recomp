@@ -77,6 +77,7 @@ foreach(_input IN LISTS _state_inputs)
     string(APPEND _state_fingerprint ";${_hash}")
 endforeach()
 include_directories("${CMAKE_BINARY_DIR}")
+add_compile_definitions(S3_ROM_IMPORT_SOURCE="${CMAKE_SOURCE_DIR}/tools/import_sound_donor.py")
 
 # Tier-1 reverse-debugger instrumentation. ON by default for
 # day-to-day Sonic 2 bring-up (the rdb_* TCP commands / WRAM-write ring depend
@@ -200,6 +201,16 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_driver.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_mods.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_assets.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_music.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_mods.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_import.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_assets.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_cd_themes.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_assets.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_legacy.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_sequences.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_pcm.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_prototype_pcm.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_donor_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_resources.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_assets.c"
@@ -237,6 +248,7 @@ set(SONIC2_INCLUDES_NATIVE
     "${RUNNER_ROOT}/external/superzazu"
     "${RUNNER_ROOT}/external/clowncommon"
     "${CMAKE_CURRENT_SOURCE_DIR}/game"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/music"
     "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
 )
 
@@ -310,11 +322,15 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     INCLUDE_GENERATED_CODE=1
     ENABLE_RECOMPILED_CODE=1
     OWN_BACKEND=1                   # the own backend IS the Sonic 2 runtime (no clownmdemu link)
+    SONIC2_MUSIC_CUSTOMIZATION=1
     DEFAULT_DEBUG_PORT=4380
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
     $<$<BOOL:${GEN_DEV_TRACE}>:GEN_DEV_TRACE>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
+if(SONIC_CLONE_DRIVER_PROBE_DIR AND NOT SONIC_CLONE_DRIVER_SUPPORT STREQUAL "OFF")
+    target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE SONIC2_MUSIC_DRIVER=1)
+endif()
 
 # Shared recomp-ui (Dear ImGui) pre-boot launcher â€” native (shipped) target only
 # Defines RECOMP_LAUNCHER (un-gates the seam in
@@ -413,3 +429,36 @@ add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/docs/PLAYER_FEEDBACK.md" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs/PLAYER_FEEDBACK.md"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/tools/replay_diagnostic.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/replay_diagnostic.py")
+
+if(BUILD_TESTING)
+    add_executable(sonic2_music_test
+        tests/runtime/sonic2_music_test.c
+        game/music/sonic2_music.c game/music/sonic2_music_mods.c
+        game/music/sonic2_music_assets.c game/music/sonic2_cd_themes.c
+        game/music/sonic3_sound_assets.c game/music/sonic3_sound_legacy.c
+        game/music/sonic3_sound_sequences.c game/music/sonic3_sound_pcm.c
+        game/music/sonic3_prototype_pcm.c game/sonic2_sound_assets.c
+        "${RUNNER_ROOT}/host_atomic_file.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
+    target_include_directories(sonic2_music_test PRIVATE ${SONIC2_INCLUDES_NATIVE} "${CMAKE_SOURCE_DIR}/recomp-ui/src")
+    target_compile_definitions(sonic2_music_test PRIVATE SDL_MAIN_HANDLED RECOMP_LAUNCHER=1)
+    if(SONIC_CLONE_DRIVER_PROBE_DIR AND NOT SONIC_CLONE_DRIVER_SUPPORT STREQUAL "OFF")
+        target_compile_definitions(sonic2_music_test PRIVATE SONIC2_MUSIC_DRIVER=1)
+    endif()
+    target_link_libraries(sonic2_music_test PRIVATE SDL2::SDL2)
+endif()
+
+# Optional build-host freezer. Shipped Windows packages include this helper;
+# ordinary source builds can use the identical Python import entry point.
+set(SONIC_SOUND_IMPORTER_PYTHON "${Python3_EXECUTABLE}" CACHE FILEPATH "Python with PyInstaller for the sound importer target")
+add_custom_target(sonic_sound_importer
+    COMMAND "${SONIC_SOUND_IMPORTER_PYTHON}" -B "${CMAKE_SOURCE_DIR}/tools/make_sound_importer.py"
+        --out "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>"
+        --work "${CMAKE_BINARY_DIR}/sound-importer" --engine-root "${RECOMP_ROOT}"
+    VERBATIM)
+add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/EVENT_MUSIC.md" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/trilogy" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/segacd"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/tools/import_sound_donor.py" "${CMAKE_SOURCE_DIR}/tools/import_cd_sound_donor.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/tools/trilogy/scd_media.py" "${CMAKE_SOURCE_DIR}/tools/trilogy/scd_iso.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/trilogy"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/tools/segacd/owned_media.py" "${RECOMP_ROOT}/tools/segacd/disc_image.py" "${RECOMP_ROOT}/tools/segacd/sgcd_owned_extract.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/segacd"
+    COMMENT "Staging music customization guide and source-build import tools")

@@ -52,3 +52,10 @@ disassembly repository also includes game content under separate restrictions.
 Normal builds include a software-only driver program. Music, effects, instruments,
 envelopes and PCM samples are prepared locally from the player's verified ROM.
 No Sonic music/sample pack is bundled, and activation downloads no game assets.
+
+Mixed-source music sequencer:
+TheBlad768/skdisasm-clone-driver, revision13ca55d1f9bf2268f440616404cc65a3b08a6ad6
+https://github.com/TheBlad768/skdisasm-clone-driver
+Port by TheBlad768; original driver by Clownacy. The same driver permission
+notice and Mega PCM MIT license above apply to this software-only variant.
+All musical sequences, instruments, envelopes and PCM remain user-sourced.
