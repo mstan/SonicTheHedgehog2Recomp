@@ -1,7 +1,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
-enum { S2_KNUCKLES_ENDING_ROM=0x110000, S2_KNUCKLES_ENDING_BYTES=0x4000 };
+enum { S2_KNUCKLES_ENDING_ROM=0x150000, S2_KNUCKLES_ENDING_BYTES=0x4000 };
 typedef struct S2KnucklesEnding {
     uint32_t art,palette,mappings;
     size_t size;

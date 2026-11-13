@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 enum { S2_STAGE_LAYOUT_COUNT=34, S2_STAGE_LAYOUT_BYTES=0x10000,
-       S2_STAGE_LAYOUT_ROM=0x100000 };
+       S2_STAGE_LAYOUT_ROM=0x140000 };
 typedef struct S2StageLayouts {
     uint32_t address[S2_STAGE_LAYOUT_COUNT];
     size_t size;

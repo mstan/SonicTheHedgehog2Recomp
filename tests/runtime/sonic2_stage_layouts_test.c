@@ -1,4 +1,6 @@
 #include "sonic2_stage_layouts.h"
+#include "sonic2_knuckles_ending.h"
+#include "sonic2_sound_assets.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +9,9 @@ static void put32(uint8_t *p,unsigned x)
 { p[0]=(uint8_t)(x>>24);p[1]=(uint8_t)(x>>16);p[2]=(uint8_t)(x>>8);p[3]=(uint8_t)x; }
 int main(int argc,char **argv)
 {
+    assert(S2_STAGE_LAYOUT_ROM>=0x140000);
+    assert(S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES<=S2_KNUCKLES_ENDING_ROM);
+    assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_SOUND_MUSIC_BASE);
     size_t size=0xDF370+S2_STAGE_LAYOUT_COUNT*4+18;
     uint8_t *rom=calloc(1,size);
     S2StageLayouts *out=calloc(1,sizeof *out);

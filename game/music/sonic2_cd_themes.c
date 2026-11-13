@@ -138,7 +138,7 @@ void s2_cd_theme_frame(int paused,int oneup)
         if(clock_state.volume<=1457){clock_state.volume=0;clock_state.active=0;}else clock_state.volume-=1457;
     }
 }
-void s2_cd_theme_tick(uint32_t tick)
+void s2_cd_theme_tick(uint64_t tick)
 {
     (void)tick;render_clock=clock_state;
     if(!clock_state.active||clock_state.paused)return;

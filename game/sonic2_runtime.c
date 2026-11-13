@@ -5,6 +5,13 @@
  * callbacks adapt player roles only, never replay a level or enemy update. */
 #include "sonic2_runtime.h"
 #include "sonic2_sound_driver.h"
+#include "sonic2_sound_assets.h"
+#ifdef SONIC2_CLONE_DRIVER
+#include "sonic2_clone_metadata.h"
+#endif
+#ifdef SONIC2_MUSIC_DRIVER
+#include "sonic2_music_clone_metadata.h"
+#endif
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_character.h"
@@ -70,6 +77,20 @@ static int knuckles_lead_available(void)
 { return s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages()!=NULL; }
 static const S2Character amy={"amy","AMY",1,amy_available};
 static const S2Character knuckles={"knuckles","KNUCKLES",1,knuckles_available};
+/* Keep derived campaign banks outside both executable sound images and the
+ * converted sound-asset arena. Validate generated image sizes at build time. */
+#ifdef SONIC2_CLONE_DRIVER
+_Static_assert(S2_CLONE_LOAD_ADDRESS+S2_CLONE_PAYLOAD_SIZE<=S2_STAGE_LAYOUT_ROM,
+               "Clone Driver overlaps the campaign bank");
+#endif
+_Static_assert(S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES<=S2_KNUCKLES_ENDING_ROM,
+               "Campaign object and ending banks overlap");
+_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_SOUND_MUSIC_BASE,
+               "Campaign banks overlap converted sound assets");
+#ifdef SONIC2_MUSIC_DRIVER
+_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_MUSIC_CLONE_LOAD_ADDRESS,
+               "Campaign banks overlap the music driver");
+#endif
 void s2_runtime_prepare_stages(void)
 {
     const S2StageLayouts *stages=s2_resource_knuckles_stages();
