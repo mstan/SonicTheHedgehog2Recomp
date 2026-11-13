@@ -66,14 +66,34 @@ static int s_inside_spring, s_inside_palette, s_reward, s_checking_death,
            s_transforming, s_combat;
 static int amy_available(void) { return s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY); }
 static int knuckles_available(void) { return s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK); }
+static int knuckles_lead_available(void)
+{ return s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages()!=NULL; }
 static const S2Character amy={"amy","AMY",1,amy_available};
 static const S2Character knuckles={"knuckles","KNUCKLES",1,knuckles_available};
+void s2_runtime_prepare_stages(void)
+{
+    const S2StageLayouts *stages=s2_resource_knuckles_stages();
+    if(stages) memcpy(g_rom+S2_STAGE_LAYOUT_ROM,stages->data,stages->size);
+    const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
+    if(ending) memcpy(g_rom+S2_KNUCKLES_ENDING_ROM,ending->data,ending->size);
+}
 static unsigned kind(unsigned p)
 {
     const char *id=s2_party.roster.character[p];
     return !strcmp(id,"amy")?S2_CHAR_AMY:!strcmp(id,"knuckles")?S2_CHAR_KNUCKLES:
         !strcmp(id,"tails")?S2_CHAR_TAILS:!strcmp(id,"shadow")?S2_CHAR_SHADOW:
         !strcmp(id,"mighty")?S2_CHAR_MIGHTY:S2_CHAR_SONIC;
+}
+uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act)
+{
+    if((g_ram[0xF600]&127)!=12 || g_ram[0xFFD8] || g_ram[0xFFD9] || kind(0)!=S2_CHAR_KNUCKLES ||
+       !knuckles_available() || !knuckles_lead_available()) return 0;
+    return s2_stage_layout_address(s2_resource_knuckles_stages(),zone,act);
+}
+static int knuckles_ending(void)
+{
+    return (g_ram[0xF600]&127)==0x20 && kind(0)==S2_CHAR_KNUCKLES &&
+        knuckles_available() && s2_resource_knuckles_ending()!=NULL;
 }
 static const S2DonorBank *bank(unsigned p)
 {
@@ -514,7 +534,7 @@ static void runtime_state(S2StateIO *io)
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
-    unsigned header[3+S2_MAX_PLAYERS+7]={4,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+10]={6,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
@@ -522,13 +542,19 @@ static void runtime_state(S2StateIO *io)
     header[7+S2_MAX_PLAYERS]=(unsigned)s2_party.shadow_enabled;
     header[8+S2_MAX_PLAYERS]=(unsigned)s2_party.infinite_lives;
     header[9+S2_MAX_PLAYERS]=(unsigned)s2_party.infinite_time;
+    header[10+S2_MAX_PLAYERS]=(unsigned)s2_party.knuckles_campaign_enabled;
+    header[11+S2_MAX_PLAYERS]=(unsigned)s2_party.easy_debug;
+    header[12+S2_MAX_PLAYERS]=(g_ram[0xF600]==12 || g_ram[0xF600]==16) &&
+        !word(0xFFD8) && kind(0)==S2_CHAR_KNUCKLES;
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
-        unsigned saved[3+S2_MAX_PLAYERS+7];
+        unsigned saved[3+S2_MAX_PLAYERS+10];
         if (!io->data || io->pos>io->size || sizeof saved>io->size-io->pos) { io->ok=0; return; }
         memcpy(saved,io->data+io->pos,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
         header[1]=saved[1];
+        header[12+S2_MAX_PLAYERS]=saved[12+S2_MAX_PLAYERS];
+        if(saved[12+S2_MAX_PLAYERS]>1 || (saved[12+S2_MAX_PLAYERS] && !knuckles_lead_available())) io->ok=0;
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
     }
     S2_STATE(io,header); S2_STATE(io,active);
@@ -560,6 +586,12 @@ int s2_runtime_state_at_boundary(void)
     if (mode==16) return caller==0x13BC ||
         (g_ram[0xF62A]==0x0A && (caller==0x5220 || caller==0x5268));
     return 0;
+}
+int s2_runtime_state_needs_frame_end(void)
+{
+    /* Campaign 2D waits after its completed object/sprite tick. Half-pipe
+     * track drawing and split-screen H-int retain the full raster gate. */
+    return g_ram[0xF600]==16 || word(0xFFD8)!=0;
 }
 int s2_runtime_state_save(void *data,size_t size)
 {
@@ -738,6 +770,10 @@ static int update_player(unsigned p, uint32_t entry)
 {
     unsigned object=g_cpu.A[0]&0xFFFF;
     if (inside_player) return 0;
+    if(!p && word(0xFE08)) {
+        /* The original Debug Mode owns its item mappings and movement. */
+        displayed[p]=0;s2_character_reset(&characters[p],kind(p));return 0;
+    }
     int companion=p && !word(0xFFD8);
     int initializing=!g_ram[object+0x24];
     unsigned previous_special=characters[p].special;
@@ -907,7 +943,82 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
-    if (pc==0x111C) {++input_poll_serial;return 0;}
+    if(pc==0x9C7C) {
+        if(knuckles_ending()) {
+            s2_character_reset(&characters[0],S2_CHAR_KNUCKLES);displayed[0]=0;
+            memset(published_sprites,0,sizeof published_sprites);
+            memset(published_dust,0,sizeof published_dust);
+        }
+        return s2_video_hook(pc);
+    }
+    if(knuckles_ending()) {
+        const S2KnucklesEnding *e=s2_resource_knuckles_ending();
+        unsigned o=g_cpu.A[0]&65535u;
+        if(pc==0xABE2) {
+            /* KiS2 uses its ordinary ending for either emerald outcome. */
+            putword(0xF750,0);
+            m68k_write32(0xC00004,0x43200000); /* ArtTile_EndingCharacter=$19 */
+            g_cpu.A[0]=e->art;recomp_tail_call(0x14DE);return 1;
+        }
+        if(pc==0x9E14) {g_cpu.A[1]=e->palette;return 0;}
+        if(pc==0x1331C && g_cpu.A[2]==0xAC7E) {g_cpu.A[2]=e->palette;return 0;}
+        if(pc==0x213E) {
+            /* Original KiS2 cycle: three shades at palette entries 2,3,5.
+             * Both the native large jump sprite and the host body use CRAM. */
+            unsigned phase=g_ram[0xF65F],frame=word(0xF65C);
+            const uint8_t *colors=e->super_palette;
+            if(!phase)return 1;
+            if(phase==1) {
+                g_ram[0xF65F]=0xFF;putword(0xF65C,0);g_ram[0xB02A]=0;return 1;
+            }
+            if(!(phase&0x80)) {
+                g_ram[0xF65F]=0;putword(0xF65C,0);colors+=60;
+            } else {
+                if((int8_t)--g_ram[0xF65E]>=0)return 1;
+                g_ram[0xF65E]=2;
+                if(frame>=60 || frame%6)frame=0;
+                putword(0xF65C,frame+6);
+                if(frame+6>=60) {putword(0xF65C,0);g_ram[0xF65E]=14;}
+                colors+=frame;
+            }
+            memcpy(g_ram+0xFB04,colors,4);memcpy(g_ram+0xFB0A,colors+4,2);
+            if(g_ram[0xF730]) {memcpy(g_ram+0xF084,colors,4);memcpy(g_ram+0xF08A,colors+4,2);}
+            return 1;
+        }
+        if(pc==0xAC30) {recomp_tail_call(g_ram[0xFFB1]==7?0xAC56:0xAC42);return 1;}
+        if(pc==0xA554) {
+            /* KiS2 keeps the current character frame, then restarts Wait.
+             * The preceding stock write instead forces Sonic's frame 1. */
+            g_ram[0xB01A]=characters[0].frame;
+            putword(0xB01C,0x0500);characters[0].animation=0;
+            return 0;
+        }
+        if(pc==0x164F4 && o>=0xB000 && o<0xD400 &&
+           ((uint32_t)word(o+4)<<16|word(o+6))==0xADA2)
+            putfixed(o+4,(int32_t)e->mappings);
+        if(o==0xB000) {
+            if(pc==0x164F4) {displayed[0]=1;return 1;}
+            if(pc==0x1B350) {
+                S2Motion m=motion(o);s2_character_animate(&characters[0],&m,bank(0));
+                g_ram[o+0x1A]=m.frame;
+                g_ram[o+1]=(g_ram[o+1]&~3)|characters[0].render_flip|0x80;
+                return 1;
+            }
+            if(pc==0x1B848)return 1;
+        }
+    }
+    if(pc==0x17AF0) {
+        /* After native layout selection, before all four scrolling cursors
+         * are initialized. The native loader owns loading and respawning. */
+        uint32_t address=s2_runtime_stage_layout(g_ram[0xFE10],g_ram[0xFE11]);
+        if(address) g_cpu.A[0]=address;
+        return 0;
+    }
+    if (pc==0x111C) {
+        ++input_poll_serial;
+        if(s2_party.easy_debug) g_ram[0xFFFA]=1;
+        return 0;
+    }
     if (pc==0xC680 && (g_ram[0xF600]&127)==12 && !g_ram[0xFE10] &&
         !word(0xFFD8) && !s2_roster_is_classic(&s2_party.roster)) {
         /* KiS2 Deform_EHZ appends the missing last two H-scroll rows using
@@ -998,6 +1109,22 @@ int s2_runtime_hook(uint32_t pc)
         return 1;
     }
     if (!level()) return 0;
+    if(pc==0x3AB46 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
+        /* The same KiS2 pose correction applies after boarding the plane. */
+        g_ram[0xB01A]=characters[0].frame;
+        putword(0xB01C,0x0500);characters[0].animation=0;
+        return 0;
+    }
+    if(pc==0x3AC56 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
+        /* KiS2 ObjB2_Waiting_animation resets the animation instead of
+         * forcing Sonic's frame 1 into Knuckles' unrelated walking art. */
+        g_cpu.A[1]=0xFFFFB000u;
+        characters[0].animation=0;
+        putword(0xB01C,0x0500);putword(0xB01E,0x0100);
+        putword(0xB010,0);putword(0xB012,0);
+        g_cpu.SR=(g_cpu.SR&~(SR_N|SR_Z|SR_V|SR_C))|SR_Z;
+        return 1;
+    }
     if (pc==0x12768 && !word(0xFFD8) && s2_party.roster.slots>1 && objects[1] &&
         g_ram[objects[1]] && (g_cpu.A[1]&65535u)==objects[1] &&
         (kind(1)!=S2_CHAR_TAILS || human_companion(1))) {
@@ -1272,6 +1399,18 @@ int s2_runtime_hook(uint32_t pc)
 }
 void s2_runtime_capture(void)
 {
+    if(knuckles_ending()) {
+        memset(published_sprites,0,sizeof published_sprites);
+        memset(published_dust,0,sizeof published_dust);
+        unsigned shown=displayed[0];displayed[0]=0;
+        if(g_ram[0xB000]==1 && shown) {
+            PartySprite *s=&published_sprites[0];
+            s->x=(int16_t)word(0xB008);s->y=(int16_t)word(0xB00C);
+            s->art=word(0xB002);s->frame=g_ram[0xB01A];s->visible=1;
+            s->flip=characters[0].render_flip;
+        }
+        return;
+    }
     /* BuildSprites runs after the complete object tick. Rendering live actor
      * RAM per scanline could use one pose for a head and the next for its body,
      * or observe displayed[] while an actor was being updated. */
@@ -1319,6 +1458,7 @@ void s2_runtime_capture(void)
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
         unsigned o=native_only?(p<2 && p<s2_party.roster.slots?0xB000+p*64:0):objects[p];
         if(!o || !g_ram[o])continue;
+        if(!p && word(0xFE08))continue;
         int display_x=s2_video_runoff_x(p,o,word(o+8));
         int runoff=s2_video_runoff_velocity(p);
         if (p<2 && kind(p)<S2_CHAR_AMY && displayed[p]!=2 && !runoff) continue;
@@ -1573,18 +1713,29 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
         uint32_t palette[16];
         unsigned phase=!p && !picture->vs?picture->world[0xF65F]:0;
         unsigned super_frame=((unsigned)picture->world[0xF65C]<<8)|picture->world[0xF65D];
+        const S2KnucklesArt *ending_art=(picture->world[0xF600]&127)==0x20 &&
+            actor_kind==S2_CHAR_KNUCKLES?s2_resource_knuckles_art():NULL;
+        int ending=ending_art!=NULL;
+        uint16_t ending_palette[16];
+        if(ending) {
+            /* S3&K's body and KiS2's native ending art index the same
+             * colours differently, as with the original water palettes. */
+            s2_donor_water_palette(b->palette,ending_art->palette,v->cram,ending_palette);
+        }
         for(unsigned color=0;color<16;++color) {
-            uint16_t shade=shadow?s2_shadow_color(b,color,wet,phase,super_frame):
+            uint16_t shade=ending?ending_palette[color]:shadow?s2_shadow_color(b,color,wet,phase,super_frame):
                 actor_kind<S2_CHAR_AMY?v->cram[color]:donor_water?donor_water[color]:b->palette[color];
-            if(!shadow && phase)shade=s2_super_color(kind(p),color,shade,phase,super_frame,b);
-            if(actor_kind>=S2_CHAR_AMY)shade=s2_video_donor_color(shade);
+            if(!ending && !shadow && phase)shade=s2_super_color(kind(p),color,shade,phase,super_frame,b);
+            if(!ending && actor_kind>=S2_CHAR_AMY)shade=s2_video_donor_color(shade);
             palette[color]=genesis_dac_cram_to_argb(shade,GENESIS_DAC_NORMAL);
         }
         for (unsigned px=0;px<f->width;++px) {
             int dx=x0+px; if (dx<0 || dx>=width) continue;
             unsigned color=f->pixels[fy*f->width+(flip&1?f->width-1-px:px)];
             if (!color) continue;
-            if (!picture->world[0xF711]) {
+            if ((picture->world[0xF600]&127)==0x20) {
+                /* The cutscene owns the actor's screen position. */
+            } else if (!picture->world[0xF711]) {
                 if (!s2_video_intro_pixel_visible(visibility,dx-(width-320)/2,line,s->art&0x8000)) continue;
             } else if (!s2_video_actor_pixel_visible(visibility,dx+origin_x,line+origin_y,s->art&0x8000,picture->world)) continue;
             out[dx]=palette[color];overlay_drawn=1;
@@ -1623,7 +1774,7 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
         int native_runoff=!active && g_ram[0xF711] && !word(0xFFD8) &&
             (g_ram[0xB000]==1 || g_ram[0xB000]==2) &&
             (published_sprites[0].visible || published_sprites[1].visible);
-        f->active=(presented_level() || native_runoff) && (g_ram[0xF711] || !word(0xFFD8));
+        f->active=(presented_level() || native_runoff || knuckles_ending()) && (g_ram[0xF711] || !word(0xFFD8));
         memcpy(f->sprites,published_sprites,sizeof f->sprites);
         memcpy(f->dust,published_dust,sizeof f->dust);
         f->vdp=*v; memcpy(f->world,g_ram,sizeof f->world);

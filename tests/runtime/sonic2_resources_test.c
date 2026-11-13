@@ -86,14 +86,17 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==5 && p->feature_count(p->ctx)==8);
-    assert(!s2_party.infinite_lives && !s2_party.infinite_time);
+    assert(p->package_count(p->ctx)==5 && p->feature_count(p->ctx)==9);
+    assert(!s2_party.infinite_lives && !s2_party.infinite_time && !s2_party.easy_debug);
+    assert(p->feature_get(p->ctx,7,&(RecompLauncherCModFeature){0}));
+    assert(p->feature_enable(p->ctx,"sonic2.practice","easy-debug",1) && s2_party.easy_debug);
+    assert(p->feature_enable(p->ctx,"sonic2.practice","easy-debug",0) && !s2_party.easy_debug);
     assert(p->feature_get(p->ctx,5,&(RecompLauncherCModFeature){0}));
     assert(p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",1));
     assert(s2_party.infinite_lives && !s2_party.infinite_time);
     assert(p->feature_resource_count(p->ctx,"sonic2.practice","infinite-lives")==0);
-    assert(p->set_enabled(p->ctx,"sonic2.practice",1) && s2_party.infinite_time);
-    assert(p->set_enabled(p->ctx,"sonic2.practice",0) && !s2_party.infinite_lives && !s2_party.infinite_time);
+    assert(p->set_enabled(p->ctx,"sonic2.practice",1) && s2_party.infinite_time && s2_party.easy_debug);
+    assert(p->set_enabled(p->ctx,"sonic2.practice",0) && !s2_party.infinite_lives && !s2_party.infinite_time && !s2_party.easy_debug);
     online=1;
     assert(!p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",1) && !s2_party.infinite_lives);
     assert(p->feature_enable(p->ctx,"sonic2.practice","infinite-lives",0));
@@ -133,6 +136,31 @@ int main(int argc, char **argv)
     assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","save-menu","campaign-sram",""));
     if (argc==3) {
         assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles","original-knuckles-art",argv[2]));
+        const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
+        assert(ending && ending->size>0x9F0 && ending->size<S2_KNUCKLES_ENDING_BYTES);
+        assert(ending->art==S2_KNUCKLES_ENDING_ROM && ending->palette==S2_KNUCKLES_ENDING_ROM+0x970);
+        assert(ending->mappings==S2_KNUCKLES_ENDING_ROM+0x9F0);
+        FILE *original=fopen(argv[2],"rb");assert(original);
+        uint8_t source_art[0x970],source_palette[128];
+        assert(!fseek(original,0xDEA00,SEEK_SET) && fread(source_art,1,sizeof source_art,original)==sizeof source_art);
+        assert(!fseek(original,0x3090BC,SEEK_SET) && fread(source_palette,1,sizeof source_palette,original)==sizeof source_palette);
+        assert(!memcmp(source_art,ending->data,sizeof source_art) && !memcmp(source_palette,ending->data+0x970,sizeof source_palette));
+        uint8_t source_super[66];
+        assert(!fseek(original,0x301EE0,SEEK_SET) && fread(source_super,1,sizeof source_super,original)==sizeof source_super);
+        assert(!memcmp(source_super,ending->super_palette,sizeof source_super));
+        uint8_t maps[0x400];assert(!fseek(original,0x3091E0,SEEK_SET) && fread(maps,1,sizeof maps,original)==sizeof maps);
+        unsigned table=ending->mappings-S2_KNUCKLES_ENDING_ROM;
+        for(unsigned n=0;n<26;++n) {
+            unsigned src=(unsigned)maps[n*2]<<8|maps[n*2+1];
+            unsigned dst=table+((unsigned)ending->data[table+n*2]<<8|ending->data[table+n*2+1]);
+            unsigned pieces=(unsigned)maps[src]<<8|maps[src+1];
+            assert(dst+2+pieces*8<=ending->size && !memcmp(maps+src,ending->data+dst,2));
+            for(unsigned i=0;i<pieces;++i) {
+                const uint8_t *s=maps+src+2+i*6,*d=ending->data+dst+2+i*8;
+                assert(!memcmp(s,d,4) && !memcmp(s+2,d+4,2) && !memcmp(s+4,d+6,2));
+            }
+        }
+        fclose(original);
         const S2KnucklesArt *art=s2_resource_knuckles_art();
         assert(art && art->palette[4]==0x080 && art->palette[6]==0xEEE);
         for(unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame) {

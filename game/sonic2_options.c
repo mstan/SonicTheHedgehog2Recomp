@@ -16,9 +16,14 @@
 
 static unsigned s_cursor;
 static int s_ready;
-enum { NOTICE_NONE, NOTICE_VS_PLAYERS, NOTICE_SAVE_FAILED };
+enum { NOTICE_NONE, NOTICE_VS_PLAYERS, NOTICE_SAVE_FAILED, NOTICE_KIS2 };
 enum { SOUND_ROW=S2_MAX_PLAYERS+1, LEVEL_ROW, BACK_ROW, OPTIONS_ROWS };
 static unsigned s_notice;
+static int missing_knuckles_campaign(void)
+{
+    return !strcmp(s2_party.roster.character[0],"knuckles") &&
+        (!s2_party.knuckles_campaign_enabled || !s2_resource_knuckles_stages());
+}
 
 static int online(void)
 {
@@ -75,17 +80,32 @@ void s2_netplay_config_image(char *out, size_t cap)
     /* The EFFECTIVE owner features: enabled AND backed by verified assets
      * (an enabled feature without its donor ROM changes nothing). */
     if (n < cap)
-        snprintf(out + n, cap - n, " m=%d%d%d%d c=%d%d",
+        snprintf(out + n, cap - n, " m=%d%d%d%d k=%d d=%d c=%d%d",
                  s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY) ? 1 : 0,
                  s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0,
                  s2_party.mighty_enabled && s2_resource_verified(S2_RESOURCE_MEGAMIX) ? 1 : 0,
                  s2_party.shadow_enabled && s2_resource_shadow_bank() ? 1 : 0,
+                 s2_party.s3k_enabled && s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages() ? 1 : 0,
+                 s2_party.easy_debug?1:0,
                  s2_party.infinite_lives!=0,s2_party.infinite_time!=0);
 }
 
 int s2_netplay_config_adopt(const char *line)
 {
     if(!s2_sound_netplay_allowed()) return -1;
+    const char *debug=line?strstr(line," d="):NULL;
+    int easy_debug=0;
+    if(debug) {
+        if((debug[3]!='0' && debug[3]!='1') || (debug[4] && debug[4]!=' ')) return -1;
+        easy_debug=debug[3]=='1';
+    }
+    const char *world=line?strstr(line," k="):NULL;
+    int knuckles_world=0;
+    if(world) {
+        if((world[3]!='0' && world[3]!='1') || (world[4] && world[4]!=' ')) return -1;
+        knuckles_world=world[3]=='1';
+    }
+    if(knuckles_world && !s2_resource_knuckles_stages()) return -1;
     const char *practice=line?strstr(line," c="):NULL;
     int lives=0,time=0;
     if (practice) {
@@ -121,16 +141,20 @@ int s2_netplay_config_adopt(const char *line)
     roster.slots = p;
     int keep_amy = s2_party.amy_enabled, keep_s3k = s2_party.s3k_enabled, keep_mighty=s2_party.mighty_enabled;
     int keep_shadow=s2_party.shadow_enabled;
+    int keep_world=s2_party.knuckles_campaign_enabled;
     s2_party.amy_enabled = amy; s2_party.s3k_enabled = s3k; s2_party.mighty_enabled=mighty; s2_party.shadow_enabled=shadow;
+    s2_party.knuckles_campaign_enabled=knuckles_world;
     if (s2_roster_validate(&roster)) {   /* 1 = had to repair: not the host's roster */
         s2_party.amy_enabled = keep_amy; s2_party.s3k_enabled = keep_s3k;
         s2_party.mighty_enabled=keep_mighty;
         s2_party.shadow_enabled=keep_shadow;
+        s2_party.knuckles_campaign_enabled=keep_world;
         return -1;
     }
     /* Session-scoped: set in memory, never written to sonic2-party.ini. */
     s2_party.roster = roster;
     s2_party.infinite_lives=lives;s2_party.infinite_time=time;
+    s2_party.easy_debug=easy_debug;
     s2_party.save_menu_enabled = 0;
     return 0;
 }
@@ -143,6 +167,12 @@ int s2_options_hook(uint32_t pc)
     /* REV01 audited routine boundaries. Replacing an RTS-style routine leaves
      * the synthetic return slot to the generated BSR/JSR caller, as native
      * generated RTS does. No manual stack pop, no patched ROM bytes. */
+    if (pc == 0x3CCE) { /* One-player reset complete, before A+Start routing. */
+        if(missing_knuckles_campaign()) {
+            g_ram[0xF600]=0x24;g_ram[0xFF8C]=0;s_notice=NOTICE_KIS2;return 1;
+        }
+        return 0;
+    }
     if (pc == 0x3CF6) { /* TitleScreen_CheckIfChose2P, D0=selection */
         if ((uint8_t)g_cpu.D[0] == 1 && !s2_roster_vs_ready(&s2_party.roster)) {
             g_ram[0xF600] = 0x24;
@@ -191,6 +221,9 @@ int s2_options_hook(uint32_t pc)
     }
     case 0x909A:
         s2_roster_validate(&s2_party.roster);
+        if(s_cursor==LEVEL_ROW && missing_knuckles_campaign()) {
+            s_notice=NOTICE_KIS2;recomp_tail_call(0x9060);return 1;
+        }
         /* Applying a shared roster must never write a guest's local settings
          * or perform filesystem I/O again during rollback replay. */
         if (!online() && !s2_party_save()) {
@@ -288,6 +321,9 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
     }
     const char *hint = s_notice == NOTICE_VS_PLAYERS ? "VS NEEDS PLAYER 1 AND PLAYER 2"
                      : s_notice == NOTICE_SAVE_FAILED ? "SETTINGS SAVE FAILED"
+                     : s_notice == NOTICE_KIS2 ? "KNUCKLES CAMPAIGN NEEDS KIS2"
+                     : s_cursor==LEVEL_ROW && missing_knuckles_campaign() ? "KNUCKLES CAMPAIGN NEEDS KIS2"
+                     : s_cursor==1 && s2_party.s3k_enabled && !s2_resource_knuckles_stages() ? "KNUCKLES LEAD NEEDS KIS2 ROM"
                      : s_cursor==SOUND_ROW ? "LEFT RIGHT CHANGE A TEN B C PLAY"
                      : s_cursor==LEVEL_ROW ? "A C OPEN   B BACK   START OPEN"
                      : online() ? "D PAD SELECT    START APPLY"

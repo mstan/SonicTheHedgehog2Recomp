@@ -715,7 +715,7 @@ static void video_state(S2StateIO *io, int rollback)
 static uint8_t scene_read8(unsigned a)
 {
     a &= 0xFFFFFFu;
-    return a < 0x100000u ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
+    return a < S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
 }
 static uint16_t scene_read16(unsigned a) { return (uint16_t)((scene_read8(a)<<8)|scene_read8(a+1)); }
 static uint32_t scene_read32(unsigned a) { return ((uint32_t)scene_read16(a)<<16)|scene_read16(a+2); }
@@ -1384,9 +1384,12 @@ static void load_placements(void)
     unsigned zone=ram16(0xFE10),index=((zone>>8)*4u)+((zone&1u)*2u);
     unsigned base=0xE6800u+(int16_t)scene_read16(0xE6800u+index);
     if (competition() && g_ram[0xFE10]==12) base=(zone&1)?0x18492:0x1802A;
+    unsigned campaign=s2_runtime_stage_layout(zone>>8,zone&255u);
+    if(campaign) base=campaign;
     if(base==s_placement_base && s_placement_count)return;
     s_placement_base=base;s_placement_count=0;unsigned state=1;
-    for(unsigned p=base;p+6<=0x100000u && s_placement_count<SCENE_PLACEMENTS;p+=6) {
+    unsigned limit=campaign?S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES:0x100000u;
+    for(unsigned p=base;p+6<=limit && s_placement_count<SCENE_PLACEMENTS;p+=6) {
         unsigned x=scene_read16(p);if(x==65535u)break;
         Placement *q=&s_placements[s_placement_count++];
         q->address=p;q->x=(uint16_t)x;q->y=scene_read16(p+2);
@@ -2247,7 +2250,9 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=s2_video_level_zone()>>8;
         s_frame_card=0;s_frame_card_leaving=ram16(0xB0BE)!=0;
-        s_frame_sega=width>nw && !g_ram[0xF600] && g_ram[0xB040]==0xB0 &&
+        /* Title mode is selected before the outgoing SEGA raster fades.
+         * Keep its composition until the displayed VDP setup is replaced. */
+        s_frame_sega=width>nw && (g_ram[0xF600]==0 || g_ram[0xF600]==4) && g_ram[0xB040]==0xB0 &&
             v->reg[2]==0x30 && v->reg[4]==5;
         if (width>nw && (g_ram[0xF600]&127)==12 && !ram16(0xFFD8) &&
             (v->vram[0xBB40]==0x33 || v->vram[0xBB40]==0x44) &&
@@ -2440,6 +2445,12 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
                 int edge=(nx<0?0:nw-1)-hs_b;
                 b=plane_attr(v,base_b,edge,by);bp=pattern_pixel(v,b,edge,by);
             }
+        }
+        if(!level && (g_ram[0xF600]&127)==0x20 && (nx<0 || nx>=nw)) {
+            /* Ending maps populate the original viewport only. Extend its
+             * live edge column instead of reading abandoned stage tiles. */
+            int edge=(nx<0?0:nw-1)-hs_b;
+            b=plane_attr(v,base_b,edge,by);bp=pattern_pixel(v,b,edge,by);
         }
         if (s_frame_card) {
             /* Stretch only the original geometric fill. Its live name table

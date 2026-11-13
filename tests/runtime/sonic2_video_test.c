@@ -3,6 +3,7 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
+uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act) { (void)zone;(void)act;return 0; }
 #if OWN_BACKEND
 GenesisMachine g_machine;
 #endif
@@ -388,6 +389,28 @@ static void widened_card_front_ui_test(void)
     s2_video_front_ui(&v,40,out,796);
     for(unsigned x=0;x<796;++x)CHECK(out[x]==(x==700?0xFFFFFFFF:0xFF00AA00));
     s_frame_card=0;memset(s_priority,0,796);
+}
+static void sega_outgoing_composition_test(void)
+{
+    static GVDP v;
+    uint32_t native[320],logo[398],outgoing[398];
+    clear_guest();memset(&v,0,sizeof v);s_display=NULL;
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=5;v.reg[12]=1;
+    v.reg[13]=0x3C;v.reg[16]=1;
+    v.cram[1]=0xEEE;v.cram[2]=0x00E;
+    memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
+    for(unsigned y=0;y<32;++y)for(unsigned x=0;x<64;++x)
+        word(v.vram,0xA000+(y*64+x)*2,x<40?1:2);
+    for(unsigned x=0;x<320;++x)native[x]=genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL);
+    CHECK(sonic2_video.configure("16:9"));CHECK(reserve_sprite_row(398));
+    s_render->frame_menu_background=0;g_ram[0xB040]=0xB0;
+    g_ram[0xF600]=0;sonic2_video.scanline(&v,0,native,320,logo,398);
+    /* The next mode is already title while the completed raster is SEGA.
+     * Unpopulated plane columns deliberately contain old red stage tiles. */
+    g_ram[0xF600]=4;sonic2_video.scanline(&v,0,native,320,outgoing,398);
+    CHECK(!memcmp(logo,outgoing,sizeof logo));
+    CHECK(outgoing[0]==native[0] && outgoing[397]==native[319]);
+    CHECK(sonic2_video.configure("off"));
 }
 static void composed_menu_fade_test(void)
 {
@@ -1828,6 +1851,7 @@ int main(void)
     composed_menu_fade_test();
     menu_background_lifetime_test();
     pylon_viewport_test();
+    sega_outgoing_composition_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");
     return 0;
 }

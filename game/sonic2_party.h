@@ -19,15 +19,17 @@ typedef struct S2PartyConfig {
     S2Roster roster;
     int infinite_lives; /* opt-in native practice options */
     int infinite_time;
+    int easy_debug; /* optional native Debug Mode, off by default */
     int amy_enabled;
     int s3k_enabled;
     int save_menu_enabled; /* independent default-OFF S3&K feature */
     int mighty_enabled; /* default-OFF, verified Megamix v3 donor */
     int shadow_enabled; /* requires the same verified Megamix donor */
+    int knuckles_campaign_enabled; /* verified local capability; session-scoped online */
     char amy_path[1024];
     char s3k_path[1024];
     char mighty_path[1024];
-    char kis2_path[1024]; /* optional original Knuckles HUD/item artwork */
+    char kis2_path[1024]; /* original KiS2 artwork and Knuckles-led campaign stages */
     char campaign_path[1024]; /* empty until selected or first save; exe-relative */
 } S2PartyConfig;
 

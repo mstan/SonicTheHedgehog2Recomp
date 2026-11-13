@@ -10,6 +10,8 @@ static S2DonorBank shadow_bank;
 static int owner_verified[S2_RESOURCE_COUNT];
 static S2SaveAssets *save_assets;
 static S2KnucklesArt knuckles_art;
+static S2StageLayouts knuckles_stages;
+static S2KnucklesEnding knuckles_ending;
 static S2SpecialStageArt amy_special;
 static S2ItemArt amy_items;
 int s2_resources_prepare_stage_images(const unsigned char *rom,unsigned size)
@@ -58,7 +60,9 @@ int s2_resource_set(unsigned i, const char *path)
         if (i==S2_RESOURCE_SK) s2_save_assets_free(&save_assets);
         if (i==S2_RESOURCE_KIS2) {
             memset(&knuckles_art,0,sizeof knuckles_art);
-            snprintf(errors[i],sizeof errors[i],"Optional original Knuckles artwork not selected");
+            memset(&knuckles_stages,0,sizeof knuckles_stages);
+            memset(&knuckles_ending,0,sizeof knuckles_ending);
+            snprintf(errors[i],sizeof errors[i],"Select the original Knuckles in Sonic 2 ROM for a Knuckles-led campaign");
             return 1;
         }
         return fail(i, "Select the required owner-supplied ROM");
@@ -72,12 +76,23 @@ int s2_resource_set(unsigned i, const char *path)
     if (got != size || extra != EOF || io) {
         free(rom); return fail(i, "Wrong donor size; expected an unheadered, big-endian .bin/.md ROM");
     }
+    /* Qualified Sega Classics Steam image: only the locked-on S3 region
+     * byte differs. Verify the complete canonical buffer after normalizing
+     * that known alias; never write to the owner's cartridge file. */
+    if(i==S2_RESOURCE_SK && rom[0x2001F0]=='J') rom[0x2001F0]='U';
     uint8_t hash[32]; char hex[65]; recompui_sha256_compute(rom, size, hash);
     for (unsigned n = 0; n < 32; ++n) snprintf(hex + n * 2, 3, "%02x", hash[n]);
     if (strcmp(hex, hashes[i])) { free(rom); return fail(i, "Wrong donor revision (SHA-256 mismatch)"); }
     if (i==S2_RESOURCE_KIS2) {
-        int ok=s2_knuckles_art_decode(rom,size,&knuckles_art); free(rom);
-        if (!ok) return fail(i,"Invalid original Knuckles artwork");
+        S2KnucklesArt *art=calloc(1,sizeof *art);
+        S2StageLayouts *stages=calloc(1,sizeof *stages);
+        S2KnucklesEnding ending={0};
+        int ok=art && stages && s2_knuckles_art_decode(rom,size,art) &&
+            s2_stage_layouts_decode(rom,size,stages) && s2_knuckles_ending_decode(rom,size,&ending);
+        free(rom);
+        if(ok) {knuckles_art=*art;knuckles_stages=*stages;knuckles_ending=ending;}
+        free(art);free(stages);
+        if (!ok) return fail(i,"Invalid original Knuckles artwork or stages");
         owner_verified[i]=1; memmove(resource_path(i),path,strlen(path)+1);
         prepare_knuckles_water();
         errors[i][0]=0; return 1;
@@ -136,6 +151,8 @@ void s2_resources_shutdown(void)
     memset(owner_verified,0,sizeof owner_verified);
     s2_save_assets_free(&save_assets);
     memset(&knuckles_art,0,sizeof knuckles_art);
+    memset(&knuckles_stages,0,sizeof knuckles_stages);
+    memset(&knuckles_ending,0,sizeof knuckles_ending);
     memset(&amy_special,0,sizeof amy_special);
     memset(&amy_items,0,sizeof amy_items);
 }
@@ -155,7 +172,7 @@ void s2_resources_load(const char *settings_path)
             size_t n = strlen(path);
             snprintf(path + n, sizeof path - n, "assets/characters/%s",i==S2_RESOURCE_AMY?"amy-1.7.1.bin":"megamix-v3.bin");
             s2_resource_set(i, path);
-        } else fail(i, i==S2_RESOURCE_KIS2?"Optional original Knuckles in Sonic 2 ROM not selected":"Select your stock Sonic 3 & Knuckles combined ROM");
+        } else fail(i, i==S2_RESOURCE_KIS2?"Select the original Knuckles in Sonic 2 ROM for a Knuckles-led campaign":"Select your supported Sonic 3 & Knuckles combined ROM");
     }
 }
 int s2_resource_verified(unsigned i) { return i==S2_RESOURCE_KIS2?owner_verified[i]:i < S2_RESOURCE_COUNT && banks[i].count != 0; }
@@ -163,6 +180,8 @@ int s2_resource_owner_verified(unsigned i) { return i<S2_RESOURCE_COUNT && owner
 const S2SaveAssets *s2_resource_save_assets(void) { return owner_verified[S2_RESOURCE_SK]?save_assets:NULL; }
 const S2DonorBank *s2_resource_bank(unsigned i) { return i!=S2_RESOURCE_KIS2 && s2_resource_verified(i) ? &banks[i] : NULL; }
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return owner_verified[S2_RESOURCE_KIS2]?&knuckles_art:NULL; }
+const S2StageLayouts *s2_resource_knuckles_stages(void) { return owner_verified[S2_RESOURCE_KIS2]?&knuckles_stages:NULL; }
+const S2KnucklesEnding *s2_resource_knuckles_ending(void) { return owner_verified[S2_RESOURCE_KIS2]?&knuckles_ending:NULL; }
 const S2SpecialStageArt *s2_resource_amy_special(void) { return owner_verified[S2_RESOURCE_AMY]?&amy_special:NULL; }
 const S2ItemArt *s2_resource_amy_items(void) { return owner_verified[S2_RESOURCE_AMY]?&amy_items:NULL; }
 const S2DonorBank *s2_resource_shadow_bank(void) { return s2_resource_verified(S2_RESOURCE_MEGAMIX) && shadow_bank.count?&shadow_bank:NULL; }
