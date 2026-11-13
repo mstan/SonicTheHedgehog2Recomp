@@ -1,8 +1,12 @@
 # Character donor evidence and host boundary
 
-The stock Sonic 2 image remains the sole guest ROM. Donors supply gameplay
-sprite art, mappings, palettes and behavior references. Their titles, zones,
-save rules, global patches and executable entry points must not run in the host.
+The stock Sonic 2 image remains the sole guest executable. Verified donors
+supply character art, mappings, palettes and behavior references. A Knuckles-led
+campaign additionally loads the original Knuckles in Sonic 2 object placements.
+Its terrain layouts, collision data and rings are identical to Sonic 2's.
+Both native and expanded-view loaders use the selected campaign's tables;
+native object execution still owns each world tick. Other leads and competition
+retain Sonic 2's placements. Donor executable entry points are never run.
 
 ## Verified revisions
 
@@ -147,9 +151,10 @@ at `837f93a` and consumer master at `f5dd907`.
 
 ## Original Knuckles HUD artwork
 
-Knuckles uses the verified S3&K donor for gameplay. The optional original
-**Knuckles in Sonic 2 ROM** resource under that feature supplies the exact
-lock-on HUD artwork. Its extra 256 KiB section contains life-counter Nemesis
+Knuckles uses the verified S3&K donor for gameplay art. The original
+**Knuckles in Sonic 2 ROM** resource supplies the campaign and lock-on HUD art.
+It is required for a Knuckles-led campaign; a companion or competition character
+can still use S3&K alone. Its extra 256 KiB section contains life-counter Nemesis
 data at $33AC46 (250 bytes), shield/stars at $33AD40 (524 bytes) and monitor
 patch at $33B15E (146 bytes). Original palette $60BEA lies in its shared S&K
 section. Bindings match sonicretro/s2disasm `c336fede00092017f48c9d7851e0d3728c4fae2b`.

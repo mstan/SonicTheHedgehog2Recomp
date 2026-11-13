@@ -45,7 +45,7 @@ SRAM. These features are local-only.
 ## Optional Sonic 3-style save menu
 
 In **Mods -> S3&K**, enable **Sonic 3-style Save Menu** and select your
-original combined Sonic 3 & Knuckles ROM. This is disabled by default and
+supported stock or Sega Classics Steam Sonic 3 & Knuckles ROM. This is disabled by default and
 independent of the Knuckles character option. The donor supplies menu artwork;
 Sonic 2 remains the running game.
 
@@ -168,17 +168,25 @@ slots. Donor characters, larger parties, transitions, menus, special stages and
 native split-screen retain ordinary completed images. Changing scenes, loading
 a state or changing the output size discards incompatible presentation history.
 
-Under **Mods -> Practice**, **Infinite lives** and **Infinite time** are separate,
+Under **Mods -> Practice**, **Infinite lives**, **Infinite time** and **Easy Debug Mode** are separate,
 off by default settings. Lives remain after death/retry; the stage timer stops
 at 9:59. Drowning, death animations and competition round countdowns retain
 their normal rules. These settings persist without changing campaign SRAM.
+Easy Debug enables the original item-placement controls without entering a
+sound-test code: B enters or leaves placement, A changes the item and C places it.
+
+A Knuckles-led campaign requires the original combined **Sonic & Knuckles +
+Sonic 2** image in the Knuckles feature's **Knuckles in Sonic 2 ROM** resource.
+Player 1 then selects the original KiS2 object placements automatically. Terrain,
+rings and collision remain the shared Sonic 2 data. Other leads and competition
+keep their normal stages; a Knuckles companion can use the S3&K donor alone.
 
 ## Experimental widescreen mod
 
 In the launcher's **Mods** page, enable **Widescreen** and choose **Adaptive
 (fit window)**, **16:9**, **21:9**, or **32:9**. The same controls are available
-in the in-game settings overlay. It is disabled by default; selecting an
-aspect alone does not enable it. Settings persist between launches.
+in the in-game settings overlay. Fresh profiles default to adaptive Fit to
+screen. Existing saved aspect and enable choices persist between launches.
 
 This uses a Sonic-2-specific custom renderer through the shared framework's
 Sonic 1 mod interface. It reconstructs scenery from the real stage data,

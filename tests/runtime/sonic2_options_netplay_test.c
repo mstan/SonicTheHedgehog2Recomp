@@ -18,6 +18,8 @@ void s2_resources_load(const char *path) { (void)path; }
 int s2_resource_verified(unsigned i) { (void)i; return 1; }
 const S2DonorBank *s2_resource_shadow_bank(void) { static S2DonorBank b; return &b; }
 const S2SaveAssets *s2_resource_save_assets(void) { return NULL; }
+static int stages_ready=1;
+const S2StageLayouts *s2_resource_knuckles_stages(void) { static S2StageLayouts s;return stages_ready?&s:NULL; }
 void s2_save_menu_load(const char *path) { (void)path; }
 void s2_runtime_load(void) {}
 void s2_runtime_overlay(const GVDP *v, int line, uint32_t *out, int width)
@@ -90,17 +92,17 @@ int main(void)
     assert(s2_party.mighty_enabled && !strcmp(s2_party.roster.character[0],"shadow"));
     assert(!strcmp(s2_party.roster.character[1],"mighty"));
     char config[64]; s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=4,5,6,6 m=0011 c=00"));
+    assert(!strcmp(config,"r=4,5,6,6 m=0011 k=0 d=0 c=00"));
     assert(s2_netplay_config_adopt("r=absent,mighty m=000")==-1 && s2_party.mighty_enabled);
     assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty m=1111")==0);
     assert(s2_party.roster.slots==6 && !strcmp(s2_party.roster.character[5],"mighty"));
     s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=4,1,0,2,3,5 m=1111 c=00"));
+    assert(!strcmp(config,"r=4,1,0,2,3,5 m=1111 k=0 d=0 c=00"));
     assert(s2_netplay_config_adopt(config)==0 && s2_party.roster.slots==6);
     assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty,sonic m=1111")==-1);
     assert(s2_netplay_config_adopt("r=knuckles,shadow,knuckles,knuckles,knuckles,knuckles m=1111")==0);
     s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=3,4,3,3,3,3 m=1111 c=00"));
+    assert(!strcmp(config,"r=3,4,3,3,3,3 m=1111 k=0 d=0 c=00"));
     assert(strlen(config)<48 && s2_netplay_config_adopt(config)==0);
     s2_party.infinite_lives=1;s2_party.infinite_time=1;
     s2_netplay_config_image(config,sizeof config);assert(strstr(config," c=11"));
@@ -117,6 +119,19 @@ int main(void)
     assert(s2_netplay_config_adopt("r=0,1 m=0000 c=00")==-1);
     assert(!memcmp(&keep,&s2_party,sizeof keep));
     sound_netplay_allowed=1;
+    stages_ready=0;
+    keep=s2_party;
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=1 c=00")==-1);
+    assert(!memcmp(&keep,&s2_party,sizeof keep));
+    stages_ready=1;
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=1 c=00")==0 && s2_party.knuckles_campaign_enabled);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=0 c=00")==0 && !s2_party.knuckles_campaign_enabled);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=2 c=00")==-1);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=0 d=1 c=00")==0 && s2_party.easy_debug);
+    s2_netplay_config_image(config,sizeof config);assert(strstr(config," d=1 "));
+    assert(s2_netplay_config_adopt(config)==0 && s2_party.easy_debug);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 k=0 d=2 c=00")==-1);
+    s2_party=keep;
     g_ram[0xF600]=0x24;
     assert(!s2_options_hook(0x8FCC));
     for(unsigned row=0;row<SOUND_ROW;++row)press(0,2);
@@ -134,6 +149,15 @@ int main(void)
     press(0,16); /* B returns to the title even on Level Select. */
     assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==4);
     assert(s2_roster_set(&s2_party.roster,4,"amy") && s2_roster_set(&s2_party.roster,5,"mighty"));
+    s2_roster_slots(&s2_party.roster,2);strcpy(s2_party.roster.character[0],"knuckles");strcpy(s2_party.roster.character[1],"tails");
+    s2_party.s3k_enabled=s2_party.knuckles_campaign_enabled=1;stages_ready=0;
+    g_cpu.D[0]=0;g_ram[0xF600]=4;
+    assert(s2_options_hook(0x3CCE)==1 && g_ram[0xF600]==0x24 && s_notice==NOTICE_KIS2);
+    assert(!strcmp(s2_party.roster.character[0],"knuckles"));
+    g_cpu.D[0]=1;assert(!s2_options_hook(0x3CF6)); /* VS needs no campaign donor. */
+    s_cursor=LEVEL_ROW;unsigned before_saves=saves;
+    assert(s2_options_hook(0x909A)==1 && tail_pc==0x9060 && saves==before_saves);
+    stages_ready=1;assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==0x28);
     puts("PASS online four-character Options, visible overlay, rollback replay, no online disk writes, offline save");
     return 0;
 }

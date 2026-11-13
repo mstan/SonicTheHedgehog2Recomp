@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+int s2_runtime_state_needs_frame_end(void);
 #include "sonic2_party.h"
 #include "video/genesis_vdp.h"
 typedef struct S2RuntimeSprite {
@@ -26,6 +27,8 @@ int s2_runtime_state_load(const void *data,size_t size,int apply);
 int s2_runtime_state_at_boundary(void);
 int s2_runtime_hook(uint32_t pc);
 void s2_runtime_load(void);
+void s2_runtime_prepare_stages(void);
+uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act);
 void s2_runtime_capture(void);
 int s2_runtime_campaign_online(void);
 /* Read-only world positions, including the dynamically reserved P3/P4 slots. */

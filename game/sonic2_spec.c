@@ -56,6 +56,7 @@ extern void func_000F54(void);   /* HBlank IRQ4   ($000F54) */
 
 static void s2_call_entry_point(void) {
     s2_sound_post_reset();
+    s2_runtime_prepare_stages();
     recomp_call_addr(0x000206u);
 }
 static void s2_call_resume(uint32_t pc) {
@@ -63,6 +64,7 @@ static void s2_call_resume(uint32_t pc) {
      * Rebuild only immutable ROM-derived banks here; restored sequencer and
      * Z80 state already belong to the snapshot and must stay intact. */
     s2_sound_post_reset();
+    s2_runtime_prepare_stages();
     recomp_call_addr(pc);
 }
 static void s2_call_vblank(void)      { s2_video_vblank(); recomp_call_addr(0x000408u); }
@@ -251,10 +253,14 @@ static const GameDebugCommand sonic2_commands[] = {
 static int s2_instruction_hook(uint32_t pc)
 {
     if (s2_sound_hook(pc)) return 1;
+    if ((pc==0x3CCE || pc==0x3CF6) && s2_options_hook(pc)) return 1;
     if (s2_save_menu_hook(pc)) return 1;
     if (pc==0x16604) s2_runtime_capture();
     switch (pc) {
     case 0x111C: /* ReadJoypads: physical-controller generation */
+    case 0x9C7C: case 0x9E14: case 0xABE2: case 0xAC30:
+    case 0x3AC56: case 0x3AB46: case 0xA554: case 0x1331C:
+    case 0x17AF0: /* campaign object-layout selection */
     case 0x1B248: case 0x1CCA6: case 0x1DAAC:
     case 0x40DEA: case 0x40F22: case 0x40F62: case 0x40F9A:
     case 0x157C4:
@@ -311,6 +317,7 @@ const GameSpec g_game_spec = {
     .state_load = s2_runtime_state_load,
     .state_at_boundary = s2_runtime_state_at_boundary,
     .state_boundary_at_frame_end = 1,
+    .state_boundary_needs_frame_end = s2_runtime_state_needs_frame_end,
     .main_cpu_divisor       = s2_video_main_cpu_divisor,
     .display_name           = "Sonic the Hedgehog 2",
     .short_name             = "Sonic2",

@@ -43,6 +43,7 @@ s2_test(sonic2_campaign_file "${S2_GAME}/sonic2_campaign.c" "${S2_GAME}/sonic2_c
     "${S2_GAME}/sonic2_campaign_file.c" "${S2_GAME}/sonic2_party.c")
 target_include_directories(sonic2_campaign_file_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
 s2_test(sonic2_party "${S2_GAME}/sonic2_party.c")
+s2_test(sonic2_stage_layouts "${S2_GAME}/sonic2_stage_layouts.c")
 s2_test(sonic2_options_netplay "${S2_GAME}/sonic2_party.c")
 target_compile_definitions(sonic2_options_netplay_test PRIVATE GENESIS_HAS_RECOMP_NET=1)
 target_include_directories(sonic2_options_netplay_test PRIVATE "${RUNNER_ROOT}/external/superzazu")
@@ -58,7 +59,7 @@ s2_test(sonic2_super "${S2_GAME}/sonic2_super.c")
 s2_test(sonic2_shadow "${S2_GAME}/sonic2_shadow.c" "${S2_GAME}/sonic2_character.c" "${S2_GAME}/sonic2_super.c")
 s2_test(sonic2_mighty "${S2_GAME}/sonic2_mighty.c" "${S2_GAME}/sonic2_shadow_roster.c"
     "${S2_GAME}/sonic2_party.c" "${S2_GAME}/sonic2_super.c"
-    "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_donor_assets.c"
+    "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_stage_layouts.c" "${S2_GAME}/sonic2_knuckles_ending.c" "${S2_GAME}/sonic2_donor_assets.c"
     "${S2_GAME}/sonic2_save_assets.c" "${S2_GAME}/sonic2_campaign.c"
     "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
 target_include_directories(sonic2_mighty_test PRIVATE "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
@@ -76,7 +77,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/recomp-ui/src/recomp_launcher.h")
     endforeach()
     s2_test(sonic2_resources "${S2_GAME}/sonic2_party.c" "${S2_GAME}/sonic2_campaign.c"
         "${S2_GAME}/sonic2_campaign_store.c" "${S2_GAME}/sonic2_campaign_file.c"
-        "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_save_assets.c"
+        "${S2_GAME}/sonic2_resources.c" "${S2_GAME}/sonic2_stage_layouts.c" "${S2_GAME}/sonic2_knuckles_ending.c" "${S2_GAME}/sonic2_save_assets.c"
         "${S2_GAME}/sonic2_donor_assets.c" "${S2_GAME}/sonic2_mods.c" "${S2_SHA}")
     target_compile_definitions(sonic2_resources_test PRIVATE RECOMP_LAUNCHER=1 GENESIS_HAS_RECOMP_NET=1)
     target_include_directories(sonic2_resources_test PRIVATE

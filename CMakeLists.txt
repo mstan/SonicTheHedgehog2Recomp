@@ -213,6 +213,8 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_prototype_pcm.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_donor_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_resources.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_stage_layouts.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_knuckles_ending.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_draw.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_save_menu.c"

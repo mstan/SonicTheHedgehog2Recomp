@@ -97,6 +97,9 @@ kind = "game_hook"
 addr = 0x3CF4 # title 1 PLAYER reset complete, before RTS
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x3CCE # one-player campaign donor guard, including A+Start
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x142AE # results next act + inactive flag committed
 kind = "game_hook"
 [[widescreen_site]]
@@ -1012,6 +1015,36 @@ addr = 0x1AF2C # Knuckles gliding uses the original KiS2 floor acceptance
 kind = "game_hook"
 
 # Optional ROM-derived sound driver; stock execution remains the default.
+[[widescreen_site]]
+addr = 0x3AC56 # original Knuckles waiting pose on the Tornado
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x3AB46 # original Knuckles pose after boarding the Tornado
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0xA554 # original Knuckles pose on the ending plane
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x1331C # original Knuckles ending palette in the native fade controller
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x9E14 # ending palette source
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0xABE2 # ending character artwork
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0xAC30 # ending bird selection
+kind = "game_hook"
+
+[[widescreen_site]]
+addr = 0x17AF0 # original object-manager cursor initialization
+kind = "game_hook"
+
 [[widescreen_site]]
 addr = 0xEC000
 kind = "game_hook"
