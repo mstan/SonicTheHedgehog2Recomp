@@ -24,7 +24,7 @@ def main():
              '--exclude-module','matplotlib']
     separator=';'if sys.platform=='win32'else':'
     sources=[]
-    for name in ['import_sound_donor.py','import_cd_sound_donor.py','trilogy/scd_media.py','trilogy/scd_iso.py']:
+    for name in ['import_sound_donor.py','import_custom_smps.py','assemble_custom_smps.py','import_cd_sound_donor.py','trilogy/scd_media.py','trilogy/scd_iso.py']:
         source=ROOT/'tools'/name;sources.append(source)
         command+=['--add-data',str(source)+separator+str(Path('tools')/Path(name).parent)]
     for name in ['owned_media.py','disc_image.py','sgcd_owned_extract.py']:

@@ -74,6 +74,12 @@ int main(void)
     assert(!strcmp(s2_party.roster.character[3], "none"));
     press(1, 2); press(1, 4);
     assert(snapshot(replay, sizeof replay) == len && !memcmp(first, replay, len));
+    memcpy(first,replay,len);memset(first,255,sizeof(unsigned));
+    unsigned saved_cursor=s_cursor;
+    S2StateIO invalid={first,len,0,1,1};s2_options_rb_state(&invalid);
+    assert(!invalid.ok&&s_cursor==saved_cursor);
+    invalid.pos=0;invalid.mode=2;invalid.ok=1;s2_options_rb_state(&invalid);
+    assert(!invalid.ok&&s_cursor==saved_cursor);
 
     static GVDP vdp;
     uint32_t pixels[320] = {0};
@@ -92,17 +98,17 @@ int main(void)
     assert(s2_party.mighty_enabled && !strcmp(s2_party.roster.character[0],"shadow"));
     assert(!strcmp(s2_party.roster.character[1],"mighty"));
     char config[64]; s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=4,5,6,6 m=0011 k=0 d=0 c=00"));
+    assert(!strcmp(config,"r=4,5,6,6 m=0011 k=0 d=0 f=0 c=00"));
     assert(s2_netplay_config_adopt("r=absent,mighty m=000")==-1 && s2_party.mighty_enabled);
     assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty m=1111")==0);
     assert(s2_party.roster.slots==6 && !strcmp(s2_party.roster.character[5],"mighty"));
     s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=4,1,0,2,3,5 m=1111 k=0 d=0 c=00"));
+    assert(!strcmp(config,"r=4,1,0,2,3,5 m=1111 k=0 d=0 f=0 c=00"));
     assert(s2_netplay_config_adopt(config)==0 && s2_party.roster.slots==6);
     assert(s2_netplay_config_adopt("r=shadow,tails,sonic,amy,knuckles,mighty,sonic m=1111")==-1);
     assert(s2_netplay_config_adopt("r=knuckles,shadow,knuckles,knuckles,knuckles,knuckles m=1111")==0);
     s2_netplay_config_image(config,sizeof config);
-    assert(!strcmp(config,"r=3,4,3,3,3,3 m=1111 k=0 d=0 c=00"));
+    assert(!strcmp(config,"r=3,4,3,3,3,3 m=1111 k=0 d=0 f=0 c=00"));
     assert(strlen(config)<48 && s2_netplay_config_adopt(config)==0);
     s2_party.infinite_lives=1;s2_party.infinite_time=1;
     s2_netplay_config_image(config,sizeof config);assert(strstr(config," c=11"));
@@ -131,6 +137,10 @@ int main(void)
     s2_netplay_config_image(config,sizeof config);assert(strstr(config," d=1 "));
     assert(s2_netplay_config_adopt(config)==0 && s2_party.easy_debug);
     assert(s2_netplay_config_adopt("r=0,1 m=0000 k=0 d=2 c=00")==-1);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 f=1 c=00")==0&&s2_party.knuckles_flow);
+    s2_netplay_config_image(config,sizeof config);assert(strlen(config)<48&&strstr(config," f=1 "));
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 f=2 c=00")==-1&&s2_party.knuckles_flow);
+    assert(s2_netplay_config_adopt("r=0,1 m=0000 c=00")==0&&!s2_party.knuckles_flow);
     s2_party=keep;
     g_ram[0xF600]=0x24;
     assert(!s2_options_hook(0x8FCC));
@@ -158,6 +168,14 @@ int main(void)
     s_cursor=LEVEL_ROW;unsigned before_saves=saves;
     assert(s2_options_hook(0x909A)==1 && tail_pc==0x9060 && saves==before_saves);
     stages_ready=1;assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==0x28);
+    net_active=0;g_ram[0xF600]=0x24;s2_options_hook(0x8FCC);
+    s2_party.presentation_enabled=s2_party.options_panel_fade=s2_party.options_slow_backdrop=1;
+    unsigned old_cursor=s_cursor;press(0,2);assert(s_cursor!=old_cursor&&!s_panel_age);
+    for(unsigned i=0;i<6;++i)s2_options_hook(0x111C);
+    assert(s_panel_age==6);
+    s_bg_frame=1;g_ram[0xF7F1]=2;g_ram[0xF7F0]=5;press(0,0);
+    assert(g_ram[0xF7F0]==11);g_ram[0xF7F0]=10;press(0,0);assert(g_ram[0xF7F0]==10);
+    net_active=1;g_ram[0xF7F1]=3;g_ram[0xF7F0]=5;press(0,0);assert(g_ram[0xF7F0]==5);
     puts("PASS online four-character Options, visible overlay, rollback replay, no online disk writes, offline save");
     return 0;
 }

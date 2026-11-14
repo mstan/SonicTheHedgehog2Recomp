@@ -56,11 +56,15 @@ int main(void)
     CHECK(s2_roster_set(r,1,"amy") && s2_roster_set(r,1,"tails"));
     s2_party.infinite_lives=s2_party.infinite_time=s2_party.easy_debug=1;
     s2_party.save_menu_enabled=1;
+    s2_party.knuckles_flow=s2_party.presentation_enabled=s2_party.save_entry_warp=1;
+    s2_party.save_card_act=s2_party.title_card_colors=s2_party.options_panel_fade=s2_party.options_slow_backdrop=1;
     strcpy(s2_party.kis2_path,"owner-kis2.bin");
     CHECK(s2_party_save());
     s2_party_load("party-test-settings.ini");
     CHECK(s2_party.save_menu_enabled && !s2_party.s3k_enabled);
     CHECK(s2_party.infinite_lives && s2_party.infinite_time && s2_party.easy_debug);
+    CHECK(s2_party.knuckles_flow&&s2_party.presentation_enabled&&s2_party.save_entry_warp);
+    CHECK(s2_party.save_card_act&&s2_party.title_card_colors&&s2_party.options_panel_fade&&s2_party.options_slow_backdrop);
     CHECK(!strcmp(s2_party.kis2_path,"owner-kis2.bin"));
     CHECK(s2_character_register(&amy) && s2_character_register(&knuckles));
     CHECK(!s2_roster_validate(r) && !strcmp(r->character[3],"knuckles"));

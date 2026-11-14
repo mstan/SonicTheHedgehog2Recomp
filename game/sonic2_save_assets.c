@@ -260,6 +260,8 @@ int s2_native_hud_art_decode(const uint8_t *r,size_t size,S2NativeHudArt *out)
             !nemesis(r+at[i],size-at[i],a.life[i],sizeof a.life[i])) return 0;
     if (be16(r+0x7C43A)!=88 ||
         !nemesis(r+0x7C43A,size-0x7C43A,a.font,sizeof a.font)) return 0;
+    if ((be16(r+0x7D58A)&0x7FFF)!=92 ||
+        !nemesis(r+0x7D58A,size-0x7D58A,a.title_font,sizeof a.title_font)) return 0;
     memcpy(a.numbers,r+0x4164C,sizeof a.numbers);
     *out=a; return 1;
 }
@@ -309,8 +311,33 @@ int s2_amy_item_art_decode(const uint8_t *r,size_t size,S2ItemArt *out)
      * loader at $786A and its results PLC select the same mini atlas. */
     if ((be16(r+0x96002)&0x7FFF)!=12 || (be16(r+0x98D78)&0x7FFF)!=12 ||
         !nemesis(r+0x96002,256,life,sizeof life) ||
-        !nemesis(r+0x98D78,334,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
+        !nemesis(r+0x98D78,334,candidate.continue_icons,sizeof candidate.continue_icons) ||
+        (be16(r+0x968DA)&0x7FFF)!=78 ||
+        !nemesis(r+0x968DA,size-0x968DA,candidate.signpost,sizeof candidate.signpost)) return 0;
+    /* Original PLC $451D0 loads this complete atlas at $8680. Its six
+     * mappings at $1A35A exactly retain the host's normal sign geometry. */
+    candidate.signpost_tiles=78;
     memcpy(candidate.life,life,sizeof candidate.life);
+    *out=candidate; return 1;
+}
+int s2_megamix_item_art_decode(const uint8_t *r,size_t size,unsigned shadow,S2ItemArt *out)
+{
+    if (!r || !out || size!=1283224 || shadow>1) return 0;
+    S2ItemArt candidate={0};
+    /* Verified v3 PLC $20/$21 loads these complete twelve-tile life strips
+     * at $FA80. The first four tiles are also the original monitor face. */
+    size_t at=shadow?0x3BAF4:0x3B9EE;
+    if ((be16(r+at)&0x7FFF)!=12 ||
+        !nemesis(r+at,size-at,candidate.life,sizeof candidate.life)) return 0;
+    uint8_t sign[58*32];at=shadow?0x3DD88:0x3D8F2;
+    if ((be16(r+at)&0x7FFF)!=58 || !nemesis(r+at,size-at,sign,sizeof sign)) return 0;
+    /* v3 PLC $24/$25 uses the same48x32 face and rotating pieces as S2,
+     * but places the two pole tiles after its face. Normalize those tile
+     * ranges only; native object execution, mappings and SAT order stay put. */
+    memcpy(candidate.signpost,sign,32*32);
+    memcpy(candidate.signpost+32*32,sign+56*32,2*32);
+    memcpy(candidate.signpost+34*32,sign+32*32,24*32);
+    candidate.signpost_tiles=58;
     *out=candidate; return 1;
 }
 unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,

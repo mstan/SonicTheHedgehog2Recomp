@@ -230,7 +230,8 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
                 if (px>=0 && px<width) out[px]=a->stages_ready?
                     genesis_dac_cram_to_argb(a->stages[slot->stage][(line-16)*80+px-x+40],GENESIS_DAC_NORMAL):color(a,0,0,1);
             const S2CampaignStage *s=&s2_campaign_stages[slot->stage];
-            if (picked) snprintf(label,sizeof label,"ZONE %02u",s->zone+1);
+            if (picked && v->show_act) snprintf(label,sizeof label,"ZONE %02u.%u",s->zone+1,s->act);
+            else if (picked) snprintf(label,sizeof label,"ZONE %02u",s->zone+1);
             else snprintf(label,sizeof label,"CLEAR");
             centered(a,x,80,label,line,out,width);
             counters(a,slot,v->counter_character,x,line,out,width);

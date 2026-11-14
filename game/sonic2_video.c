@@ -805,6 +805,7 @@ static int knuckles_palette_tile(unsigned tile)
 }
 static int amy_item_tile(unsigned tile)
 {
+    if(tile>=0x434 && tile<0x482)return 1;
     return (tile>=0x7D4 && tile<0x7D8) || (tile>=0x5F4 && tile<0x600);
 }
 #if OWN_BACKEND
@@ -915,9 +916,10 @@ void s2_video_prepare_knuckles_items(void)
     const uint16_t *special_palette=NULL;
     const S2SpecialArtFrame *special=special_actor_art(&special_palette);
     const S2SpecialStageArt *amy=!strcmp(s2_party.roster.character[0],"amy")?s2_resource_amy_special():NULL;
-    const S2ItemArt *amy_items=s2_party.amy_enabled && !strcmp(s2_party.roster.character[0],"amy")?
-        s2_resource_amy_items():NULL;
-    const S2DonorBank *amy_bank=amy_items?s2_resource_bank(S2_RESOURCE_AMY):NULL;
+    const S2ItemArt *amy_items=s2_resource_primary_items();
+    const S2DonorBank *amy_bank=!amy_items?NULL:
+        !strcmp(s2_party.roster.character[0],"shadow")?s2_resource_shadow_bank():
+        s2_resource_bank(!strcmp(s2_party.roster.character[0],"amy")?S2_RESOURCE_AMY:S2_RESOURCE_MEGAMIX);
     if(!amy_bank)amy_items=NULL;
     if (art!=cached || special!=cached_special || amy_items!=cached_amy_items) {
         memset(patterns,0,sizeof patterns);
@@ -943,10 +945,17 @@ void s2_video_prepare_knuckles_items(void)
                 item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
         }
         if(amy_items) {
+            if(amy_items->signpost_tiles && amy_items->signpost_tiles<=78) {
+                memcpy(patterns+0x434*32,amy_items->signpost,amy_items->signpost_tiles*32);
+                for(unsigned t=0x434;t<0x434+amy_items->signpost_tiles;++t)
+                    item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
+            }
             memcpy(patterns+0x7D4*32,amy_items->life,sizeof amy_items->life);
-            memcpy(patterns+0x5F4*32,amy_items->continue_icons,sizeof amy_items->continue_icons);
             for(unsigned t=0x7D4;t<0x7D8;++t)item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
-            for(unsigned t=0x5F4;t<0x600;++t)item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
+            if(!strcmp(s2_party.roster.character[0],"amy")) {
+                memcpy(patterns+0x5F4*32,amy_items->continue_icons,sizeof amy_items->continue_icons);
+                for(unsigned t=0x5F4;t<0x600;++t)item_lines[t]=GVDP_EXT_SPRITE_FORCE|2;
+            }
         }
         if(special)for(unsigned f=0;f<S2_SPECIAL_FRAMES;++f) {
             memcpy(patterns+f*S2_SPECIAL_TILES*32,special[f].tiles,S2_SPECIAL_TILES*32);
@@ -2180,6 +2189,7 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
     int plane_y=unwrap(v->vsram[0]+line,cy+y);
     if (world) for (int col=0;col<128;++col)
         if(s_world_frame[0x8080+(((by>>7)&15)*256)+col])bg_width=(col+1)*128;
+    uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
     if(world && s_frame_zone==0)
         bg_base=-margin-hs_b+ehz_2p_parallax(left+margin,y)-ehz_2p_parallax(camera,y);
@@ -2366,6 +2376,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         s_frame_htz_valid=level && origin!=(width-nw)/2 && s_frame_zone==7 && !g_ram[0xEEBC] &&
             htz_display_phase(&s_video_frame,native_camera,ram16(0xA822),&s_frame_htz_phase);
     }
+    uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
     if(level && s_frame_zone==0) {
         int margin=(width-nw)/2;
@@ -2414,10 +2425,12 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     for(int x=0;x<width;++x) {
         int nx=x-origin,wx=level?nx+camera:nx-hs_a;
         int reference_bx=nx-hs_b,bx=bg_base+x;
-        /* MenuScreen loads only 40 columns of its 64-column plane. Repeat
-         * the populated composition instead of exposing the unused cells. */
+        /* MenuScreen loads 40 columns, ending partway through its six-column
+         * lettering pattern. Continue that pattern beyond the populated map;
+         * repeating the 320-pixel crop would join two incomplete words. Keep
+         * every original viewport cell, including its palette attributes. */
         if (!level && s_render->frame_menu_background) {
-            bx%=320; if (bx<0) bx+=320;
+            if (bx<0 || bx>=320) { bx%=48; if (bx<0) bx+=48; bx+=48; }
         }
         if(!fg.remaining) {
             uint16_t attr=level?world_attr(s_world_frame,wx,wy,0):plane_attr(v,base_a,nx-hs_a,line+(v->vsram[0]&1023));
@@ -2468,15 +2481,11 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         uint8_t p=front?ap:bp;
         out[x]=p?palette[p]:backdrop;
         if(slot_palette && p && (front?(fg_slot && a==fg.attr):bg_slot))out[x]=slot_palette[p&15];
-        if (s_frame_card && (a&2047)>=0x5DA && (a&2047)<=0x5DB && ap==4 &&
-            s2_party.s3k_enabled && !strcmp(s2_party.roster.character[0],"knuckles")) {
-            const S2DonorBank *bank=s2_resource_bank(S2_RESOURCE_SK);
-            if (bank) {
-                uint32_t green=genesis_dac_cram_to_argb(bank->palette[5],GENESIS_DAC_NORMAL);
-                unsigned gain=palette[4]&255;
-                out[x]=0xFF000000u|((((green>>16)&255)*gain/255)<<16)|
-                    ((((green>>8)&255)*gain/255)<<8)|((green&255)*gain/255);
-            }
+        if (card_ink && s_frame_card && (a&2047)>=0x5DA && (a&2047)<=0x5DB && (ap==3 || ap==4)) {
+            uint32_t color=genesis_dac_cram_to_argb(card_ink,GENESIS_DAC_NORMAL);
+            unsigned gain=palette[ap]&255;
+            out[x]=0xFF000000u|((((color>>16)&255)*gain/255)<<16)|
+                ((((color>>8)&255)*gain/255)<<8)|((color&255)*gain/255);
         }
         /* The half-pipe uses H32 plus shadow/highlight. Outside the original
          * track projection only planes are drawn, so plane priority alone
@@ -2851,8 +2860,8 @@ void s2_video_front_ui(const GVDP *v,int line,uint32_t *out,int width)
         else if(!best)front->serial=0;
     }
     if(!front->serial || !(front->ui_mask&(1u<<p)))return;
-    int donor_hud=!vs && !strcmp(s2_party.roster.character[0],"knuckles") &&
-        s2_resource_knuckles_art()!=NULL;
+    uint32_t hud_probe;
+    int donor_hud=!vs && s2_video_knuckles_hud_pixel(v,0x7D4,0,0,&hud_probe);
     int competition_hud=vs && s2_runtime_ui_font()!=NULL &&
         strcmp(s2_party.roster.character[p],p?"tails":"sonic");
     int cell=(v->reg[12]&6)==6?16:8,slot=0;uint8_t covered[320]={0};
@@ -2905,6 +2914,23 @@ static unsigned results_ink(const GVDP *v,unsigned tile,int x,int y,int letter_k
     unsigned local=(unsigned)(x/8*2+y/8),offset=(unsigned)(y&7)*4+(unsigned)(x&7)/2;
     const S2KnucklesArt *art=letter_k?s2_resource_knuckles_art():NULL;
     unsigned byte=art?art->font_k[local*32+offset]:v->vram[((tile+local)*32+offset)&65535u];
+    return x&1?byte&15:byte>>4;
+}
+static unsigned result_letter_width(char letter)
+{
+    return letter=='M' || letter=='W'?24:letter=='I'?8:16;
+}
+static unsigned result_letter_ink(const GVDP *v,char letter,int x,int y)
+{
+    /* TitleCardLetters indexes the original large broken-letter atlas in
+     * two-row columns. ENOZ remain in the native common title-card bank. */
+    static const uint8_t tiles[]={0,4,8,12,4,16,20,24,28,30,34,38,42,4,4,48,52,56,60,64,68,72,76,82,86,4};
+    unsigned common=letter=='E'?0x580:letter=='N'?0x584:letter=='O'?0x588:letter=='Z'?0x58C:0;
+    if(common)return results_ink(v,common,x,y,0);
+    const uint8_t *font=s2_runtime_title_font();
+    if(!font || letter<'A' || letter>'Z')return 0;
+    unsigned tile=tiles[letter-'A']+(unsigned)(x/8*2+y/8);
+    unsigned byte=font[tile*32+(unsigned)(y&7)*4+(unsigned)(x&7)/2];
     return x&1?byte&15:byte>>4;
 }
 void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int draw)
@@ -2964,22 +2990,23 @@ void s2_video_results_name(const GVDP *v,int line,uint32_t *out,int width,int dr
     const char *name=s_result_name.name;unsigned length=(unsigned)strlen(name);
     /* Keep the complete name/GOT row centered around its native five-letter
      * footprint. KiS2's eight-letter row advances its object by 24 pixels. */
-    int name_origin=origin+s_result_name.x+((int)length-5)*8;
-    int x0=name_origin+8-(int)length*16;
-    const uint8_t *font=s2_runtime_ui_font();
-    for(unsigned c=0;c<length;++c)for(int x=0;x<16;++x) {
-        int dx=x0+(int)c*16+x;if(dx<0 || dx>=width)continue;
+    int knuckles=!strcmp(name,"KNUCKLES") && s2_resource_knuckles_art()!=NULL;
+    int advance=0;
+    for(unsigned c=0;c<length;++c)advance+=knuckles?16:(int)result_letter_width(name[c]);
+    int name_origin=origin+s_result_name.x+(knuckles?((int)length-5)*8:(advance-72)/2);
+    int x0=name_origin+8-advance;
+    for(unsigned c=0;c<length;++c) {
+      int glyph_width=knuckles?16:(int)result_letter_width(name[c]);
+      for(int x=0;x<glyph_width;++x) {
+        int dx=x0+x;if(dx<0 || dx>=width)continue;
         unsigned ink=0;
-        if(!strcmp(name,"KNUCKLES") && s2_resource_knuckles_art()) {
+        if(knuckles) {
             static const unsigned tiles[]={0x5C6,0x584,0x5D8,0x5B4,0x5C6,0x5C2,0x580,0x5D0};
             ink=results_ink(v,tiles[c],x,y,name[c]=='K');
-        } else if(font) {
-            unsigned tile=14+(unsigned)(name[c]-'A');
-            unsigned byte=font[tile*32+(unsigned)(y/2)*4+(unsigned)(x/2)/2];
-            ink=(x/2)&1?byte&15:byte>>4;
-            if(ink) {out[dx]=genesis_dac_cram_to_argb(ink==1?0:v->cram[6],GENESIS_DAC_NORMAL);continue;}
-        }
+        } else ink=result_letter_ink(v,name[c],x,y);
         if(ink)out[dx]=genesis_dac_cram_to_argb(v->cram[ink],GENESIS_DAC_NORMAL);
+      }
+      x0+=glyph_width;
     }
     static const unsigned tiles[]={0x5B8,0x588,0x5D4};
     static const int offsets[]={16,32,47};
@@ -3014,20 +3041,34 @@ int s2_video_hud_origin(int width)
 }
 int s2_video_knuckles_hud_pixel(const GVDP *v,unsigned attr,int x,int y,uint32_t *color)
 {
-    const S2KnucklesArt *a=s2_resource_knuckles_art(); unsigned tile=attr&2047;
-    if (!a || native_demo() || !s2_party.s3k_enabled || strcmp(s2_party.roster.character[0],"knuckles") ||
-        tile<0x7D4 || tile>=0x7E0) return 0;
+    unsigned tile=attr&2047;
+    if (native_demo() || tile<0x7D4 || tile>=0x7E0) return 0;
+    const S2KnucklesArt *a=NULL;
+    const S2ItemArt *items=NULL;
+    const S2DonorBank *bank=NULL;
+    const char *id=s2_party.roster.character[0];
+    if (!strcmp(id,"knuckles") && s2_party.s3k_enabled) a=s2_resource_knuckles_art();
+    else {
+        items=s2_resource_primary_items();
+        bank=!strcmp(id,"shadow")?s2_resource_shadow_bank():
+            s2_resource_bank(!strcmp(id,"amy")?S2_RESOURCE_AMY:S2_RESOURCE_MEGAMIX);
+        if (!items || !bank) return 0;
+    }
+    if (!a && !items) return 0;
     x&=7; y&=7; if (attr&0x800) x^=7; if (attr&0x1000) y^=7;
     /* Column-major 2-row pieces: the live digits are tiles 9 and 11.
      * Tile 10 is the final name column, between the two digit tiles in VRAM.
      * Keep KiS2's complete K.T.E. name instead of borrowing Sonic's last glyph. */
     unsigned offset=tile-0x7D4;
-    const uint8_t *pixels=offset==9 || offset==11?v->vram+tile*32:a->life+offset*32;
+    const uint8_t *life=a?a->life:items->life;
+    const uint8_t *pixels=offset==9 || offset==11?v->vram+tile*32:life+offset*32;
     unsigned byte=pixels[y*4+x/2],ink=x&1?byte&15:byte>>4;
     *color=0; if (!ink) return 1;
     unsigned zone=g_ram[0xFE10];
-    const uint16_t *palette=s2_video_water_palette(v) && (zone==13 || zone==15)?
-        a->water_palette[zone==15]:a->palette;
+    int wet=s2_video_water_palette(v) && (zone==13 || zone==15);
+    const uint16_t *palette=a?(wet?a->water_palette[zone==15]:a->palette):
+        wet && bank->water_palette_count?(zone==15 && bank->water_palette_count>1?
+            bank->water_palette_alt:bank->water_palette):bank->palette;
     *color=genesis_dac_cram_to_argb(s2_video_donor_color(palette[ink]),GENESIS_DAC_NORMAL);
     return 1;
 }

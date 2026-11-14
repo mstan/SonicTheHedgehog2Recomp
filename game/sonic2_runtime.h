@@ -16,6 +16,7 @@ typedef struct S2RuntimePresentation {
     GVDP vdp;
     uint8_t world[65536];
     int active,vs,left,top,vs_left,vs_top,green_card;
+    uint16_t card_color;
 } S2RuntimePresentation;
 void s2_runtime_presentation_capture(S2RuntimePresentation *out);
 int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b);
@@ -45,3 +46,6 @@ int s2_runtime_knuckles_item(unsigned object);
 int s2_runtime_amy_item(unsigned object);
 int s2_runtime_shadow_star(unsigned object);
 const uint8_t *s2_runtime_ui_font(void);
+const uint8_t *s2_runtime_title_font(void);
+
+uint16_t s2_runtime_title_card_ink(void);

@@ -169,6 +169,9 @@ kind = "game_hook"
 addr = 0x111C # ReadJoypads: retain real polls across temporary actor input scopes
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x3BA8 # after native title timeout initialization
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x1B8A4 # Obj02: Tails character / host player role adapter
 kind = "game_hook"
 [[widescreen_site]]

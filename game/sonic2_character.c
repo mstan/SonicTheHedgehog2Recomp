@@ -87,6 +87,11 @@ static void knuckles_ledge_step(S2CharacterState *s, S2Motion *m)
 }
 static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
+    if(m->fluid_movement && !m->hurt && !m->control_locked && !(m->status&AIR) &&
+       m->animation==0x22 && (s->held&DOWN) && (s->pressed&JUMP)) {
+        /* Hand the new press to the native duck/spindash controller. */
+        s->special=S2_SK_NORMAL;m->animation=8;m->move_lock=0;
+    }
     /* CPZ's tube spring has its own native launch routine. Its Spring
      * animation transfers movement back to the original controller before
      * a retained climb/glide can replace the newly assigned velocity. */

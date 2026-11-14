@@ -19,29 +19,30 @@
 #include <string.h>
 static const RecompLauncherCModProvider *base;
 static char error[256];
-static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice" };
-static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)", "Practice" };
-static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug" };
+static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation" };
+static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences" };
+static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow" };
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
 {
-    if (p) for (int i = 0; i < 4; ++i)
+    if (p) for (int i = 0; i < 5; ++i)
         if (!strcmp(p, ids[i])) {
-            int feature=i==3?5:i==2?3:i;
+            int feature=i==4?8:i==3?5:i==2?3:i;
             if (!f || !strcmp(f, features[feature])) return feature;
             if (i==1 && !strcmp(f,features[2])) return 2;
+            if (i==1 && !strcmp(f,features[9])) return 9;
             if (i==2 && !strcmp(f,features[4])) return 4;
             if (i==3 && !strcmp(f,features[6])) return 6;
             if (i==3 && !strcmp(f,features[7])) return 7;
         }
     return -1;
 }
-static int *flag(int i) { return i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
+static int *flag(int i) { return i==9?&s2_party.knuckles_flow:i==8?&s2_party.presentation_enabled:i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
 static unsigned resource_id(int i) { return i>=3?S2_RESOURCE_MEGAMIX:i?S2_RESOURCE_SK:S2_RESOURCE_AMY; }
 static char *path(int i) { return i>=3?s2_party.mighty_path:i?s2_party.s3k_path:s2_party.amy_path; }
 static int ready(int i) { return i>=5?1:i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
-static int packages(void *ctx) { (void)ctx; return 4 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
-static int feature_count(void *ctx) { (void)ctx; return 8 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
+static int packages(void *ctx) { (void)ctx; return 5 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
+static int feature_count(void *ctx) { (void)ctx; return 10 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
 static const char *status(int i)
 {
     if (!*flag(i)) return "Disabled";
@@ -53,7 +54,13 @@ static const char *status(int i)
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 {
     (void)ctx;
-    if (i >= 4) return base && base->package_get && base->package_get(base->ctx, i - 4, out);
+    if (i >= 5) return base && base->package_get && base->package_get(base->ctx, i - 5, out);
+    if(i==4 && out) {
+        memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.0.0");
+        COPY(out->author,"Host adapter contributors");COPY(out->license,"Project license");
+        COPY(out->description,"Optional menu sounds, act numbers, character title-card colours and Options transitions. All choices default to the original presentation.");
+        out->enabled=s2_party.presentation_enabled;COPY(out->status,status(8));return 1;
+    }
     if (i==3 && out) {
         memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.1.0");
         COPY(out->author,"Host adapter contributors");COPY(out->license,"Project license");
@@ -72,7 +79,15 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
 {
-    if (i >= 8) return base && base->feature_get && base->feature_get(base->ctx, i - 8, out);
+    if (i >= 10) return base && base->feature_get && base->feature_get(base->ctx, i - 10, out);
+    if((i==8 || i==9) && out) {
+        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[i==8?4:1]);
+        COPY(out->package_name,names[i==8?4:1]);COPY(out->package_version,"1.0.0");
+        COPY(out->name,i==8?"Menu and Title-card Presentation":"Knuckles Landing Flow");
+        COPY(out->group,i==8?"Presentation":"Gameplay");COPY(out->author,"Host adapter contributors");
+        COPY(out->description,i==8?"Choose optional presentation changes independently. Original choices preserve the existing design. Disable this section to use the original presentation while remembering your selections.":"Allow Down + Jump to start a spindash during Knuckles' standing landing recovery. Glide, climbing, airborne movement and original physics stay unchanged. Off by default; all online players use the agreed choice.");
+        out->enabled=*flag(i);out->option_count=i==8?5:0;COPY(out->status,status(i));return 1;
+    }
     if (i>=5 && out) {
         memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[3]);
         COPY(out->package_name,names[3]);COPY(out->package_version,"1.1.0");COPY(out->group,"Gameplay");
@@ -94,7 +109,7 @@ static int enable(void *ctx, const char *p, const char *f, int on)
     (void)ctx; int i = owner(p, f); error[0] = 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_enable && base->feature_enable(base->ctx, p, f, on);
 #if GENESIS_HAS_RECOMP_NET
-    if (i>=5 && genesis_netplay_active() && *flag(i)!=(on!=0)) {
+    if ((i==5 || i==6 || i==7 || i==9) && genesis_netplay_active() && *flag(i)!=(on!=0)) {
         COPY(error,"Practice options are fixed for the current online session");return 0;
     }
 #endif
@@ -122,14 +137,38 @@ static int set_enabled(void *ctx, const char *p, int on)
         return enable(ctx,p,features[4],on);
     }
     if (i == 0) return enable(ctx, p, features[i], on);
+    if (i == 8) return enable(ctx,p,features[8],on);
     return base && base->set_enabled && base->set_enabled(base->ctx, p, on);
 }
+static const char *const presentation_ids[]={"save-entry","save-act","title-colours","panel-transition","backdrop-speed"};
+static const char *const presentation_labels[]={"Save-menu entry sound","Act number on save cards","Title-card colours","Options panel transition","Options lettering transition"};
+static const char *const presentation_values[]={"special-stage","show","character","fade","slow"};
+static const char *const presentation_choices[]={"Special Stage warp","Show act number","Character colours","Fade","Slow"};
+static int *presentation_flag(int n)
+{return n==0?&s2_party.save_entry_warp:n==1?&s2_party.save_card_act:n==2?&s2_party.title_card_colors:n==3?&s2_party.options_panel_fade:&s2_party.options_slow_backdrop;}
+static int presentation_option(const char *id)
+{if(id)for(int n=0;n<5;++n)if(!strcmp(id,presentation_ids[n]))return n;return -1;}
 static int option(void *ctx, const char *p, const char *f, int n, RecompLauncherCModOption *out)
-{ (void)ctx; return owner(p,NULL)<0 && base && base->feature_option_get && base->feature_option_get(base->ctx, p, f, n, out); }
+{
+    if(owner(p,f)!=8)return owner(p,NULL)<0 && base && base->feature_option_get && base->feature_option_get(base->ctx,p,f,n,out);
+    if(n<0 || n>=5 || !out)return 0;memset(out,0,sizeof *out);
+    COPY(out->id,presentation_ids[n]);COPY(out->label,presentation_labels[n]);
+    COPY(out->description,"Original preserves the existing presentation. Changes apply after restart.");
+    COPY(out->value,*presentation_flag(n)?presentation_values[n]:"original");COPY(out->default_value,"original");
+    out->type=RECOMP_MOD_OPTION_CHOICE;out->choice_count=2;return 1;
+}
 static int choice(void *ctx, const char *p, const char *f, const char *o, int n, RecompLauncherCModChoice *out)
-{ (void)ctx; return owner(p,NULL)<0 && base && base->feature_choice_get && base->feature_choice_get(base->ctx, p, f, o, n, out); }
+{
+    if(owner(p,f)!=8)return owner(p,NULL)<0 && base && base->feature_choice_get && base->feature_choice_get(base->ctx,p,f,o,n,out);
+    int i=presentation_option(o);if(i<0 || n<0 || n>1 || !out)return 0;memset(out,0,sizeof *out);
+    COPY(out->value,n?presentation_values[i]:"original");COPY(out->label,n?presentation_choices[i]:"Original");return 1;
+}
 static int set_option(void *ctx, const char *p, const char *f, const char *o, const char *v)
-{ (void)ctx; return owner(p,NULL)<0 && base && base->feature_set_option && base->feature_set_option(base->ctx, p, f, o, v); }
+{
+    if(owner(p,f)!=8)return owner(p,NULL)<0 && base && base->feature_set_option && base->feature_set_option(base->ctx,p,f,o,v);
+    int i=presentation_option(o);if(i<0 || !v || (strcmp(v,"original")&&strcmp(v,presentation_values[i])))return 0;
+    *presentation_flag(i)=strcmp(v,"original")!=0;s2_party.presentation_enabled=1;return 1;
+}
 static int resource_count(void *ctx, const char *p, const char *f)
 {
     (void)ctx; int i=owner(p,f); if(i>=5)return 0; if (i>=0) return i==1 || i==2?2:1;

@@ -3,19 +3,29 @@
 Mods > Sound contains **Shared Themes**, **Sonic 2 Campaign**, and
 **2-Player Competition**. Every track defaults to **Stock**.
 
-Choose songs independently in their dropdowns. Stage choices contain that
-stage's stock track and its matching Simon Wai or August 21, 1992 prototype
-arrangements. Prototype playlist numbers differ from retail; choices follow
-the matching composition. Zones that share one song also share one selector.
-The special stage, Options menu, competition menu/results, and unused Hidden
-Palace song have their own applicable rows.
+Choose songs independently in their dropdowns. Stage rows offer matching
+Simon Wai prototype arrangements. Oil Ocean also offers the slow Simon Wai
+Casino Night 2P composition and its August 21 version. Prototype playlist
+numbers differ from retail; each choice uses the selected composition.
+Zones that share one song also share one selector. The special stage, Options
+menu and competition menu/results have their own applicable rows.
 
 Shared Themes separates 1-UP, Game Over, Continue, Act Clear, Invincibility,
-Drowning, bosses, title, credits, ending, Super Sonic, and the Chaos Emerald
+Drowning, bosses, title, credits, Super Sonic, and the Chaos Emerald
 jingle. Applicable rows also offer Sonic 1, Sonic 3, Sonic & Knuckles, and
 November 1993 Sonic 3 prototype arrangements. Sonic CD's US soundtrack is
 available for Game Over, Act Clear, and Invincibility. Super Sonic and
 Invincibility remain separate choices.
+
+September 14, 1992 prototype choices are available for Credits and Emerald
+Hill 2-Player. Options also offers Data Select and Competition Menu music.
+Unused campaign selectors are omitted in fresh settings. Explicitly saved
+older choices retain their original donor and song.
+
+Every used track also offers **Custom music**. Import WAV, Genesis VGM or
+Sonic 1 68K SMPS BIN/ASM, and audition the configured soundtrack in
+**Options > Music Player**. See [Custom music and Music Player](CUSTOM_MUSIC.md)
+for formats, channel isolation and playback controls.
 
 Only the donors needed by selected replacements appear below the dropdowns.
 Choose a raw ROM or ZIP. Contents are verified before importing one private
@@ -42,6 +52,7 @@ Prototype references:
 
 - [Sonic 2 Simon Wai prototype](https://hiddenpalace.org/Sonic_the_Hedgehog_2_(Simon_Wai_prototype))
 - [Sonic 2 August 21, 1992 prototype](https://hiddenpalace.org/Sonic_the_Hedgehog_2_(Aug_21,_1992_prototype))
+- [Sonic 2 September 14 disassembly](https://github.com/desiresin/Sonic-2-9-14-92-Disassembly)
 - [Sonic 3 November 3, 1993 prototype](https://hiddenpalace.org/Sonic_the_Hedgehog_3_(Nov_3,_1993_prototype))
 
 The optional mixed-source sequencer uses the software-only

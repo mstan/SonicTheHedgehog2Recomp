@@ -52,6 +52,7 @@ static S2DonorBank native_banks[2];
 static S2NativeHudArt hud_art;
 static int hud_art_ready;
 const uint8_t *s2_runtime_ui_font(void) {return hud_art_ready?hud_art.font:NULL;}
+const uint8_t *s2_runtime_title_font(void) {return hud_art_ready?hud_art.title_font:NULL;}
 /* The native status byte only has standing/pushing bits for two players.
  * Extra actors retain those two bits per solid on the host. The actual actor
  * objects have real, reserved native pool addresses, so monitor/platform
@@ -104,6 +105,18 @@ static unsigned kind(unsigned p)
     return !strcmp(id,"amy")?S2_CHAR_AMY:!strcmp(id,"knuckles")?S2_CHAR_KNUCKLES:
         !strcmp(id,"tails")?S2_CHAR_TAILS:!strcmp(id,"shadow")?S2_CHAR_SHADOW:
         !strcmp(id,"mighty")?S2_CHAR_MIGHTY:S2_CHAR_SONIC;
+}
+uint16_t s2_runtime_title_card_ink(void)
+{
+ unsigned lead=kind(0);
+ if(lead==S2_CHAR_KNUCKLES&&knuckles_available()){
+  const S2DonorBank *knux=s2_resource_bank(S2_RESOURCE_SK);return knux?knux->palette[5]:0;
+ }
+ if(s2_party.presentation_enabled&&s2_party.title_card_colors){
+  static const uint16_t inks[]={0,0x08E,0xA0E,0x080,0x444,0x00E};
+  if(lead<sizeof inks/sizeof *inks)return inks[lead];
+ }
+ return 0;
 }
 uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act)
 {
@@ -194,6 +207,7 @@ static S2Motion motion(unsigned o)
     m.control_locked=!!((g_ram[o+0x2A]&1) || g_ram[0xF7CC]);
     m.rings=word(ring_address()); m.super=actor==0 && !word(0xFFD8) && g_ram[0xFE19];
     m.physics_top=word(0xF760); m.move_lock=word(o+0x2E);
+    m.fluid_movement=s2_party.knuckles_flow!=0;
     m.speed_shoes=word(o+0x34)!=0;
     m.invincible_monitor=word(o+0x32)>1 || (actor>=0 && characters[actor].shadow_monitor_ticks!=0);
     return m;
@@ -410,9 +424,14 @@ int s2_runtime_amy_item(unsigned o)
     unsigned id=g_ram[o];
     /* Monitors use the world's lead identity. The result mini and flying
      * life icon keep their native mapping, movement and reward behavior. */
-    if (id!=0x26 && id!=0x2E && id!=0x0D &&
-        !(id==0x3A && (g_ram[o+0x1A]==0xC || g_ram[o+0x1A]==0xD))) return 0;
-    return s2_party.amy_enabled && kind(0)==S2_CHAR_AMY && s2_resource_amy_items()!=NULL;
+    if (id==0x3A && (g_ram[o+0x1A]==0xC || g_ram[o+0x1A]==0xD))
+        return s2_party.amy_enabled && kind(0)==S2_CHAR_AMY && s2_resource_amy_items()!=NULL;
+    if (id==0x0D) {
+        const S2ItemArt *items=s2_resource_primary_items();
+        return !word(0xFFD8) && items && items->signpost_tiles!=0;
+    }
+    if (id!=0x26 && id!=0x2E) return 0;
+    return s2_resource_primary_items()!=NULL;
 }
 int s2_runtime_shadow_star(unsigned o)
 {
@@ -555,7 +574,7 @@ static void runtime_state(S2StateIO *io)
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
-    unsigned header[3+S2_MAX_PLAYERS+10]={6,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+11]={7,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
@@ -565,11 +584,12 @@ static void runtime_state(S2StateIO *io)
     header[9+S2_MAX_PLAYERS]=(unsigned)s2_party.infinite_time;
     header[10+S2_MAX_PLAYERS]=(unsigned)s2_party.knuckles_campaign_enabled;
     header[11+S2_MAX_PLAYERS]=(unsigned)s2_party.easy_debug;
+    header[13+S2_MAX_PLAYERS]=(unsigned)s2_party.knuckles_flow;
     header[12+S2_MAX_PLAYERS]=(g_ram[0xF600]==12 || g_ram[0xF600]==16) &&
         !word(0xFFD8) && kind(0)==S2_CHAR_KNUCKLES;
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
-        unsigned saved[3+S2_MAX_PLAYERS+10];
+        unsigned saved[3+S2_MAX_PLAYERS+11];
         if (!io->data || io->pos>io->size || sizeof saved>io->size-io->pos) { io->ok=0; return; }
         memcpy(saved,io->data+io->pos,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
@@ -646,6 +666,7 @@ int s2_runtime_state_load(const void *data,size_t size,int apply)
     }
     if (apply) {
         io.pos=0; io.mode=2; runtime_state(&io);
+        s2_options_gameplay_restored();
         inside_player=inside_solid=inside_companion_cpu=0; actor=-1;
         gvdp_set_unlimited_sprites(active);
         s2_video_prepare_knuckles_items();
@@ -1518,15 +1539,15 @@ void s2_runtime_capture(void)
 }
 static unsigned card_vram_word(const GVDP *v,unsigned a)
 { return (v->vram[a&65535u]<<8)|v->vram[(a+1)&65535u]; }
-static void green_title_card(const GVDP *v,int line,uint32_t *out,int width)
+static void green_title_card(const GVDP *v,int line,uint32_t *out,int width,uint16_t ink)
 {
     /* KiS2 ink 4 is green ($080), while the mixed-party host must keep
      * Sonic's blue palette available. Recolour only the original card's two
-     * solid plane-A tiles; retain overlying text and red edges. */
-    uint32_t old=genesis_dac_cram_to_argb(v->cram[4],GENESIS_DAC_NORMAL);
-    const S2DonorBank *knux=s2_resource_bank(S2_RESOURCE_SK);
-    if (!knux || !(old&255)) return;
-    uint32_t color=genesis_dac_cram_to_argb(knux->palette[5],GENESIS_DAC_NORMAL);
+     * solid plane-A tiles; retain overlying text and red edges. Retail
+     * uses ink3, while imported title-card art may use ink4. */
+    uint32_t old=genesis_dac_cram_to_argb(v->cram[(v->vram[0xBB40]>>4)&15],GENESIS_DAC_NORMAL);
+    if (!(old&255)) return;
+    uint32_t color=genesis_dac_cram_to_argb(ink,GENESIS_DAC_NORMAL);
     unsigned gain=old&255;
     color=0xFF000000u|((((color>>16)&255)*gain/255)<<16)|
         ((((color>>8)&255)*gain/255)<<8)|((color&255)*gain/255);
@@ -1545,8 +1566,9 @@ static void green_title_card(const GVDP *v,int line,uint32_t *out,int width)
 }
 static void knuckles_hud(const GVDP *v,int line,uint32_t *out,int width,int draw)
 {
-    if (!s2_resource_knuckles_art() || kind(0)!=S2_CHAR_KNUCKLES ||
-        !knuckles_available() || word(0xFFD8) || !presented_level() || !g_ram[0xF711]) return;
+    uint32_t probe;
+    if (!s2_video_knuckles_hud_pixel(v,0x7D4,0,0,&probe) ||
+        word(0xFFD8) || !presented_level() || !g_ram[0xF711]) return;
     int origin=s2_video_hud_origin(width);
     if (origin<=-width) return;
     /* The expanded renderer owns the complete HUD substitution. Replaying
@@ -1684,7 +1706,7 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
                                   const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,double phase)
 {
     const GVDP *visibility=previous?v:&picture->vdp;
-    if (picture->green_card && (v->reg[1]&64)) green_title_card(visibility,line,out,width);
+    if (picture->green_card && (v->reg[1]&64)) green_title_card(visibility,line,out,width,picture->card_color);
     s2_video_special_actor(v,line,out,width);
     s2_video_special_results(v,line,out,width);
     if (s2_video_competition_divider(v,line,out,width)) return;
@@ -1805,8 +1827,10 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
         }
         f->vs=word(0xFFD8);
         f->green_card=0;
-        if (!f->vs && (g_ram[0xF600]&127)==12 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available() &&
-            f->vdp.vram[0xBB40]==0x44 && f->vdp.vram[0xBB7F]==0x44) {
+        uint16_t card_ink=s2_runtime_title_card_ink();
+        f->card_color=card_ink;
+        if (!f->vs && (g_ram[0xF600]&127)==12 && card_ink &&
+            (f->vdp.vram[0xBB40]==0x33 || f->vdp.vram[0xBB40]==0x44) && f->vdp.vram[0xBB7F]==f->vdp.vram[0xBB40]) {
             /* The actual fill is plane A, not a sprite. Follow its displayed
              * tilemap through the exit, after producer objects can be gone. */
             unsigned table=(f->vdp.reg[2]&0x38u)<<10;

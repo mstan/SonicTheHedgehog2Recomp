@@ -1,4 +1,5 @@
 #include "sonic2_music.h"
+#include "sonic2_custom_music.h"
 #include "sonic2_sound_driver.h"
 #if RECOMP_LAUNCHER
 #include "recomp_launcher.h"
@@ -30,7 +31,9 @@ static int requirement(int group,int index,int *track)
 {
     int seen[S2_DONOR_COUNT]={0};
     for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_group(t)==(unsigned)group&&s2_music_available(t)&&s2_themes[t].enabled){
-        int d=s2_theme_donor(t);if(d>=0&&!seen[d]++&&index--==0){if(track)*track=(int)t;return d;}
+        int d=s2_theme_donor(t);
+        if(d==S2_DONOR_CUSTOM){if(index--==0){if(track)*track=(int)t;return S2_DONOR_COUNT+(int)t;}}
+        else if(d>=0&&!seen[d]++&&index--==0){if(track)*track=(int)t;return d;}
     }
     return -1;
 }
@@ -41,7 +44,7 @@ static int package_get(void *c,int i,RecompLauncherCModPackage *o)
     if(i<0||!o)return 0;memset(o,0,sizeof *o);
     COPY(o->id,package);COPY(o->name,"Music Customization");COPY(o->version,"0.2.0");
     COPY(o->author,"SonicTheHedgehog2Recomp contributors");
-    COPY(o->description,"Choose individual tracks in three music sections. Matching ROMs are imported once and shared across all choices and games. All tracks default to Stock.");
+    COPY(o->description,"Choose individual tracks in three music sections. Import your own music or matching donor ROMs. Donors are shared across compatible choices and games. All tracks default to Stock.");
     o->enabled=s2_themes_enabled();return 1;
 }
 static int features(void *c){(void)c;return group_count()+(base&&base->feature_count?base->feature_count(base->ctx):0);}
@@ -51,12 +54,12 @@ static int feature_get(void *c,int i,RecompLauncherCModFeature *o)
     int g=group_at(i);if(g<0||!o)return 0;memset(o,0,sizeof *o);
     COPY(o->id,group_ids[g]);COPY(o->package_id,package);COPY(o->package_name,"Music Customization");COPY(o->package_version,"0.2.0");
     COPY(o->name,group_names[g]);COPY(o->group,"Sound");COPY(o->author,"SonicTheHedgehog2Recomp contributors");
-    COPY(o->description,"Choose each track independently. Stock leaves that track unchanged. Only ROMs needed by your selected replacements appear below, and each is shared automatically. Choosing a ready replacement or importing its ROM enables this section and Clone Driver. Disable the section to restore all its normal tracks while keeping your choices. Restart to apply; local Sonic 2 gameplay only.");
+    COPY(o->description,"Choose each track independently. Stock keeps the original music. Custom music accepts your WAV, VGM or SMPS file; donor arrangements use matching ROMs shared across compatible choices. A ready replacement enables this section and Clone Driver. Disable to restore stock music while keeping your choices. Restart to apply; local play only.");
     o->enabled=s2_music_group_enabled((unsigned)g);
     while(track_at(g,o->option_count)>=0)++o->option_count;
     int ready=1;for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_group(t)==(unsigned)g&&s2_music_available(t)&&s2_themes[t].enabled&&!s2_theme_ready(t))ready=0;
-    COPY(o->status,!ready?"Provide the matching ROMs below to enable this section":o->enabled?"Enabled; changes apply after restart":selected(g)?"Ready; enable to use the selected replacements":"All tracks use Stock");
-    COPY(o->source_name,"Donor ROM details and prototype sources");COPY(o->source_url,"https://github.com/mstan/SonicTheHedgehog2Recomp/blob/master/docs/EVENT_MUSIC.md");
+    COPY(o->status,!ready?"Import your selected music or matching ROMs below":o->enabled?"Enabled; changes apply after restart":selected(g)?"Ready; enable to use the selected replacements":"All tracks use Stock");
+    COPY(o->source_name,"Music guide and prototype sources");COPY(o->source_url,"https://github.com/mstan/SonicTheHedgehog2Recomp/blob/master/docs/EVENT_MUSIC.md");
     return 1;
 }
 static int enable(void *c,const char *p,const char *f,int on)
@@ -72,7 +75,7 @@ static int option_get(void *c,const char *p,const char *f,int i,RecompLauncherCM
     (void)c;if(!ours(p))return base&&base->feature_option_get&&base->feature_option_get(base->ctx,p,f,i,o);
     int t=track_at(group_id(f),i);if(t<0||!o)return 0;memset(o,0,sizeof *o);
     COPY(o->id,s2_theme_ids[t]);COPY(o->label,s2_theme_names[t]);COPY(o->group,s2_music_section((unsigned)t));
-    COPY(o->description,"Stock keeps the current soundtrack. Matching donor ROMs are shared automatically.");
+    COPY(o->description,"Stock keeps the original track. Choose a donor arrangement or import your own file with Custom music.");
     COPY(o->value,s2_themes[t].enabled?s2_theme_choice((unsigned)t,(unsigned)s2_themes[t].choice)->id:"base");COPY(o->default_value,"base");
     o->type=RECOMP_MOD_OPTION_CHOICE;o->choice_count=s2_theme_choices((unsigned)t)+1;return 1;
 }
@@ -82,13 +85,7 @@ static int choice_get(void *c,const char *p,const char *f,const char *opt,int i,
     int t=track_id(opt),g=group_id(f);if(t<0||g<0||s2_music_group((unsigned)t)!=(unsigned)g||!s2_music_available((unsigned)t)||!o)return 0;
     memset(o,0,sizeof *o);if(!i){COPY(o->value,"base");COPY(o->label,"Stock");return 1;}
     const S2MusicChoice *choice=s2_theme_choice((unsigned)t,(unsigned)(i-1));if(!choice)return 0;COPY(o->value,choice->id);
-    const char *label=choice->label;
-    if(g!=S2_MUSIC_SHARED){
-        if(choice->donor==S2_DONOR_WAI)label="Simon Wai prototype";
-        else if(choice->donor==S2_DONOR_AUG)label="Aug 21, 1992 prototype";
-        else if(choice->donor==S2_DONOR_PROTO)label="Sonic 3 prototype";
-    }
-    COPY(o->label,label);return 1;
+    COPY(o->label,choice->label);return 1;
 }
 static int set_option(void *c,const char *p,const char *f,const char *opt,const char *v)
 {
@@ -104,6 +101,12 @@ static int resource_get(void *c,const char *p,const char *f,int i,RecompLauncher
 {
     (void)c;if(!ours(p))return base&&base->feature_resource_get&&base->feature_resource_get(base->ctx,p,f,i,o);
     int t,d=requirement(group_id(f),i,&t);if(d<0||!o)return 0;memset(o,0,sizeof *o);
+    if(d>=S2_DONOR_COUNT){
+        snprintf(o->id,sizeof o->id,"custom-%s",s2_theme_ids[t]);snprintf(o->label,sizeof o->label,"%s: custom music",s2_theme_names[t]);
+        COPY(o->description,"Import WAV audio, VGM, or Sonic 1 68K SMPS BIN/ASM. SMPS uses Sonic 2 PSG envelopes and DAC notes. Your source file is retained.");
+        COPY(o->file_patterns,"*.wav,*.vgm,*.bin,*.asm");COPY(o->file_description,"Custom music");COPY(o->path,s2_custom_path((unsigned)t));
+        o->required=1;o->verified=s2_custom_ready((unsigned)t);o->import_on_select=1;COPY(o->status,o->verified?"Imported; restart to apply":"Choose your music file");return 1;
+    }
     COPY(o->id,s2_donor_ids[d]);snprintf(o->label,sizeof o->label,"%s %s",s2_donor_names[d],d>=S2_DONOR_CD_US?"disc":"ROM");
     const S2MusicChoice *choice=s2_theme_choice((unsigned)t,(unsigned)s2_themes[t].choice);
     COPY(o->description,!strcmp(choice->id,"s1-s2")?"Sonic 1 (JUE rev 0) or Sonic 2 (World rev 1). ZIP or raw ROM; one import covers every compatible choice.":"Provide this unmodified cartridge as a ZIP or raw ROM. Import once; every matching track and game shares it.");
@@ -120,7 +123,8 @@ static int resource_import(void *c,const char *p,const char *f,const char *r,con
     (void)c;s2_themes_clear_error();if(!ours(p))return base&&base->feature_resource_import&&base->feature_resource_import(base->ctx,p,f,r,path,image,progress,user,error,capacity);
     int ok=0,g=group_id(f);if(r)for(int i=0;;i++){
         int t,d=requirement(g,i,&t);if(d<0)break;
-        if(!strcmp(r,s2_donor_ids[d])){ok=s2_theme_import((unsigned)t,path,progress,user);break;}
+        char id[96];snprintf(id,sizeof id,"custom-%s",s2_theme_ids[t]);
+        if(!strcmp(r,d>=S2_DONOR_COUNT?id:s2_donor_ids[d])){ok=s2_theme_import((unsigned)t,path,progress,user);break;}
     }
     if(!ok&&error&&capacity)snprintf(error,capacity,"%s",s2_themes_error());return ok;
 }
@@ -128,6 +132,7 @@ static int resource_set(void *c,const char *p,const char *f,const char *r,const 
 {
     s2_themes_clear_error();if(!ours(p))return base&&base->feature_resource_set_path&&base->feature_resource_set_path(base->ctx,p,f,r,path);
     if(group_id(f)<0||!r)return 0;
+    for(unsigned t=0;t<S2_MUSIC_COUNT;t++){char id[96];snprintf(id,sizeof id,"custom-%s",s2_theme_ids[t]);if(!strcmp(r,id))return s2_custom_use(t,path,NULL,0);}
     for(unsigned d=0;d<S2_DONOR_COUNT;d++)if(!strcmp(r,s2_donor_ids[d]))return s2_music_donor_use(d,path);
     return 0;
 }

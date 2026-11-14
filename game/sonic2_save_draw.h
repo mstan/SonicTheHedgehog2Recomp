@@ -17,6 +17,7 @@ typedef struct S2SaveView {
     int delete_x;
     unsigned delete_frame;
     int replay_selected; /* Completed file: static/CLEAR until a destination is picked. */
+    int show_act;
     const char *notice;
     const uint32_t *portrait; /* immutable 80x48 host composition; NULL = stock pair */
 } S2SaveView;

@@ -3,6 +3,7 @@
 #define SONIC3_SOUND_ASSETS_H
 #include <stddef.h>
 #include <stdint.h>
+#include "sonic3_sound_themes.h"
 
 /* Verified retail sound data, reconstructed exactly as the game's own loader
  * installs it. No music, instruments, envelopes or samples are stored in C. */
@@ -67,7 +68,7 @@ int s3_sound_build_event(const uint8_t *rom,size_t rom_size,unsigned donor,
                          char *error,size_t error_size);
 /* One bank build shares validated donor tables and decoded percussion across
  * every selected track. Cache lifetime ends before its input ROMs are freed. */
-typedef struct S3SoundMusicCache {void *donors[7];} S3SoundMusicCache;
+typedef struct S3SoundMusicCache {void *donors[S3_ROM_DONOR_COUNT];} S3SoundMusicCache;
 void s3_sound_music_cache_free(S3SoundMusicCache *cache);
 int s3_sound_build_track(const uint8_t *rom,size_t rom_size,unsigned donor,
                          unsigned source_song,unsigned target,

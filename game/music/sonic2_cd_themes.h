@@ -12,3 +12,10 @@ void s2_cd_theme_tick(uint64_t tick);
 void s2_cd_theme_state(struct S2StateIO *io);
 void s2_cd_theme_identity(uint8_t out[32]);
 void s2_cd_theme_debug(unsigned *active,unsigned *theme,uint64_t *position);
+
+int s2_cd_custom_build(unsigned track,unsigned kind,const uint8_t *data,size_t bytes,
+                        unsigned frames,unsigned loop,const uint8_t hash[32],const S3SoundLayout *layout,
+                        uint8_t *bank,size_t capacity,uint32_t *used,char *error,size_t error_size);
+void s2_cd_theme_audition(unsigned track,unsigned solo,int stopped);
+unsigned s2_cd_theme_channel_count(unsigned track);
+const char *s2_cd_theme_channel_name(unsigned track,unsigned solo);

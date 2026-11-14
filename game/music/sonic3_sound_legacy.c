@@ -61,7 +61,7 @@ static unsigned sax(const uint8_t *data,size_t size,size_t p,size_t bytes,uint8_
 }
 int s3_legacy_music_source(const uint8_t *rom,size_t size,unsigned donor,unsigned song,S3LegacySource *s)
 {
-    if(!rom||!s||song>=(donor?31u:19u)||donor>S3_DONOR_WAI||size!=(donor?0x100000u:0x80000u))return 0;
+    if(!rom||!s||song>=(donor?31u:19u)||(donor>S3_DONOR_WAI&&donor!=S3_DONOR_SEP14)||size!=(donor?0x100000u:0x80000u))return 0;
     memset(s,0,sizeof *s);s->rom=rom;s->size=size;s->donor=donor;
     if(donor==S3_DONOR_S1){
         unsigned table=bl(rom+0x71998);if(table>size||4*19>size-table)return 0;
@@ -76,9 +76,9 @@ int s3_legacy_music_source(const uint8_t *rom,size_t size,unsigned donor,unsigne
     if(be(rom+loader)!=0x4DFA||be(rom+loader+4)!=0x3E3C)return 0;
     unsigned src=loader+2+(int16_t)be(rom+loader+2),bytes=be(rom+loader+6);
     s->zsize=sax(rom,size,src,bytes,s->z80,sizeof s->z80,0);if(!s->zsize)return 0;
-    static const unsigned playlists[]={0,0x11F5,0x11E7,0x1169};
-    static const unsigned envelopes[]={0,0x1029,0x101B,0xFA9};
-    static const unsigned speeds[]={0,0x1214,0x1205,0x1188};
+    static const unsigned playlists[]={0,0x11F5,0x11E7,0x1169,0,0,0,0x11FC};
+    static const unsigned envelopes[]={0,0x1029,0x101B,0xFA9,0,0,0,0x1030};
+    static const unsigned speeds[]={0,0x1214,0x1205,0x1188,0,0,0,0x121B};
     s->fast_tempo=native_tempo(donor,s->z80[speeds[donor]+song]);
     unsigned meta=s->z80[playlists[donor]+song],index=meta&31;
     s->force_pal=(meta&0x40)!=0;
@@ -102,7 +102,7 @@ int s3_legacy_source(const uint8_t *rom,size_t size,unsigned donor,unsigned them
 typedef struct Node {uint32_t pc,target;uint16_t output;uint8_t kind,length,encoded;} Node;
 typedef struct Convert {
     const S3LegacySource *s;uint8_t *out;size_t capacity;
-    int bad,count,voices,pitch[8];unsigned psg_base;int map[0x10000*8];Node nodes[8192];
+    int bad,count,voices;unsigned psg_base;int map[0x10000*8];Node nodes[8192];
 } Convert;
 static unsigned rb(Convert *c,uint32_t p)
 {
@@ -123,6 +123,55 @@ static int find(Convert *c,uint32_t p,unsigned kind)
 {if(p<c->s->low||p>=c->s->high){c->bad=1;return 0;}int n=c->map[(p&0xFFFF)*8+kind];if(n<0){c->bad=1;return 0;}return n;}
 static int order(const void *a,const void *b)
 {const Node *x=a,*y=b;return x->kind!=y->kind?(x->kind<y->kind?-1:1):x->pc<y->pc?-1:x->pc>y->pc;}
+/* Standalone songs are untrusted. Explore their real call/return stack and
+ * reject recursive/zero-time cycles before the native driver can execute one.
+ * Timing bytes terminate the current zero-time path, then schedule its next
+ * state. The stock ROM adapters do not need this additional input boundary. */
+typedef struct MusicGraph {
+    uint64_t keys[65536],pending[65536];uint8_t color[65536];unsigned count,queued;
+} MusicGraph;
+static int safe_music_state(Convert *c,MusicGraph *g,uint64_t key,unsigned depth)
+{
+    if(depth>512||g->count>=32768)return 0;
+    unsigned slot=(unsigned)((key^(key>>29))*2654435761u)&65535u;
+    while(g->keys[slot]&&g->keys[slot]!=key)slot=(slot+1)&65535u;
+    if(g->keys[slot])return g->color[slot]==2;
+    g->keys[slot]=key;g->color[slot]=1;++g->count;
+    unsigned index=(unsigned)(key&65535u)-1;if(index>=(unsigned)c->count)return 0;
+    Node *n=&c->nodes[index];unsigned op=rb(c,n->pc);uint64_t stack=key&~65535ULL;
+    if(op<0xE0){
+        if(g->queued>=65536)return 0;
+        int next=find(c,n->pc+1,n->kind);if(c->bad)return 0;
+        g->pending[g->queued++]=stack|(unsigned)(next+1);
+    }else if(op==0xE3){
+        unsigned level=3;while(level&&!((key>>(level*16))&65535u))--level;
+        if(!level)return 0;
+        uint64_t next=(key>>(level*16))&65535u;
+        if(!safe_music_state(c,g,(stack&~(65535ULL<<(level*16)))|next,depth+1))return 0;
+    }else if(op!=0xE4&&op!=0xEE&&op!=0xF2){
+        if(op==0xF6||op==0xF7||op==0xF8){
+            uint64_t branch=stack|(unsigned)(find(c,n->target,n->kind)+1);
+            if(op==0xF8){
+                unsigned level=1;while(level<4&&((stack>>(level*16))&65535u))++level;
+                if(level==4)return 0;
+                branch|=(uint64_t)(unsigned)(find(c,n->pc+n->length,n->kind)+1)<<(level*16);
+            }
+            if(c->bad||!safe_music_state(c,g,branch,depth+1))return 0;
+        }
+        if(op!=0xF6&&op!=0xF8){
+            uint64_t next=stack|(unsigned)(find(c,n->pc+n->length,n->kind)+1);
+            if(c->bad||!safe_music_state(c,g,next,depth+1))return 0;
+        }
+    }
+    g->color[slot]=2;return 1;
+}
+static int safe_custom_music(Convert *c,const unsigned *roots,const unsigned *kinds,unsigned count)
+{
+    MusicGraph *g=calloc(1,sizeof *g);if(!g)return 0;int ok=1;
+    for(unsigned i=0;i<count;i++)g->pending[g->queued++]=(unsigned)(find(c,roots[i],kinds[i])+1);
+    for(unsigned i=0;i<g->queued&&ok;i++)ok=safe_music_state(c,g,g->pending[i],0);
+    free(g);return ok&&!c->bad;
+}
 int s3_legacy_song(const S3LegacySource *s,uint8_t *out,size_t capacity,unsigned psg_base,
                    const uint8_t dac_map[128],uint8_t drums[128],char *error,size_t error_size)
 {
@@ -134,12 +183,13 @@ int s3_legacy_song(const S3LegacySource *s,uint8_t *out,size_t capacity,unsigned
     int size=0;
     if(!fm||fm>7||psg>3)goto fail;
     unsigned header=8+fm*4+psg*6;memset(out,0,header);out[2]=(uint8_t)fm;out[3]=(uint8_t)psg;
+    out[5]=2; /* Resolve legacy zero-period PSG after the effective transpose. */
     out[6]=(uint8_t)rb(c,input+4);out[7]=(uint8_t)native_tempo(s->donor,rb(c,input+5));
     for(unsigned i=0;i<fm+psg;i++){
         unsigned old=input+6+(i<fm?i*4:fm*4+(i-fm)*6),dest=old-input+2,kind=i==0?1:i>=fm?i-fm+2:0;
         roots[count]=ptr(c,old,1);kinds[count]=kind;headers[count++]=dest;
         out[dest+2]=(uint8_t)(rb(c,old+2)+(kind>=2?12:0));out[dest+3]=(uint8_t)(rb(c,old+3)<<(kind>=2?3:0));
-        if(kind>=2){c->pitch[kind]=(int8_t)rb(c,old+2);unsigned env=rb(c,old+5);if(env>s->env_count)goto fail;out[dest+5]=(uint8_t)(env?psg_base+env:0);}
+        if(kind>=2){unsigned env=rb(c,old+5);if(env>s->env_count)goto fail;out[dest+5]=(uint8_t)(env?psg_base+env:0);}
     }
     c->voices=fm>1?1:0;
     for(unsigned i=0;i<count;i++)node(c,roots[i],kinds[i]);
@@ -153,7 +203,16 @@ int s3_legacy_song(const S3LegacySource *s,uint8_t *out,size_t capacity,unsigned
         if(op==0xF6||op==0xF7||op==0xF8){n->target=ptr(c,n->pc+length-2,0);node(c,n->target,n->kind);}
         if(op!=0xE3&&op!=0xE4&&op!=0xEE&&op!=0xF2&&op!=0xF6)node(c,n->pc+length,n->kind);
     }
-    if(c->bad)goto fail;qsort(c->nodes,(size_t)c->count,sizeof *c->nodes,order);
+    if(c->bad)goto fail;
+    if(s->require_restore){
+        int restore=0;for(int i=0;i<c->count;i++)if(rb(c,c->nodes[i].pc)==0xE4)restore=1;
+        if(!restore){
+            if(error&&error_size)snprintf(error,error_size,"1-UP SMPS needs smpsFade on its final channel to resume the background song.");
+            free(c);return 0;
+        }
+    }
+    if(!s->source&&!s->low&&s->size<0x8000&&!safe_custom_music(c,roots,kinds,count))goto fail;
+    qsort(c->nodes,(size_t)c->count,sizeof *c->nodes,order);
     size=(int)header;
     for(int i=0;i<c->count;i++){Node *n=&c->nodes[i];n->output=(uint16_t)size;size+=n->encoded;c->map[(n->pc&0xFFFF)*8+n->kind]=i;}
     if(c->voices>128||size+c->voices*25>0x7FFF)goto fail;
@@ -162,7 +221,6 @@ int s3_legacy_song(const S3LegacySource *s,uint8_t *out,size_t capacity,unsigned
         Node *n=&c->nodes[i];unsigned dest=n->output,op=rb(c,n->pc);
         if(op<0xE0){
             unsigned value=op;
-            if(n->kind>=2 && s->donor==S3_DONOR_S1 && !c->pitch[n->kind] && value==0xC6)++value;
             out[dest]=(uint8_t)(n->kind==1&&op>=0x81&&dac_map?dac_map[op&127]:value);continue;
         }
         if(op==0xE7){out[dest]=0xFE;continue;}
@@ -216,7 +274,7 @@ int s3_legacy_sample(const S3LegacySource *s,unsigned note,uint8_t *out,size_t c
         unsigned meta=0xD6+sample*8;start=le(s->z80+meta);length=le(s->z80+meta+2);delta=0x22;data=s->z80;
         if(start>s->zsize||length>s->zsize-start)return 0;
     }else{
-        static const unsigned ptrs[]={0,0x1233,0xF93,0xF75},rates[]={0,0x124F,0xFAF,0xF8D},deltas[]={0,0x1B3,0x197,0x179};
+        static const unsigned ptrs[]={0,0x1233,0xF93,0xF75,0,0,0,0xFA6},rates[]={0,0x124F,0xFAF,0xF8D,0,0,0,0xFC2},deltas[]={0,0x1B3,0x197,0x179,0,0,0,0x197};
         unsigned entry=rates[s->donor]+(note-0x81)*2,sample=s->z80[entry];if(sample<0x81||sample>0x87)return 0;
         if(s->donor==S3_DONOR_WAI){
             /* This prototype's tom pitches and clap/scratch differ from

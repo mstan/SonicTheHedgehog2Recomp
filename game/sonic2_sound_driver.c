@@ -45,6 +45,22 @@ int s2_sound_uses_rom(void) {
 #endif
 }
 int s2_sound_active(void) { return active; }
+int s2_sound_music_playing(void)
+{
+#ifdef SONIC2_CLONE_DRIVER
+    if(active){
+#ifdef SONIC2_MUSIC_DRIVER
+        unsigned stride=music_active?46:44;
+#else
+        unsigned stride=44;
+#endif
+        unsigned base=DRIVER(RAM_ADDRESS)&65535u;
+        for(unsigned i=0;i<10;i++)if(g_ram[base+i*stride]&128)return 1;
+        return 0;
+    }
+#endif
+    return -1;
+}
 int s2_sound_verified(void) { return verified; }
 const char *s2_sound_error(void) { return error; }
 
@@ -156,6 +172,14 @@ int s2_sound_hook(uint32_t pc)
      * native reset paths do not depend on an optional lifecycle callback. */
     if(pc==0xEC000u && !bound)s2_sound_post_reset();
     if(!active)return 0;
+#ifdef SONIC2_MUSIC_DRIVER
+    if(pc==0x3BA8u && music_active && s2_music_title_frames()!=640) {
+        /* The original timer write has completed. Continue its function;
+         * returning handled here would return from title initialization. */
+        glue_poke16(0xFFF614u,(uint16_t)s2_music_title_frames());
+        return 0;
+    }
+#endif
     if(pc==0xEC000u) {
         M68KState saved=g_cpu;
         memset(g_ram+(S2_CLONE_RAM_ADDRESS&65535),0,0x400);

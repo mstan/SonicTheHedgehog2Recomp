@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "sonic2_music.h"
+#include "sonic2_custom_music.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +25,9 @@
 #endif
 #ifndef S3_CD_IMPORT_VALIDATOR
 #define S3_CD_IMPORT_VALIDATOR "scd_pack_validate"
+#endif
+#ifndef S3_CUSTOM_IMPORT_SOURCE
+#define S3_CUSTOM_IMPORT_SOURCE "tools/import_custom_smps.py"
 #endif
 #ifndef S3_ROM_IMPORT_SOURCE
 #define S3_ROM_IMPORT_SOURCE "tools/import_sound_donor.py"
@@ -91,8 +95,8 @@ static int media_import(unsigned kind,const char *disc,const char *rom,const cha
     char root[1024],cache[1200],receipt[1280],log_path[1280],script[1200],helper[1200],builder[1200];
     char exe_dir[1024]={0},line[4096],detail[256]={0};int code=1;
     content[0]=music[0]=0;parent(root,sizeof root,settings);
-    if(kind<1 || kind>5 || !rom||!*rom||!disc||!*disc){snprintf(error,capacity,"Select your cartridge and owned media first.");return 0;}
-    if(!join(cache,sizeof cache,root,kind==5?"sonic-sound-donors":kind==4?"sonic-cd-imports":"sonic-rom-imports"))goto path_error;
+    if(kind<1 || kind>6 || !rom||!*rom||!disc||!*disc){snprintf(error,capacity,"Select your cartridge and owned media first.");return 0;}
+    if(!join(cache,sizeof cache,root,kind==6?"sonic-custom-music":kind==5?"sonic-sound-donors":kind==4?"sonic-cd-imports":"sonic-rom-imports"))goto path_error;
 #ifdef _WIN32
     unsigned long pid=GetCurrentProcessId();
     if(_mkdir(cache)&&errno!=EEXIST)goto io_error;
@@ -126,11 +130,11 @@ static int media_import(unsigned kind,const char *disc,const char *rom,const cha
 #endif
     ))goto path_error;
     int bundled=exists(builder);
-    const char *script_name=kind==4?"tools/import_sonic_cd.py":"tools/import_sound_donor.py";
+    const char *script_name=kind==6?"tools/import_custom_smps.py":kind==4?"tools/import_sonic_cd.py":"tools/import_sound_donor.py";
     if(!join(script,sizeof script,exe_dir,script_name))goto path_error;
     if(!exists(script)) {
         if(!join(script,sizeof script,root,script_name))goto path_error;
-        if(!exists(script))snprintf(script,sizeof script,"%s",kind==4?S3_CD_IMPORT_SOURCE:S3_ROM_IMPORT_SOURCE);
+        if(!exists(script))snprintf(script,sizeof script,"%s",kind==6?S3_CUSTOM_IMPORT_SOURCE:kind==4?S3_CD_IMPORT_SOURCE:S3_ROM_IMPORT_SOURCE);
     }
     if(!bundled&&!exists(script)){snprintf(error,capacity,"Import tools are missing. Extract the complete game package.");return 0;}
     if(!join(helper,sizeof helper,exe_dir,
@@ -144,9 +148,9 @@ static int media_import(unsigned kind,const char *disc,const char *rom,const cha
     if(kind==4&&!exists(helper)){snprintf(error,capacity,"Sonic CD import validator is missing beside the game executable.");return 0;}
     if(remove(receipt)&&errno!=ENOENT)goto io_error;
     FILE *log=fopen(log_path,"wb");if(!log)goto io_error;
-    if(progress)progress(user,-1,kind==5?"Verifying your sound donor and preparing its themes...":kind==4?"Checking your owned disc and preparing stages and music...":"Checking your owned cartridge and preparing its campaign...");
+    if(progress)progress(user,-1,kind==6?"Assembling your SMPS music...":kind==5?"Verifying your sound donor and preparing its themes...":kind==4?"Checking your owned disc and preparing stages and music...":"Checking your owned cartridge and preparing its campaign...");
     const char *python=getenv("SONIC3K_PYTHON");
-    const char *campaigns[]={"","sonic1","sonic2","megamix","sonic_cd","sound"};
+    const char *campaigns[]={"","sonic1","sonic2","megamix","sonic_cd","sound","custom-smps"};
     const char *args[20];unsigned argc=0;
     args[argc++]=bundled?builder:python&&*python?python:
 #ifdef _WIN32
@@ -264,7 +268,7 @@ static int media_import(unsigned kind,const char *disc,const char *rom,const cha
         else if(kind==3&&!strncmp(line,"rom=",4)&&strlen(line+4)<1024)strcpy(music,line+4);
     }
     fclose(result);remove(receipt);
-    if(format&&*content&&((kind==1||kind==2||kind==5)||*music||(kind==4&&audio_absent)))return 1;
+    if(format&&*content&&((kind==1||kind==2||kind==5||kind==6)||*music||(kind==4&&audio_absent)))return 1;
     snprintf(error,capacity,"Importer returned an incomplete installation; previous selection retained.");return 0;
 path_error:snprintf(error,capacity,"Import path is too long or invalid.");return 0;
 io_error:snprintf(error,capacity,"Unable to read or write the private import directory.");return 0;
@@ -272,3 +276,6 @@ io_error:snprintf(error,capacity,"Unable to read or write the private import dir
 
 int s2_music_import_file(const char *source,const char *expected,const char *settings,char content[1024],char *error,size_t capacity,void (*progress)(void *,float,const char *),void *user)
 {char unused[1024];return media_import(5,source,expected,settings,content,unused,error,capacity,progress,user);}
+
+int s2_custom_assemble(const char *source,const char *track,const char *settings,char output[1024],char *error,size_t capacity,void (*progress)(void *,float,const char *),void *user)
+{char unused[1024];return media_import(6,source,track,settings,output,unused,error,capacity,progress,user);}

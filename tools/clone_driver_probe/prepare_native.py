@@ -66,6 +66,8 @@ def main():
     if a.music_program:
         music_root=a.music_program.resolve()
         music_info=json.loads((music_root/'program.json').read_text())
+        if music_info.get('legacy_psg_period_policy')!=1:
+            raise SystemExit('Rebuild the prebuilt music sequencer: legacy PSG period policy is required')
         code=(music_root/'clone-driver.bin').read_bytes()
         base=music_info['load_address']
         if base!=0x2A0000 or hashlib.sha256(code).hexdigest()!=music_info['sha256'] or len(code)!=music_info['payload_size']:

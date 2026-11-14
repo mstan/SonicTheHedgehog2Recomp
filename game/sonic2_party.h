@@ -26,6 +26,9 @@ typedef struct S2PartyConfig {
     int mighty_enabled; /* default-OFF, verified Megamix v3 donor */
     int shadow_enabled; /* requires the same verified Megamix donor */
     int knuckles_campaign_enabled; /* verified local capability; session-scoped online */
+    int knuckles_flow; /* optional landing-to-spindash input, original behavior by default */
+    int presentation_enabled;
+    int save_entry_warp,save_card_act,title_card_colors,options_panel_fade,options_slow_backdrop;
     char amy_path[1024];
     char s3k_path[1024];
     char mighty_path[1024];

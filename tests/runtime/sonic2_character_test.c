@@ -33,6 +33,16 @@ int main(void)
     assert(s.charge==0x200);
     s2_character_before(&s,&m,0,0,&c); assert(m.inertia==0x900);
     s2_character_reset(&s,S2_CHAR_KNUCKLES); m=standing();
+    m.animation=0x22;m.move_lock=14;
+    s2_character_before(&s,&m,0x22,0x20,&c);
+    assert(m.animation==0x22&&m.move_lock==14);
+    m.fluid_movement=1;
+    s2_character_before(&s,&m,0x22,0x20,&c);
+    assert(m.animation==8&&!m.move_lock&&(s.native_pressed&0x20));
+    m.animation=0x22;m.move_lock=14;m.hurt=1;
+    s2_character_before(&s,&m,0x22,0x20,&c);
+    assert(m.animation==0x22&&m.move_lock==14);
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
     s2_character_before(&s,&m,0x20,0x20,&c);
     m.status=6; m.jumping=1; m.vy=-0x680;
     s2_character_after(&s,&m,&c); assert(m.vy==-0x600);
