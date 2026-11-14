@@ -16,6 +16,8 @@ int s2_sound_available(void);
 int s2_sound_uses_rom(void);
 int s2_sound_selected(void);
 int s2_sound_active(void);
+/* Audition status: 1 playing, 0 finished, -1 unavailable on this backend. */
+int s2_sound_music_playing(void);
 int s2_sound_select(int enabled);
 const char *s2_sound_error(void);
 int s2_sound_verified(void);

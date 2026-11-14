@@ -73,6 +73,14 @@ int main(void)
         }
         assert(caption_pixels==6*64 && counter_pixels>0); /* ZONE + two digits */
     }
+    filled.show_act=1;assets->palette[18]=0xE00;
+    memset(assets->tiles+(0x552+18)*32,0x22,32); /* distinguish the native 2 glyph */
+    uint32_t act1[320],act2[320];filled.data.slots[0].stage=0;
+    s2_save_draw_line(assets,&filled,80,act1,320);filled.data.slots[0].stage=1;
+    s2_save_draw_line(assets,&filled,80,act2,320);
+    assert(act1[172]==0xFFFF0000&&act2[172]==0xFF0000FF);
+    filled.show_act=0;memset(assets->tiles+(0x552+18)*32,0x11,32);
+    filled.data.slots[0].stage=S2_CAMPAIGN_STAGES-1;
     /* Only the selected primary character's indicator changes. Live digits
      * and the roster-independent slot data must remain identical. */
     assets->palette[18]=0xE00;

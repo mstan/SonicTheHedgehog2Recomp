@@ -1,4 +1,5 @@
 #include "sonic2_music.h"
+#include "sonic2_custom_music.h"
 #include "sonic2_cd_themes.h"
 #include "sonic2_sound_driver.h"
 #include "host_atomic_file.h"
@@ -25,8 +26,8 @@ static const Row rows[]={
 #include "sonic2_music_catalog.inc"
 };
 #undef TRACK
-const char *const s2_donor_ids[]={"s1","s2","s2-aug","s2-wai","s3-proto","s3","sk","cd-us"};
-const char *const s2_donor_names[]={"Sonic 1","Sonic 2","Sonic 2 (Aug 21, 1992 prototype)","Sonic 2 (Simon Wai prototype)","Sonic 3 (Nov 3, 1993 prototype)","Sonic 3","Sonic & Knuckles","Sonic CD (US)"};
+const char *const s2_donor_ids[]={"s1","s2","s2-aug","s2-wai","s3-proto","s3","sk","s2-sep14","cd-us"};
+const char *const s2_donor_names[]={"Sonic 1","Sonic 2","Sonic 2 (Aug 21, 1992 prototype)","Sonic 2 (Simon Wai prototype)","Sonic 3 (Nov 3, 1993 prototype)","Sonic 3","Sonic & Knuckles","Sonic 2 (Sep 14, 1992 prototype)","Sonic CD (US)"};
 static const char *const hashes[]={
  "46160baa06362c711c9f1a5017cb7371026444936c8af5e93a78996cf32ff2a6",
  "193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b",
@@ -34,8 +35,9 @@ static const char *const hashes[]={
  "c2e63635703e4dac7b0a2bb383abe5a001c128ab8ab98d33519c31d75b59cc8d",
  "ace6af3187c1c2da4e71a1c24fb81f2529cb25057f093f5cb5389842a90d4abf",
  "d6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c",
- "6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1"};
-static const size_t sizes[]={0x80000,0x100000,0x100000,0x100000,0x200000,0x200000,0x200000};
+ "6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1",
+ "e84e1342c1caf6d54fa69f3462763007c83974d4b3ae4f6674349556675a701c"};
+static const size_t sizes[]={0x80000,0x100000,0x100000,0x100000,0x200000,0x200000,0x200000,0x100000};
 static S2MusicChoice choices[S2_MUSIC_COUNT][10];
 static unsigned counts[S2_MUSIC_COUNT];
 static int group_on[S2_MUSIC_GROUPS],verified[S2_DONOR_COUNT];
@@ -44,44 +46,86 @@ static char file[1200],library_settings[1200],paths[S2_DONOR_COUNT][1024],error[
 
 const char *s2_themes_error(void){return error;}
 void s2_themes_clear_error(void){*error=0;}
-static void add(unsigned t,unsigned donor,unsigned song)
+static void named(unsigned t,unsigned donor,unsigned song,const char *id,const char *label)
 {
- if(counts[t]<10)choices[t][counts[t]++]=(S2MusicChoice){s2_donor_ids[donor],s2_donor_names[donor],donor,song};
+ if(counts[t]<10)choices[t][counts[t]++]=(S2MusicChoice){id,label,donor,song};
 }
+static void add(unsigned t,unsigned donor,unsigned song)
+{named(t,donor,song,s2_donor_ids[donor],s2_donor_names[donor]);}
 static void catalog(void)
 {
  memset(counts,0,sizeof counts);
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++){
-  if(rows[t].wai)add(t,S2_DONOR_WAI,rows[t].wai-0x81);
-  add(t,S2_DONOR_AUG,rows[t].native-0x81);
-  if(rows[t].group!=S2_MUSIC_SHARED && rows[t].native!=0x92)continue;
+  unsigned cue=rows[t].native;
+  if(cue==0x95 || cue==0x90)continue; /* Not used by this campaign. */
+  if(rows[t].wai && cue!=0x98 && cue!=0x9B && cue!=0x9C && cue!=0x99){
+   if(cue==0x84)named(t,S2_DONOR_WAI,rows[t].wai-0x81,"s2-wai","Simon Wai prototype: Oil Ocean composition");
+   else add(t,S2_DONOR_WAI,rows[t].wai-0x81);
+  }
+  if(cue==0x99 || cue==0x8C || cue==0x9D || cue==0x93 || cue==0x97)
+   add(t,S2_DONOR_AUG,cue-0x81);
+  if(cue==0x84){
+   named(t,S2_DONOR_WAI,0,"s2-wai-oil-ocean","Simon Wai prototype: Casino Night 2P (slow)");
+   named(t,S2_DONOR_AUG,7,"s2-aug-oil-ocean","Aug 21 prototype: Casino Night 2P");
+  }
+  if(cue==0x8C || cue==0x9E)add(t,S2_DONOR_SEP14,cue-0x81);
+  if(cue==0x91){
+   named(t,S2_DONOR_S3,0x2F,"s3-data-select","Sonic 3: Data Select");
+   named(t,S2_DONOR_PROTO,0x2F,"s3-proto-data-select","Sonic 3 prototype: Data Select");
+   named(t,S2_DONOR_SK,0x2F,"sk-data-select","Sonic 3 & Knuckles: Data Select");
+   named(t,S2_DONOR_S3,0x2D,"s3-competition","Sonic 3 & Knuckles: Competition Menu");
+   named(t,S2_DONOR_PROTO,0x2D,"s3-proto-competition","Sonic 3 prototype: Competition Menu");
+  }
+  if(rows[t].group!=S2_MUSIC_SHARED && cue!=0x92)continue;
   switch(rows[t].native){
    case 0x98:for(unsigned d=4;d<=6;d++)add(t,d,0x2A);break;
    case 0x9B:add(t,S2_DONOR_SK,0x27);add(t,S2_DONOR_CD_US,0);break;
    case 0x9C:add(t,S2_DONOR_S3,0x28);add(t,S2_DONOR_SK,0x28);break;
-   case 0x9A:add(t,S2_DONOR_PROTO,0x29);add(t,S2_DONOR_SK,0x29);add(t,S2_DONOR_CD_US,0);break;
-   case 0x97:add(t,S2_DONOR_S1,6);add(t,S2_DONOR_S3,0x2C);add(t,S2_DONOR_SK,0x2C);add(t,S2_DONOR_CD_US,0);break;
-   case 0x9F:add(t,S2_DONOR_PROTO,0x31);break;
-   case 0x93:add(t,S2_DONOR_S1,11);for(unsigned d=4;d<=6;d++)add(t,d,0x19);break;
-   case 0x94:add(t,S2_DONOR_S1,12);for(unsigned d=4;d<=6;d++)add(t,d,0x30);break;
+   case 0x9A:add(t,S2_DONOR_PROTO,0x29);named(t,S2_DONOR_SK,0x29,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
+   case 0x97:
+    add(t,S2_DONOR_S1,6);add(t,S2_DONOR_S3,0x2C);add(t,S2_DONOR_SK,0x2C);add(t,S2_DONOR_CD_US,0);
+    add(t,S2_DONOR_PROTO,0x2C);
+    named(t,S2_DONOR_PROTO,0x2E,"s3-proto-unused","Sonic 3 prototype: Unknown / Unused");
+    named(t,S2_DONOR_WAI,0x14,"s2-wai","Simon Wai prototype: Invincibility / Super Sonic");break;
+   case 0x9F:add(t,S2_DONOR_PROTO,0x31);named(t,S2_DONOR_S3,0x31,"s3","Sonic 3 & Knuckles");break;
+   case 0x93:
+    add(t,S2_DONOR_S1,11);add(t,S2_DONOR_PROTO,0x19);
+    named(t,S2_DONOR_S3,0x19,"s3","Sonic 3 & Knuckles");
+    named(t,S2_DONOR_S3,0x2E,"s3-miniboss","Sonic 3: Mini-Boss");
+    named(t,S2_DONOR_PROTO,0x18,"s3-proto-miniboss","Sonic 3 prototype: Mini-Boss");
+    named(t,S2_DONOR_SK,0x18,"sk-miniboss","Sonic & Knuckles: Mini-Boss");break;
+   case 0x94:add(t,S2_DONOR_S1,12);add(t,S2_DONOR_PROTO,0x30);add(t,S2_DONOR_S3,0x30);break;
    case 0x99:add(t,S2_DONOR_S1,9);for(unsigned d=4;d<=6;d++)add(t,d,0x25);break;
    case 0x9E:add(t,S2_DONOR_S3,0x26);add(t,S2_DONOR_SK,0x33);add(t,S2_DONOR_PROTO,0x26);break;
-   case 0x96:add(t,S2_DONOR_PROTO,0x2E);break;
+   case 0x96:
+    named(t,S2_DONOR_PROTO,0x2E,"s3-proto","Sonic 3 prototype: Unknown / Unused");
+    add(t,S2_DONOR_S3,0x2C);add(t,S2_DONOR_SK,0x2C);
+    named(t,S2_DONOR_PROTO,0x2C,"s3-proto-invincibility","Sonic 3 prototype: Invincibility");break;
    case 0x92:add(t,S2_DONOR_PROTO,0x1C);break;
   }
  }
+ for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native!=0x95&&rows[t].native!=0x90)named(t,S2_DONOR_CUSTOM,0,"custom","Custom music");
 }
 unsigned s2_music_group(unsigned t){return t<S2_MUSIC_COUNT?rows[t].group:S2_MUSIC_GROUPS;}
 const char *s2_music_section(unsigned t){return t<S2_MUSIC_COUNT?rows[t].section:"";}
 unsigned s2_music_target(unsigned t){return t<S2_MUSIC_COUNT?rows[t].native-0x80:0;}
-int s2_music_available(unsigned t){return t<S2_MUSIC_COUNT&&s2_sound_available();}
+int s2_music_available(unsigned t)
+{return t<S2_MUSIC_COUNT&&s2_sound_available()&&(counts[t]||s2_themes[t].enabled);}
+unsigned s2_music_title_frames(void)
+{
+ for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native==0x99&&s2_music_active(t)){
+  int d=s2_theme_donor(t);
+  if(d==S2_DONOR_PROTO||d==S2_DONOR_S3||d==S2_DONOR_SK)return 60*30;
+ }
+ return 640;
+}
 int s2_theme_choices(unsigned t){return t<S2_MUSIC_COUNT?(int)counts[t]:0;}
 const S2MusicChoice *s2_theme_choice(unsigned t,unsigned c){return t<S2_MUSIC_COUNT&&c<counts[t]?&choices[t][c]:NULL;}
 int s2_theme_donor(unsigned t){const S2MusicChoice *c=t<S2_MUSIC_COUNT?s2_theme_choice(t,(unsigned)s2_themes[t].choice):NULL;return c?(int)c->donor:-1;}
 int s2_music_donor(unsigned t){return s2_theme_donor(t);}
 const char *s2_donor_path(unsigned d){return d<S2_DONOR_COUNT?paths[d]:"";}
 int s2_donor_verified(unsigned d){return d<S2_DONOR_COUNT&&verified[d];}
-int s2_theme_ready(unsigned t){int d=s2_theme_donor(t);return d>=0&&s2_donor_verified((unsigned)d);}
+int s2_theme_ready(unsigned t){int d=s2_theme_donor(t);return d==S2_DONOR_CUSTOM?s2_custom_ready(t):d>=0&&s2_donor_verified((unsigned)d);}
 int s2_music_active(unsigned t){return t<S2_MUSIC_COUNT&&s2_themes[t].enabled&&group_on[rows[t].group];}
 int s2_themes_enabled(void){for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_active(t))return 1;return 0;}
 int s2_music_group_enabled(unsigned g){for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].group==g&&s2_music_active(t))return 1;return 0;}
@@ -125,8 +169,8 @@ int s2_music_group_enable(unsigned g,int on)
  if(!on){group_on[g]=0;return 1;}
  unsigned selected=0;int seen[S2_DONOR_COUNT]={0};
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].group==g&&s2_music_available(t)&&s2_themes[t].enabled){
-  ++selected;int d=s2_theme_donor(t);if(d>=0&&!seen[d]++){size_t size;free(s2_donor_read((unsigned)d,&size));}
-  if(!s2_theme_ready(t)){group_on[g]=0;snprintf(error,sizeof error,"Provide %s for %s.",s2_donor_names[s2_theme_donor(t)],s2_theme_names[t]);return 0;}
+  ++selected;int d=s2_theme_donor(t);if(d>=0&&d<S2_DONOR_COUNT&&!seen[d]++){size_t size;free(s2_donor_read((unsigned)d,&size));}
+  if(!s2_theme_ready(t)){group_on[g]=0;snprintf(error,sizeof error,"Provide %s for %s.",d==S2_DONOR_CUSTOM?"custom music":s2_donor_names[d],s2_theme_names[t]);return 0;}
  }
  if(!selected){snprintf(error,sizeof error,"Choose a replacement track first.");return 0;}
  if(!s2_sound_select(1)){group_on[g]=0;snprintf(error,sizeof error,"%s",s2_sound_error());return 0;}
@@ -143,8 +187,27 @@ int s2_music_pick(unsigned t,const char *id)
  }
  snprintf(error,sizeof error,"This track does not offer that replacement.");return 0;
 }
+/* Retired duplicate/misassigned entries remain usable only when explicitly
+ * present in a player's existing settings. Fresh menus omit them. Their IDs,
+ * donor and cue are retained verbatim, including unused saved selectors. */
+static void load_choice(unsigned t,const char *id)
+{
+ for(unsigned c=0;c<counts[t];c++)if(!strcmp(id,choices[t][c].id)){
+  s2_themes[t]=(S2MusicSelection){1,(int)c};return;
+ }
+ unsigned donor=S2_DONOR_COUNT,song=0;
+ if(!strcmp(id,"s2-wai")&&rows[t].wai){donor=S2_DONOR_WAI;song=rows[t].wai-0x81;}
+ else if(!strcmp(id,"s2-aug")){donor=S2_DONOR_AUG;song=rows[t].native-0x81;}
+ else if(!strcmp(id,"sk")&&(rows[t].native==0x93||rows[t].native==0x94)){
+  donor=S2_DONOR_SK;song=rows[t].native==0x93?0x19:0x30;
+ }
+ if(donor<S2_DONOR_COUNT){
+  add(t,donor,song);s2_themes[t]=(S2MusicSelection){1,(int)counts[t]-1};
+ }
+}
 void s2_music_load(const char *settings)
 {
+ s2_custom_load(settings);
  memset(s2_themes,0,sizeof s2_themes);memset(verified,0,sizeof verified);*error=0;catalog();
  for(unsigned g=0;g<S2_MUSIC_GROUPS;g++)group_on[g]=1;
  snprintf(file,sizeof file,"%s",settings?settings:"settings.ini");
@@ -170,7 +233,7 @@ void s2_music_load(const char *settings)
    line[strcspn(line,"\r\n")]=0;char *v=strchr(line,'=');if(!v)continue;*v++=0;
    for(unsigned g=0;g<S2_MUSIC_GROUPS;g++){char key[64];snprintf(key,sizeof key,"group.%u.enabled",g);if(!strcmp(line,key))group_on[g]=!strcmp(v,"1");}
    for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(!strcmp(line,s2_theme_ids[t])){
-    for(unsigned c=0;c<counts[t];c++)if(!strcmp(v,choices[t][c].id))s2_themes[t]=(S2MusicSelection){1,(int)c};
+    load_choice(t,v);
    }
   }
   fclose(f);
@@ -194,6 +257,10 @@ int s2_themes_validate(void)
 int s2_theme_import(unsigned t,const char *path,void (*progress)(void *,float,const char *),void *user)
 {
  *error=0;int d=s2_theme_donor(t);if(d<0||!path||!*path||strpbrk(path,"\r\n"))return 0;
+ if(d==S2_DONOR_CUSTOM){
+  if(!s2_custom_import(t,path,error,sizeof error,progress,user))return 0;
+  if(!s2_music_group_enable(rows[t].group,1)){group_on[rows[t].group]=0;*error=0;}return 1;
+ }
  char imported[1024];
  if(!s2_music_import_file(path,s2_donor_ids[d],library_settings,imported,error,sizeof error,progress,user))return 0;
  for(unsigned i=0;i<S2_DONOR_COUNT;i++){size_t bytes;free(s2_donor_read(i,&bytes));}
@@ -207,7 +274,7 @@ void s2_music_config_identity(uint8_t out[32])
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_active(t)){
   const S2MusicChoice *c=s2_theme_choice(t,(unsigned)s2_themes[t].choice);
   image[t*36]=1;image[t*36+1]=(uint8_t)c->donor;image[t*36+2]=(uint8_t)c->song;
-  memcpy(image+t*36+4,identities[c->donor],32);
+  if(c->donor==S2_DONOR_CUSTOM)s2_custom_identity(t,image+t*36+4);else memcpy(image+t*36+4,identities[c->donor],32);
  }
  recompui_sha256_compute(image,sizeof image,out);
 }

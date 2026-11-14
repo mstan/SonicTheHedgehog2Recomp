@@ -349,7 +349,8 @@ int s2_save_menu_hook(uint32_t pc)
          * first V-int. Native teleport monitors dispatch EC via PlayMusic's
          * priority queue ($FFFFE4 at REV01 $136A); queuing during selection
          * is discarded on departure. */
-        if ((g_ram[0xF600]&0x7F)==12) glue_poke8(0xFFFFE4,0xEC);
+        if ((g_ram[0xF600]&0x7F)==12)
+            glue_poke8(0xFFFFE4,s2_party.presentation_enabled&&s2_party.save_entry_warp?0xC3:0xEC);
         recomp_call_addr(pc);
         menu=menu_ready=exit_action=0;
         return 1;
@@ -403,6 +404,7 @@ int s2_save_menu_overlay(int line,uint32_t *out,int width)
         return 0;
     }
     S2SaveView display=departure_ready?departure_view:view;
+    display.show_act=s2_party.presentation_enabled&&s2_party.save_card_act;
     display.replay_selected=0;
     if (!view.erase && replay_stage<S2_CAMPAIGN_STAGES && view.selection>=1 && view.selection<=8 &&
         display.data.slots[view.selection-1].state==S2_SAVE_COMPLETE)

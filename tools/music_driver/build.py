@@ -131,7 +131,8 @@ Clone_NativeSpeedupTick:
             marker='\tmovea.l\td1,a4'
             assert text.count(marker)==1
             line=text.index('\n',text.index(marker))+1
-            text=text[:line]+'\tmove.b 5(a4),SMPS_RAM.variables.v_foreign_s3(a6)\n'+text[line:]
+            text=text[:line]+('\tmove.b 5(a4),SMPS_RAM.variables.v_foreign_s3(a6)\n'
+                              '\tandi.b #1,SMPS_RAM.variables.v_foreign_s3(a6)\n')+text[line:]
             marker='\tmove.b\tSMPS_RAM.variables.v_speeduptempo(a6),d0'
             assert text.count(marker)==1
             text=text.replace(marker,'\ttst.b SMPS_RAM.variables.v_foreign_s3(a6)\n'
@@ -152,7 +153,7 @@ Clone_NativeSpeedupTick:
             segment = segment.replace('PSGDoNext:\n', 'PSGDoNext:\n\tmove.b SMPS_Track.PlaybackControl(a5),SMPS_Track.VoicePtr+2(a5)\n', 1)
             marker = '.gotnote:\n'
             assert segment.count(marker) == 1, 'Upstream PSG note decoder changed'
-            segment = segment.replace(marker, marker + '''\ttst.b SMPS_Track.VoicePtr+1(a5)
+            segment = segment.replace(marker, marker + '''\tbtst #0,SMPS_Track.VoicePtr+1(a5)
 \tbeq.s .nativeRestReady
 \tbtst #4,SMPS_Track.PlaybackControl(a5)
 \tbeq.s .nativeRestReady
@@ -164,12 +165,30 @@ Clone_NativeSpeedupTick:
             text = text[:start] + segment + text[end:]
             marker = 'SetPSGVolume:\n'
             assert text.count(marker) == 1, 'Upstream PSG volume decoder changed'
-            text = text.replace(marker, marker + '''\ttst.b SMPS_Track.VoicePtr+1(a5)
+            text = text.replace(marker, marker + '''\tbtst #0,SMPS_Track.VoicePtr+1(a5)
 \tbeq.s .nativeVolumeReady
 \tbtst #4,SMPS_Track.PlaybackControl(a5)
 \tbne.s locret_7298A
 .nativeVolumeReady:
 ''', 1)
+            # S1/S2's last PSG period is zero; the expanded S3 table adds
+            # period16 at that index. Resolve the legacy sentinel after the
+            # current transpose, including changes made inside the sequence.
+            # Header bit1 selects this contract; bit0 retains S3 tie behavior.
+            start = text.index('PSGSetFreq:\n')
+            end = text.index('; End of function PSGSetFreq', start)
+            segment = text[start:end]
+            marker = '\tadd.b\tSMPS_Track.Transpose(a5),d5'
+            assert segment.count(marker) == 1, 'Upstream PSG transpose changed'
+            at = segment.index('\n', segment.index(marker)) + 1
+            segment = segment[:at] + '''\tbtst #1,SMPS_Track.VoicePtr+1(a5)
+\tbeq.s .legacyPeriodReady
+\tcmpi.b #$51,d5
+\tbne.s .legacyPeriodReady
+\taddq.b #1,d5
+.legacyPeriodReady:
+''' + segment[at:]
+            text = text[:start] + segment + text[end:]
             text = text.replace('\tbra.s\tPSGDoVolFX_Loop', '\tbra.w\tPSGDoVolFX_Loop')
             # A new song resets its DAC track pan to stereo. MegaPCM keeps a
             # separate pan shadow for sample/SFX restoration; reset that too,
@@ -274,7 +293,7 @@ Clone_NativeSpeedupTick:
     for key in ('initialise', 'update', 'queue_music', 'queue_sfx', 'queue_extra', 'guarded_update', 'pcm_idle', 'stop_all'):
         assert LOAD_ADDRESS + HEADER.size <= info[key] < len(raw) and not info[key] & 1, key
     (out/'clone-driver.bin').write_bytes(payload)
-    manifest = {'source': SOURCE_COMMIT, 'asset_mode': 'rom', 'load_address': LOAD_ADDRESS, 'sha256': digest(payload), 'relocated_absolute_operands': relocation_count, **info}
+    manifest = {'source': SOURCE_COMMIT, 'asset_mode': 'rom', 'load_address': LOAD_ADDRESS, 'sha256': digest(payload), 'relocated_absolute_operands': relocation_count, 'legacy_psg_period_policy': 1, **info}
     write(out/'program.json', json.dumps(manifest, indent=2) + '\n')
     return manifest
 

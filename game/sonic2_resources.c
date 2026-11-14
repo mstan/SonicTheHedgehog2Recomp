@@ -14,6 +14,7 @@ static S2StageLayouts knuckles_stages;
 static S2KnucklesEnding knuckles_ending;
 static S2SpecialStageArt amy_special;
 static S2ItemArt amy_items;
+static S2ItemArt megamix_items[2];
 int s2_resources_prepare_stage_images(const unsigned char *rom,unsigned size)
 { return s2_stage_images_decode(rom,size,save_assets); }
 static char errors[S2_RESOURCE_COUNT][192];
@@ -99,7 +100,7 @@ int s2_resource_set(unsigned i, const char *path)
     }
     S2DonorBank candidate={0}, shadow={0}; S2SaveAssets *menu=NULL;
     S2SpecialStageArt special_candidate={0};
-    S2ItemArt item_candidate={0};
+    S2ItemArt item_candidate={0}, megamix_candidate[2]={{0}};
     int ok = s2_donor_decode(rom, size, i==S2_RESOURCE_MEGAMIX?&s2_megamix_mighty_layout:i==S2_RESOURCE_AMY?&s2_amy_171_layout:&s2_sk_knuckles_layout,
         &candidate, errors[i], sizeof errors[i]);
     if (ok && i==S2_RESOURCE_SK) ok=s2_save_assets_decode(rom,size,&menu,errors[i],sizeof errors[i]);
@@ -118,7 +119,9 @@ int s2_resource_set(unsigned i, const char *path)
         }
     }
     if (ok && i==S2_RESOURCE_MEGAMIX) {
-        ok=s2_donor_decode(rom,size,&s2_megamix_shadow_layout,&shadow,errors[i],sizeof errors[i]);
+        ok=s2_donor_decode(rom,size,&s2_megamix_shadow_layout,&shadow,errors[i],sizeof errors[i]) &&
+            s2_megamix_item_art_decode(rom,size,0,&megamix_candidate[0]) &&
+            s2_megamix_item_art_decode(rom,size,1,&megamix_candidate[1]);
         if (ok) {
             /* Exact v3 normal/water palette and four-shade Super cycles. */
             /* v3 Level initialization selects $19 for Mighty, $1A for Shadow. */
@@ -137,7 +140,10 @@ int s2_resource_set(unsigned i, const char *path)
     /* A failed replacement must not destroy a previously verified resource. */
     s2_donor_free(&banks[i]); banks[i]=candidate; owner_verified[i]=1;
     if (i==S2_RESOURCE_AMY) { amy_special=special_candidate; amy_items=item_candidate; }
-    if (i==S2_RESOURCE_MEGAMIX) { s2_donor_free(&shadow_bank); shadow_bank=shadow; }
+    if (i==S2_RESOURCE_MEGAMIX) {
+        s2_donor_free(&shadow_bank); shadow_bank=shadow;
+        memcpy(megamix_items,megamix_candidate,sizeof megamix_items);
+    }
     if (i==S2_RESOURCE_SK) { s2_save_assets_free(&save_assets); save_assets=menu; }
     if (i==S2_RESOURCE_SK) prepare_knuckles_water();
     memmove(resource_path(i), path, strlen(path) + 1);
@@ -184,5 +190,15 @@ const S2StageLayouts *s2_resource_knuckles_stages(void) { return owner_verified[
 const S2KnucklesEnding *s2_resource_knuckles_ending(void) { return owner_verified[S2_RESOURCE_KIS2]?&knuckles_ending:NULL; }
 const S2SpecialStageArt *s2_resource_amy_special(void) { return owner_verified[S2_RESOURCE_AMY]?&amy_special:NULL; }
 const S2ItemArt *s2_resource_amy_items(void) { return owner_verified[S2_RESOURCE_AMY]?&amy_items:NULL; }
+const S2ItemArt *s2_resource_primary_items(void)
+{
+    const char *id=s2_party.roster.character[0];
+    if (!strcmp(id,"amy") && s2_party.amy_enabled && owner_verified[S2_RESOURCE_AMY])
+        return &amy_items;
+    if (!owner_verified[S2_RESOURCE_MEGAMIX]) return NULL;
+    if (!strcmp(id,"mighty") && s2_party.mighty_enabled) return &megamix_items[0];
+    if (!strcmp(id,"shadow") && s2_party.shadow_enabled) return &megamix_items[1];
+    return NULL;
+}
 const S2DonorBank *s2_resource_shadow_bank(void) { return s2_resource_verified(S2_RESOURCE_MEGAMIX) && shadow_bank.count?&shadow_bank:NULL; }
 const char *s2_resource_error(unsigned i) { return i < S2_RESOURCE_COUNT ? errors[i] : "Unknown donor"; }

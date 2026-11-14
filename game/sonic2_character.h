@@ -13,7 +13,7 @@ typedef struct S2Motion {
     uint8_t flip_angle; /* native spring/corkscrew tumble, independent of floor angle */
     uint8_t hurt, boosted, control_locked;
     uint16_t rings, physics_top, move_lock;
-    uint8_t super, speed_shoes, invincible_monitor, physics_override, blast;
+    uint8_t super, speed_shoes, invincible_monitor, physics_override, blast,fluid_movement;
 } S2Motion;
 typedef struct S2Contacts {
     int floor, wall, ceiling; /* signed distances in pixels, in facing direction */

@@ -55,23 +55,26 @@ static void slot_window_test(void)
 static void amy_item_art_bounds_test(void)
 {
     uint8_t *rom=calloc(1,0x200000);assert(rom);
-    static const unsigned at[]={0x96002,0x98D78};
-    for(unsigned n=0;n<2;++n) {
+    static const unsigned at[]={0x96002,0x98D78,0x968DA},tiles[]={12,12,78};
+    for(unsigned n=0;n<3;++n) {
         uint8_t *p=rom+at[n];
-        p[1]=12;p[2]=(uint8_t)(0x81+n);
+        p[1]=(uint8_t)tiles[n];p[2]=(uint8_t)(0x81+n);
         p[3]=1;p[4]=0;p[5]=0x71;p[6]=1;p[7]=0xFF;
         /* One pixel, then eight-pixel runs. Native NemDec stops after
-         * exactly twelve tiles, leaving one final run pixel unused. */
-        memset(p+8,0xFF,13);p[8]=0x7F;
+         * the declared tiles, leaving one final run pixel unused. */
+        memset(p+8,0xFF,tiles[n]+1);p[8]=0x7F;
     }
     S2ItemArt art;memset(&art,0xA5,sizeof art);
     assert(s2_amy_item_art_decode(rom,0x200000,&art));
     for(unsigned i=0;i<sizeof art.life;++i)assert(art.life[i]==0x11);
     for(unsigned i=0;i<sizeof art.continue_icons;++i)assert(art.continue_icons[i]==0x22);
+    assert(art.signpost_tiles==78);
+    for(unsigned i=0;i<sizeof art.signpost;++i)assert(art.signpost[i]==0x33);
     S2ItemArt before=art;
     assert(!s2_amy_item_art_decode(rom,0x1FFFFF,&art));
     rom[0x96003]=11;assert(!s2_amy_item_art_decode(rom,0x200000,&art));rom[0x96003]=12;
-    rom[0x98D79]=13;assert(!s2_amy_item_art_decode(rom,0x200000,&art));
+    rom[0x98D79]=13;assert(!s2_amy_item_art_decode(rom,0x200000,&art));rom[0x98D79]=12;
+    rom[0x968DB]=77;assert(!s2_amy_item_art_decode(rom,0x200000,&art));
     assert(!s2_amy_item_art_decode(NULL,0x200000,&art));
     assert(!s2_amy_item_art_decode(rom,0x200000,NULL));
     assert(!memcmp(&art,&before,sizeof art));free(rom);
@@ -86,7 +89,17 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==5 && p->feature_count(p->ctx)==9);
+    assert(p->package_count(p->ctx)==6 && p->feature_count(p->ctx)==11);
+    RecompLauncherCModOption presentation;
+    assert(p->feature_option_get(p->ctx,"sonic2.presentation","presentation",0,&presentation));
+    assert(!strcmp(presentation.value,"original")&&!s2_party.presentation_enabled);
+    assert(p->feature_set_option(p->ctx,"sonic2.presentation","presentation","save-entry","special-stage"));
+    assert(s2_party.presentation_enabled&&s2_party.save_entry_warp);
+    assert(!p->feature_set_option(p->ctx,"sonic2.presentation","presentation","save-entry","unknown"));
+    assert(p->feature_enable(p->ctx,"sonic2.presentation","presentation",0));
+    assert(!s2_party.presentation_enabled&&s2_party.save_entry_warp);
+    assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles-flow",1)&&s2_party.knuckles_flow);
+    assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles-flow",0)&&!s2_party.knuckles_flow);
     assert(!s2_party.infinite_lives && !s2_party.infinite_time && !s2_party.easy_debug);
     assert(p->feature_get(p->ctx,7,&(RecompLauncherCModFeature){0}));
     assert(p->feature_enable(p->ctx,"sonic2.practice","easy-debug",1) && s2_party.easy_debug);

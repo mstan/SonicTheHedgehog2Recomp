@@ -10,18 +10,19 @@ static S2DonorBank portrait_banks[S2_RESOURCE_COUNT+1];
 static S2SavePortrait composed[6];
 static unsigned composed_count,drawn_state;
 static unsigned sound_writes,commits;
+static unsigned departure_sound=0xEC;
 static int commit_fails;
 static int fade_black;
 static uint32_t fade_override;
 void s2_video_donor_rgb_row(uint32_t *pixels,int width)
 { if(fade_black || fade_override)for(int x=0;x<width;++x)pixels[x]=fade_black?0xFF000000:fade_override; }
 void glue_poke8(uint32_t a,uint8_t v)   /* the host write (was m68k_write8) */
-{ assert(a==0xFFFFE1 || (a==0xFFFFE4 && v==0xEC)); g_ram[a&65535]=v; ++sound_writes; }
+{ assert(a==0xFFFFE1 || (a==0xFFFFE4 && v==departure_sound)); g_ram[a&65535]=v; ++sound_writes; }
 void recomp_tail_call(uint32_t pc) { (void)pc; assert(0); }
 void recomp_call_addr(uint32_t pc)
 {
     assert(pc==0x246A && menu==3);
-    if ((g_ram[0xF600]&0x7F)==12) assert(g_ram[0xFFE4]==0xEC);
+    if ((g_ram[0xF600]&0x7F)==12) assert(g_ram[0xFFE4]==departure_sound);
     assert(!s2_save_menu_hook(pc)); /* native fade entry must not recurse */
     uint32_t line[398];
     assert(s2_save_menu_overlay(0,line,398));
@@ -165,6 +166,10 @@ int main(void)
     /* Successful starts defer the native warp cue to the incoming fade.
      * Persist a new campaign now,
      * while its empty card stays unchanged throughout the outgoing fade. */
+    s2_party.presentation_enabled=s2_party.save_entry_warp=1;departure_sound=0xC3;
+    menu=2;menu_ready=1;g_ram[0xF600]=12;assert(s2_save_menu_hook(0x246A));
+    s2_party.presentation_enabled=0;departure_sound=0xEC;
+    menu=2;menu_ready=1;g_ram[0xF600]=12;assert(s2_save_menu_hook(0x246A));
     reset(1,S2_SAVE_EMPTY); menu=1; menu_ready=1;
     input(0x80,0);
     assert(commits==1 && fixture.data.slots[0].state==S2_SAVE_ACTIVE);

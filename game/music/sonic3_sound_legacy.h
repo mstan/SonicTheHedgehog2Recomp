@@ -9,7 +9,7 @@ typedef struct S3LegacySource {
     size_t size;
     uint8_t z80[0x2000], song[0x2000];
     uint32_t source, bank, low, high, env;
-    unsigned zsize, env_count, donor, little, compressed, fast_tempo, force_pal;
+    unsigned zsize, env_count, donor, little, compressed, fast_tempo, force_pal, require_restore;
 } S3LegacySource;
 int s3_legacy_source(const uint8_t *rom,size_t size,unsigned donor,unsigned theme,S3LegacySource *out);
 int s3_legacy_music_source(const uint8_t *rom,size_t size,unsigned donor,unsigned song,S3LegacySource *out);

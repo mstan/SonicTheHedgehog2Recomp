@@ -14,10 +14,12 @@ static int amy_special_available;
 static S2ItemArt amy_items;
 static S2DonorBank amy_item_bank;
 static int amy_items_available,amy_item_owner;
+static int imported_hud_mock;
 const S2SpecialStageArt *s2_resource_amy_special(void) {return amy_special_available?&amy_special:NULL;}
 const S2ItemArt *s2_resource_amy_items(void) {return amy_items_available?&amy_items:NULL;}
-const S2DonorBank *s2_resource_bank(unsigned id) {return amy_items_available && id==S2_RESOURCE_AMY?&amy_item_bank:NULL;}
-const S2DonorBank *s2_resource_shadow_bank(void) { return NULL; }
+const S2ItemArt *s2_resource_primary_items(void) {return imported_hud_mock || (amy_items_available && !strcmp(s2_party.roster.character[0],"amy"))?&amy_items:NULL;}
+const S2DonorBank *s2_resource_bank(unsigned id) {return imported_hud_mock || (amy_items_available && id==S2_RESOURCE_AMY)?&amy_item_bank:NULL;}
+const S2DonorBank *s2_resource_shadow_bank(void) { return imported_hud_mock?&amy_item_bank:NULL; }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 { (void)r;(void)size;(void)out;return 0; }
 unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,uint8_t *out,size_t cap)
@@ -29,7 +31,9 @@ uint16_t s2_shadow_color(const S2DonorBank *b,unsigned i,int wet,unsigned phase,
 { (void)b;(void)i;(void)wet;(void)phase;(void)frame;return 0; }
 static int hud_available;
 static uint8_t ui_font[88*32];
+static uint8_t title_font[92*32];
 const uint8_t *s2_runtime_ui_font(void) {return ui_font;}
+const uint8_t *s2_runtime_title_font(void) {return title_font;}
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
 static int shadow_item_owner;
@@ -520,16 +524,20 @@ static void menu_background_lifetime_test(void)
     s_display=NULL;s_serial=0;s_menu_background_ready=0;
     GVDP v={0};v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;
     v.reg[12]=1;v.reg[13]=0x28;v.reg[16]=1;
-    v.cram[49]=0x00E;v.cram[50]=0x0E0;
-    memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
+    static const uint16_t shades[]={0,0x00E,0x0E0,0xE00,0x0EE,0xE0E,0xEE0,0xEEE};
+    uint32_t colors[8];
+    for(unsigned i=1;i<8;++i) {
+        v.cram[48+i]=shades[i];memset(v.vram+i*32,(int)(i*17),32);
+        colors[i]=genesis_dac_cram_to_argb(shades[i],GENESIS_DAC_NORMAL);
+    }
     uint32_t native[320],out[796];
     for(unsigned col=0;col<40;++col) {
-        unsigned attr=0x6000|(col<20?1:2);
+        unsigned attr=0x6000|(col?col%6+1:7);
         word(g_ram,col*2,attr);word(v.vram,0xE000+col*2,attr);
     }
     CHECK(!s2_video_hook(0x8C92));
     CHECK(s_menu_background_ready);
-    for(unsigned x=0;x<320;++x)native[x]=x<160?0xFFFF0000:0xFF00FF00;
+    for(unsigned x=0;x<320;++x)native[x]=colors[x<8?7:(x/8)%6+1];
     CHECK(sonic2_video.configure("32:9"));
     for(unsigned phase=0;phase<3;++phase) {
         g_ram[0xF600]=(uint8_t)(phase==0?0x24:phase==1?0x1C:4);
@@ -537,8 +545,9 @@ static void menu_background_lifetime_test(void)
             render_source_scanline(&v,0,native,320,out,width,NULL,NULL);
             CHECK(s_render->frame_menu_background);
             for(int x=0;x<width;++x) {
-                int bx=(x-(width-320)/2)%320;if(bx<0)bx+=320;
-                CHECK(out[x]==(bx<160?0xFFFF0000:0xFF00FF00));
+                int bx=x-(width-320)/2,phase=bx%48;if(phase<0)phase+=48;
+                unsigned color=bx>=0 && bx<8?7:(unsigned)phase/8+1;
+                CHECK(out[x]==colors[color]);
             }
         }
     }
@@ -546,6 +555,33 @@ static void menu_background_lifetime_test(void)
     render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
     CHECK(!s_render->frame_menu_background);
     s_menu_background_ready=0;
+}
+static void imported_character_hud_test(void)
+{
+    S2PartyConfig saved=s2_party;
+    GVDP v={0};uint32_t color;
+    clear_guest();g_ram[0xF600]=12;
+    memset(amy_items.life,0x11,sizeof amy_items.life);
+    memset(v.vram+0x7DD*32,0x22,32);
+    memset(v.vram+0x7DF*32,0x22,32);
+    amy_item_bank.palette[1]=0xEEE;v.cram[2]=0x00E;
+    imported_hud_mock=1;
+    const char *names[]={"amy","mighty","shadow"};
+    for(unsigned i=0;i<3;++i) {
+        strcpy(s2_party.roster.character[0],names[i]);
+        CHECK(s2_video_knuckles_hud_pixel(&v,0x7D4,0,0,&color));
+        CHECK(color==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+        CHECK(s2_video_knuckles_hud_pixel(&v,0x7DE,0,0,&color));
+        CHECK(color==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+        /* Both decimal digit cells remain live native VRAM. */
+        CHECK(s2_video_knuckles_hud_pixel(&v,0x7DD,0,0,&color));
+        CHECK(color==genesis_dac_cram_to_argb(amy_item_bank.palette[2],GENESIS_DAC_NORMAL));
+        CHECK(s2_video_knuckles_hud_pixel(&v,0x7DF,0,0,&color));
+        CHECK(!s2_video_knuckles_hud_pixel(&v,0x7E0,0,0,&color));
+        g_ram[0xF600]=8;CHECK(!s2_video_knuckles_hud_pixel(&v,0x7D4,0,0,&color));
+        g_ram[0xF600]=12;
+    }
+    imported_hud_mock=0;s2_party=saved;clear_guest();
 }
 static void pylon_viewport_test(void)
 {
@@ -604,6 +640,7 @@ static void amy_item_art_test(void)
     s2_party.amy_enabled=1;strcpy(s2_party.roster.character[0],"amy");g_ram[0xF600]=12;
     memset(amy_items.life,0x33,sizeof amy_items.life);
     memset(amy_items.continue_icons,0x44,sizeof amy_items.continue_icons);
+    memset(amy_items.signpost,0x55,sizeof amy_items.signpost);amy_items.signpost_tiles=78;
     amy_item_bank.palette[3]=0x00E;amy_item_bank.water_palette[3]=0xE00;
     amy_item_bank.water_palette_alt[3]=0x0E0;amy_item_bank.water_palette_count=2;
     s2_video_prepare_knuckles_items();unsigned bytes=0;
@@ -612,6 +649,9 @@ static void amy_item_art_test(void)
         genesis_dac_cram_to_argb(0x00E,GENESIS_DAC_NORMAL));
     const uint8_t *patterns=gvdp_sprite_patterns(0x80,&bytes);
     CHECK(patterns && bytes==65536 && patterns[0x7D4*32]==0x33 && patterns[0x5F4*32]==0x44);
+    CHECK(patterns[0x434*32]==0x55 && patterns[0x481*32]==0x55);
+    CHECK(gvdp_sprite_palette_line(0x80,0x434,0)==2);
+    CHECK(gvdp_sprite_palette_line(0x80,0x481,1)==2);
     CHECK(gvdp_sprite_palette_line(0x80,0x7D4,0)==2);
     CHECK(gvdp_sprite_palette_line(0x80,0x7D4,1)==2);
     CHECK(!amy_item_tile(0x7D3) && !amy_item_tile(0x7D8) && !amy_item_tile(0x600));
@@ -783,6 +823,7 @@ static void results_identity_test(void)
     v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
     v.cram[1]=v.cram[6]=0xEEE;v.cram[3]=0xE;
     memset(hud_art.font_k,0x33,sizeof hud_art.font_k);memset(ui_font,0x22,sizeof ui_font);
+    memset(title_font,0x11,sizeof title_font);
     static const unsigned tiles[]={0x5D0,0x588,0x584,0x5C0,0x5B4,0x5B8,0x588,0x5D4};
     static const int offsets[]={-64,-48,-32,-16,-8,16,32,47};
     for(unsigned n=0;n<8;++n) {
@@ -812,7 +853,10 @@ static void results_identity_test(void)
         memset(out,0,sizeof out);s2_video_results_name(&v,line,out,398,0);
         s2_video_results_name(&v,line,out,398,1);
     }
-    CHECK(out[80+39]==0xFFFFFFFF && out[184+39]==0xFFFFFFFF);
+    /* SHADOW uses the native24-pixel W and keeps the8-pixel gap beforeGOT.
+     * The full row remains centered; the scaled menu-font advance was16. */
+    CHECK(out[80+39]==0xFFFFFFFF && out[183+39]==0xFFFFFFFF);
+    CHECK(out[184+39]==0 && out[192+39]==0xFFFFFFFF);
     strcpy(s2_party.roster.character[0],"sonic");
     for(int x=0;x<320;++x)out[x]=0xFF00FF00;
     s2_video_results_name(&v,0,out,320,0);s2_video_results_name(&v,56,out,320,1);
@@ -1228,13 +1272,15 @@ static void front_ui_and_background_priority_test(void)
     /* The separate KiS2 HUD pass owns the entire old Sonic name footprint,
      * including places where the replacement glyph is transparent. */
     strcpy(s2_party.roster.character[0],"knuckles");hud_available=1;
+    int saved_s3k=s2_party.s3k_enabled;s2_party.s3k_enabled=1;
     word(g_ram,0xF804,0xA7D8);memset(v.vram+0x7D8*32,0x11,32);
     g_cpu.A[0]=0;g_cpu.A[1]=0x40ABA;
     s2_video_hook(0x16604);s2_video_hook(0x1684E);s2_video_hook(0x16712);
     memcpy(v.vram+0xF800,g_ram+0xF800,640);
     out[0]=out[1]=0xFFFF0000;s2_video_front_ui(&v,0,out,320);
     CHECK(out[0]==0xFFFF0000 && out[1]==0xFFFF0000);
-    hud_available=0;s2_party.roster.character[0][0]=0;word(g_ram,0xF804,0x8001);
+    hud_available=0;s2_party.s3k_enabled=saved_s3k;
+    s2_party.roster.character[0][0]=0;word(g_ram,0xF804,0x8001);
     g_cpu.A[0]=0xFFFFB800;g_cpu.A[1]=0;
     /* Front UI retains a tagged piece's private palette as well as its art. */
     static uint8_t patterns[65536],lines[2048];uint16_t colors[GVDP_EXT_LINES*16]={0};
@@ -1429,6 +1475,7 @@ static void competition_hud_replacement_test(void)
     }
 }
 
+uint16_t s2_runtime_title_card_ink(void){return 0;}
 int main(void)
 {
     /* Byte-matched SwScrl_EHZ_2P band boundaries and fixed-point gradient;
@@ -1850,6 +1897,7 @@ int main(void)
     widened_card_front_ui_test();
     composed_menu_fade_test();
     menu_background_lifetime_test();
+    imported_character_hud_test();
     pylon_viewport_test();
     sega_outgoing_composition_test();
     puts("Sonic 2 video defaults, terrain, spawn/cull cells and native presentation isolation PASS");

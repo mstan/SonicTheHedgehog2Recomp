@@ -252,6 +252,7 @@ static const GameDebugCommand sonic2_commands[] = {
 #include "sonic2_save_menu.h"
 static int s2_instruction_hook(uint32_t pc)
 {
+    if(pc==0x111C)s2_options_hook(pc);
     if (s2_sound_hook(pc)) return 1;
     if ((pc==0x3CCE || pc==0x3CF6) && s2_options_hook(pc)) return 1;
     if (s2_save_menu_hook(pc)) return 1;

@@ -65,12 +65,15 @@ typedef struct S2KnucklesArt {
     S2SpecialResultArtFrame special_results[S2_SS_RESULT_FRAMES];
 } S2KnucklesArt;
 typedef struct S2ItemArt {
-    uint8_t life[4*32],continue_icons[12*32];
+    uint8_t life[12*32],continue_icons[12*32];
+    uint8_t signpost[78*32];
+    unsigned signpost_tiles;
 } S2ItemArt;
 /* Immutable native competition HUD sources from the verified REV01 ROM. */
 typedef struct S2NativeHudArt {
     uint8_t life[3][12*32]; /* Sonic, Miles, Tails */
     uint8_t font[88*32], numbers[10*32];
+    uint8_t title_font[92*32];
 } S2NativeHudArt;
 int s2_native_hud_art_decode(const uint8_t *rom,size_t size,S2NativeHudArt *out);
 /* REV01's native 34-tile star atlas, retaining S2 animation/geometry. */
@@ -91,6 +94,7 @@ int s2_amy_special_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out)
 /* Completes an already decoded Amy half-pipe bank transactionally. */
 int s2_amy_special_ui_decode(const uint8_t *rom,size_t size,S2SpecialStageArt *out);
 int s2_amy_item_art_decode(const uint8_t *rom,size_t size,S2ItemArt *out);
+int s2_megamix_item_art_decode(const uint8_t *rom,size_t size,unsigned shadow,S2ItemArt *out);
 extern const S2DonorLayout s2_amy_171_layout;
 extern const S2DonorLayout s2_sk_knuckles_layout;
 extern const S2DonorLayout s2_megamix_mighty_layout;

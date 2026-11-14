@@ -18,5 +18,6 @@ const S2StageLayouts *s2_resource_knuckles_stages(void);
 const S2KnucklesEnding *s2_resource_knuckles_ending(void);
 const S2SpecialStageArt *s2_resource_amy_special(void);
 const S2ItemArt *s2_resource_amy_items(void);
+const S2ItemArt *s2_resource_primary_items(void);
 const char *s2_resource_error(unsigned resource);
 void s2_resources_shutdown(void);
