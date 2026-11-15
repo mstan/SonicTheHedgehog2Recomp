@@ -473,7 +473,7 @@ enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024,
        SCENE_FOREGROUND_SCREEN = 4, SCENE_WATER_REPEAT = 16,
        SCENE_ART_SIGNPOST = 8, SCENE_ART_CAPSULE = 32,
        SCENE_ART_EHZ_CAR = 40, SCENE_ART_MASK = 40,
-       SCENE_ART_NATIVE_VIEW = 128 };
+       SCENE_ART_MARGIN_VIEW = 64, SCENE_ART_NATIVE_VIEW = 128 };
 typedef struct { uint8_t pixels[4096]; unsigned ready,bytes; } NativeSpriteArt;
 static NativeSpriteArt s_native_sprite_art[S2_NATIVE_SPRITE_ART_COUNT];
 static uint8_t native_asset_pixel(const GVDP *v,unsigned asset,unsigned base,uint16_t attr,int x,int y,int width)
@@ -1396,6 +1396,7 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
             else if(map==0x110C6)q->art=1+S2_NATIVE_OOZ_COLLAPSE;
         }
         if(flags&0x8000)q->art|=SCENE_ART_NATIVE_VIEW;
+        if(flags&0x10000)q->art|=SCENE_ART_MARGIN_VIEW;
         unsigned art=vs?0:map==0x195BE?SCENE_ART_SIGNPOST:map==0x3F436?SCENE_ART_CAPSULE:
             (map==0x2FA58 || map==0x2ED8C || map==0x2EADC || map==0x2EE88)?SCENE_ART_EHZ_CAR:0;
         q->hud=(uint8_t)(art|anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
@@ -1510,6 +1511,20 @@ static int object_queued(unsigned object)
     }
     return 0;
 }
+static void dez_window_preview(SceneFrame *dst,uint32_t *keys,int render_width,int cam,int cy)
+{
+    /* Loc39C12 initializes the monitor's closed shutter after the native
+     * camera reaches320. Its level PLC art is already resident. Publish
+     * that same frame only in margins until the real child is submitted;
+     * allocation alone precedes DisplaySprite by one native frame. */
+    if(render_width<=320 || (g_ram[0xF600]&127)!=12 || !gameplay() || native_demo() || presented_competition() ||
+       !g_ram[0xF711] || !g_ram[0xB000] || g_ram[0xB024]>=6 ||
+       s2_video_level_zone()!=0xE00 || g_ram[0xEEDF]>2 || cam>0x224)return;
+    for(unsigned o=0xB400;o<0xD000;o+=64)
+        if(g_ram[o]==0xAF && scene_read32(0xFF0000u+o+4)==0x3A08C && object_queued(o))return;
+    add_mapping(dst,keys,0xFFF60000u,0x3A08C,4,0x378,0x10004,
+        0x2C0-cam,0x139-cy,0,0);
+}
 static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
                         int render_width,int cam,int cy,int read_only)
 {
@@ -1609,6 +1624,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     }
     for(unsigned pri=0;pri<8;++pri) {
         if(!vs)parked_boss(dst,keys,pri,render_width,cam,cy,read_only);
+        if(pri==6 && !vs)dez_window_preview(dst,keys,render_width,cam,cy);
         /* Obj7C is a screen-space foreground strip, not a centered menu.
          * Its native 1024px camera cycle moves 768px. Keep the original
          * nine-piece map even during its native off-screen submission gap. */
@@ -2033,6 +2049,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
              * viewport origin includes clamping and each campaign view, so
              * even a partially entering body preserves its native center. */
             if((s->art&SCENE_ART_NATIVE_VIEW) && (x<origin || x>=origin+320))continue;
+            if((s->art&SCENE_ART_MARGIN_VIEW) && (width<=320 || (x>=origin && x<origin+320)))continue;
             if(repeat) {x%=period;if(x<0)x+=period;}
             else if(x<0 || x>=width || (s_priority[x]&2))continue;
             int ix=(s->attr&0x800)?cw*8-1-i:i;
@@ -2041,7 +2058,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint32_t custom=0;
             int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
-            unsigned object_art=s->art&~SCENE_ART_NATIVE_VIEW;
+            unsigned object_art=s->art&~(SCENE_ART_NATIVE_VIEW|SCENE_ART_MARGIN_VIEW);
             if(!knux && object_art) {
                 unsigned asset=object_art-1,base=asset==S2_NATIVE_OOZ_BLOCK_VERT?0x332:
                     asset==S2_NATIVE_OOZ_BLOCK_HORIZ?0x3FF:asset==S2_NATIVE_CNZ_PLUNGER_VERT?0x422:

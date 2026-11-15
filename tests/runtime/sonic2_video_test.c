@@ -286,6 +286,7 @@ static void dormant_dez_margin_test(void)
     }
     clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
     word(g_ram,0xFE10,0xE00);g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
+    g_ram[0xEEDF]=4; /* The separate monitor preview has already retired. */
     for(unsigned f=0;f<4;++f)word(g_rom,0x40A9A+f*2,8);word(g_rom,0x40AA2,0);
     g_ram[0xB400]=0xC6;g_ram[0xB401]=0x84;g_ram[0xB419]=24;
     g_ram[0xB424]=g_ram[0xB425]=2;
@@ -324,6 +325,55 @@ static void dormant_dez_margin_test(void)
     for(unsigned n=0;n<2;++n)memcpy(g_rom+map_addresses[n],maps[n],12);
     memcpy(g_rom+0x40A9A,hud,sizeof hud);s_display=NULL;
     CHECK(configure("off"));clear_guest();
+}
+static void dez_window_preview_test(void)
+{
+    static SceneFrame scene;static uint8_t before[65536];
+    uint8_t hud[10],map[20];memcpy(hud,g_rom+0x40A9A,sizeof hud);
+    memcpy(map,g_rom+0x3A08C,sizeof map);
+    clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    word(g_ram,0xFE10,0xE00);g_ram[0x801F]=1;word(g_ram,0xE808,0xFFFF);
+    for(unsigned f=0;f<4;++f)word(g_rom,0x40A9A+f*2,8);word(g_rom,0x40AA2,0);
+    /* Closed frame4's real mapping may cross the native right edge.
+     * A compact16px fixture isolates its margin-only pixel contract. */
+    word(g_rom,0x3A094,10);word(g_rom,0x3A096,1);
+    g_rom[0x3A098]=0;g_rom[0x3A099]=4;
+    word(g_rom,0x3A09A,0);word(g_rom,0x3A09C,0);word(g_rom,0x3A09E,-8);
+    word(g_ram,0xEE00,0x180);word(g_ram,0xEEF0,0x180);word(g_ram,0xEEF4,0xC8);
+    CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    memcpy(before,g_ram,sizeof before);capture_objects_into(&scene,796,0,NULL);
+    CHECK(!memcmp(before,g_ram,sizeof before) && !s_visible_count);
+    CHECK(scene.count==1 && scene.sprites[0].art==SCENE_ART_MARGIN_VIEW);
+    s_display=&scene;s_camera=scene.camera_x;s_camera_y=scene.camera_y;s_left=s_camera-238;
+    static GVDP v;memset(&v,0,sizeof v);v.reg[12]=1;memset(v.vram+0x378*32,0x11,64);
+    uint32_t native[320]={0},wide[796]={0},palette[64]={0};palette[1]=0xFFFFFFFF;
+    CHECK(reserve_sprite_row(796));memset(s_priority,0,796);
+    draw_scene_sprites(&v,113,native,320,0,palette);
+    memset(s_priority,0,796);draw_scene_sprites(&v,113,wide,796,238,palette);
+    CHECK(!memcmp(native,wide+238,sizeof native));
+    CHECK(!wide[557] && wide[558]==palette[1] && wide[565]==palette[1] && !wide[566]);
+    /* A native allocation does not retire the preview until publication.
+     * Then exactly the real shutter is retained, with its live frame. */
+    g_ram[0xEEDF]=2;g_ram[0xB400]=0xAF;g_ram[0xB401]=4;
+    g_ram[0xB419]=16;g_ram[0xB424]=0x1C;g_ram[0xB41A]=4;
+    word(g_ram,0xB408,0x2C0);word(g_ram,0xB40C,0x139);word(g_ram,0xB402,0x378);
+    glue_poke32(0xFFB404,0x3A08C);
+    capture_objects_into(&scene,796,0,NULL);
+    CHECK(scene.count==1 && scene.sprites[0].art==SCENE_ART_MARGIN_VIEW);
+    word(g_ram,0xAF00,2);word(g_ram,0xAF02,0xB400);
+    capture_objects_into(&scene,796,0,NULL);
+    CHECK(scene.count==1 && scene.sprites[0].art==0);
+    word(g_ram,0xAF00,0);
+    for(unsigned kind=0;kind<5;++kind) {
+        g_ram[0xEEDF]=0;g_ram[0xF711]=1;g_ram[0xB024]=2;word(g_ram,0xFE10,0xE00);
+        if(kind==0)g_ram[0xEEDF]=4;
+        if(kind==1)g_ram[0xF711]=0;
+        if(kind==2)g_ram[0xB024]=6;
+        if(kind==3)word(g_ram,0xFE10,0x600);
+        capture_objects_into(&scene,kind==4?320:796,0,NULL);CHECK(!scene.count);
+    }
+    memcpy(g_rom+0x40A9A,hud,sizeof hud);memcpy(g_rom+0x3A08C,map,sizeof map);
+    s_display=NULL;CHECK(configure("off"));clear_guest();
 }
 static void half_pipe_width_test(void)
 {
@@ -2036,6 +2086,7 @@ int main(void)
     behind_screen_lifetime_test();
     mapping_vertical_bounds_test();
     dormant_dez_margin_test();
+    dez_window_preview_test();
     slot_presentation_test();
     native_scene_art_test();
     demo_native_simulation_test();
