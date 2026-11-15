@@ -532,6 +532,14 @@ static void native_publish_sprites(void);
 
 static unsigned s_serial, s_scene_tick, s_spawned, s_pool_pressure;
 static int s_vs_other_lo,s_vs_other_hi;
+/* The defeated DEZ body becomes a moving explosion controller. Retain only
+ * its last genuine drawing, in world coordinates, while a wide view owns it. */
+typedef struct {
+    SceneSprite pieces[16];
+    uint8_t priority[16];
+    unsigned count,root,active;
+} CorpsePresentation;
+static CorpsePresentation s_dez_corpse;
 typedef struct { uint32_t position; uint16_t zone,tick,velocity; uint8_t seen,active; } Runoff;
 static Runoff s_runoff[S2_MAX_PLAYERS];
 int s2_video_runoff_velocity(unsigned role)
@@ -690,6 +698,7 @@ static void video_state(S2StateIO *io, int rollback)
     if (!rollback) { S2_STATE(io,s_display_frame); S2_STATE(io,display); }
     S2_STATE(io,s_serial); S2_STATE(io,s_scene_tick);
     S2_STATE(io,s_runoff);
+    S2_STATE(io,s_dez_corpse);
     S2_STATE(io,s_level_zone);S2_STATE(io,s_level_zone_valid);S2_STATE(io,s_boss_preview_complete);
     S2_STATE(io,s_donor_fade); S2_STATE(io,s_presented_fade);
     S2_STATE(io,s_menu_background_row);S2_STATE(io,s_menu_background_ready);
@@ -1511,6 +1520,67 @@ static int object_queued(unsigned object)
     }
     return 0;
 }
+static int dormant_wfz_laser(unsigned o)
+{
+    return s2_video_level_zone()==0x600 && g_ram[o]==0xB9 &&
+        g_ram[o+0x24]==2 && scene_read32(0xFF0000u+o+4)==0x3BB18;
+}
+static void prepare_dez_corpse(SceneFrame *dst,uint32_t *keys,int width,int cam,int cy,int read_only)
+{
+    if(width<=320 || read_only)return;
+    if((g_ram[0xF600]&127)!=12 || !gameplay() || competition() || native_demo() ||
+       !g_ram[0xF711] || s2_video_level_zone()!=0xE00) {
+        memset(&s_dez_corpse,0,sizeof s_dez_corpse);return;
+    }
+    unsigned root=s_dez_corpse.root;
+    if(root && (g_ram[root]!=0xC7 || scene_read32(0xFF0000u+root+4)!=0x3E5F8))
+        memset(&s_dez_corpse,0,sizeof s_dez_corpse);
+    root=s_dez_corpse.root;
+    if(root && g_ram[root+0x24]==0x20) {
+        s_dez_corpse.active=1;return; /* Never read the deleted/reused head. */
+    }
+    for(unsigned o=0xB400;o<0xD000;o+=64) {
+        if(g_ram[o]!=0xC7 || g_ram[o+0x24]!=2 || g_ram[o+0x25]!=14 ||
+           g_ram[o+0x21] || g_ram[o+0x1A]!=3 || ram16(o+12)!=0x15C ||
+           scene_read32(0xFF0000u+o+4)!=0x3E5F8 || !object_queued(o))continue;
+        unsigned head=ram16(o+0x36);
+        if(head<0xB400 || head>=0xD000 || (head&63) || g_ram[head]!=0xC7 ||
+           g_ram[head+0x24]!=14 || g_ram[head+0x1A]!=2 || ram16(head+0x2C)!=o ||
+           scene_read32(0xFF0000u+head+4)!=0x3E5F8 || !object_queued(head))continue;
+        CorpsePresentation saved={0};saved.root=o;
+        unsigned actors[]={o,head},first=dst->count;
+        for(unsigned a=0;a<2;++a) {
+            unsigned actor=actors[a],start=dst->count;
+            add_mapping(dst,keys,0,0x3E5F8,g_ram[actor+0x1A],ram16(actor+2),g_ram[actor+1],
+                (int16_t)(ram16(actor+8)-cam),(int16_t)(ram16(actor+12)-cy),0,0);
+            for(unsigned n=start;n<dst->count && saved.count<16;++n) {
+                saved.pieces[saved.count]=dst->sprites[n];
+                saved.pieces[saved.count].x+=cam;saved.pieces[saved.count].y+=cy;
+                saved.priority[saved.count++]=g_ram[actor+0x18]&7;
+            }
+        }
+        if(dst->count-first<=16 && saved.count)s_dez_corpse=saved;
+        dst->count=first;return;
+    }
+}
+static void draw_dez_corpse(SceneFrame *dst,uint32_t *keys,unsigned priority,int width,int cam,int cy,int read_only)
+{
+    if(width<=320 || !s_dez_corpse.active || (g_ram[0xF600]&127)!=12 ||
+       !g_ram[0xF711] || s2_video_level_zone()!=0xE00 || presented_competition())return;
+    int left=view_left(cam,width),visible=0;
+    for(unsigned n=0;n<s_dez_corpse.count;++n) {
+        const SceneSprite *p=&s_dez_corpse.pieces[n];
+        if(p->x+(((p->size>>2)&3)+1)*8>left && p->x<left+width &&
+           p->y+((p->size&3)+1)*8>cy && p->y<cy+224)visible=1;
+    }
+    if(!visible) {if(!read_only)memset(&s_dez_corpse,0,sizeof s_dez_corpse);return;}
+    for(unsigned n=0;n<s_dez_corpse.count && dst->count<SCENE_SPRITES;++n) {
+        if(s_dez_corpse.priority[n]!=priority)continue;
+        if(keys)keys[dst->count]=0xFFF70000u|n;
+        dst->sprites[dst->count]=s_dez_corpse.pieces[n];
+        dst->sprites[dst->count].x-=cam;dst->sprites[dst->count++].y-=cy;
+    }
+}
 static void dez_window_preview(SceneFrame *dst,uint32_t *keys,int render_width,int cam,int cy)
 {
     /* Loc39C12 initializes the monitor's closed shutter after the native
@@ -1622,7 +1692,9 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
             add_mapping(dst,keys,o<<16,map,0,0x235E,0,(int)ram16(o+2)-cam,(int16_t)(ram16(o+4)-cy),0,1);
         }
     }
+    prepare_dez_corpse(dst,keys,render_width,cam,cy,read_only);
     for(unsigned pri=0;pri<8;++pri) {
+        draw_dez_corpse(dst,keys,pri,render_width,cam,cy,read_only);
         if(!vs)parked_boss(dst,keys,pri,render_width,cam,cy,read_only);
         if(pri==6 && !vs)dez_window_preview(dst,keys,render_width,cam,cy);
         /* Obj7C is a screen-space foreground strip, not a centered menu.
@@ -1678,7 +1750,13 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                     }
                     if (!visible) continue;
                 }
-                if(!read_only && visible_y && s_visible_count<144)s_visible_objects[s_visible_count++]=o;
+                /* Dormant WFZ lasers use on_screen as their activation
+                 * trigger (loc3BAD2). A margin preview must not start their
+                 * 400px entrance before the original viewport reaches them. */
+                int native_trigger=dormant_wfz_laser(o);
+                if(!read_only && visible_y && (!native_trigger ||
+                   (visible_x+radius>=0 && visible_x-radius<320)) && s_visible_count<144)
+                    s_visible_objects[s_visible_count++]=o;
             } else {
                 x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
                 /* The drowning number has become native screen-space, but
@@ -1703,6 +1781,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
+            if(dormant_wfz_laser(o))flags|=0x8000;
             /* This is the waiting Eggman in DEZ's next room, not the
              * monitor actor or his door. Keep his native pixels and all
              * visibility/AI bookkeeping above, but do not preview him in
@@ -1803,6 +1882,7 @@ int s2_video_hook(uint32_t pc)
         /* Results select the next zone before the old palette fades out.
          * Its scenery and cosmetic continuations still belong to this level. */
         s_level_zone=ram16(0xFE10);s_level_zone_valid=1;s_boss_preview_complete=0;
+        memset(&s_dez_corpse,0,sizeof s_dez_corpse);
         /* fall through */
     case 0x4F64:
         memset(&s_special_build,0,sizeof s_special_build);memset(s_special_history,0,sizeof s_special_history);
