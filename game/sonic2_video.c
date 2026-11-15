@@ -70,7 +70,7 @@ typedef struct S2RenderContext {
     int frame_fg_x;
     int frame_fg_y;
     int frame_bg_y;
-    unsigned frame_zone,frame_act;
+    unsigned frame_zone,frame_act,frame_resize;
     int frame_campaign_view;
     int frame_view_x;
     int frame_view_y;
@@ -164,6 +164,7 @@ static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_frame_bg_y (s_render->frame_bg_y)
 #define s_frame_zone (s_render->frame_zone)
 #define s_frame_act (s_render->frame_act)
+#define s_frame_resize (s_render->frame_resize)
 #define s_frame_campaign_view (s_render->frame_campaign_view)
 #define s_frame_view_x (s_render->frame_view_x)
 #define s_frame_view_y (s_render->frame_view_y)
@@ -365,6 +366,19 @@ static uint16_t foreground_attr(const uint8_t *ram,int wx,int wy,int margin,unsi
        wx>=0x2800 && wx<0x2880 && wy>=0x600 && wy<0x680)
         return chunk_attr(ram,wx,wy,0xDD);
     return world_attr(ram,wx,wy,0);
+}
+static uint16_t background_attr(const uint8_t *ram,int wx,int wy,int raw_x,int margin,unsigned zone,unsigned resize)
+{
+    /* WFZ's cloud rows end with the future getaway plane. A negative added
+     * margin wraps into that finite scenery before the native escape starts.
+     * Keep real cloud samples, every original pixel, and the actual getaway. */
+    if(margin && zone==6 && resize<4 && raw_x<0 &&
+       wx>=0x2B80 && wx<0x2D80 && wy>=0x580 && wy<0x680) {
+        unsigned layout=0x8080u+(((unsigned)wy>>7)&15u)*256u+((unsigned)wx>>7);
+        unsigned chunk=ram[layout];
+        if(chunk>=0x90 && chunk<=0x97)return 0;
+    }
+    return world_attr(ram,wx,wy,1);
 }
 /* The native 2P loader halves pattern indices. An interlace block has
  * two8x16 cells side by side, using only its first pair of map entries. */
@@ -2380,6 +2394,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
         s_frame_zone=s2_video_level_zone()>>8;
         s_frame_act=s2_video_level_zone()&255;
+        s_frame_resize=g_ram[0xEEDF];
         s_frame_card=0;s_frame_card_leaving=ram16(0xB0BE)!=0;
         /* Title mode is selected before the outgoing SEGA raster fades.
          * Keep its composition until the displayed VDP setup is replaced. */
@@ -2528,7 +2543,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
             gtile_row_begin(&fg,v->vram,attr,level?wx:nx-hs_a,level?wy:line+(v->vsram[0]&1023));
             fg_slot=slot_skin && slot_material(v,attr);
         }
-        if(bg_world && s_frame_zone==16 && (nx==0 || nx==nw))bg.remaining=0;
+        if(bg_world && (s_frame_zone==16 || s_frame_zone==6) && (nx==0 || nx==nw))bg.remaining=0;
         if(!bg.remaining) {
             unsigned flip=0;int source=cloud_band?ehz_cloud_x(background_x,&flip):background_x;
             /* SCZ's full layout ends in a clipped cloud. Joining its final
@@ -2537,7 +2552,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
              * samples, movement and the stage's real interior stay exact. */
             if(bg_world && s_frame_zone==16 && bg_width>0 && (nx<0 || nx>=nw))
                 source=reflected_cloud_x(bg_base+x,bg_width,&flip);
-            uint16_t attr=bg_world?(world_attr(s_world_frame,source,by,1)^(uint16_t)flip):plane_attr(v,base_b,bx,by);
+            uint16_t attr=bg_world?(background_attr(s_world_frame,source,by,bg_base+x,
+                width>nw && (nx<0 || nx>=nw),s_frame_zone,s_frame_resize)^(uint16_t)flip):plane_attr(v,base_b,bx,by);
             gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
             bg_slot=slot_skin && slot_material(v,attr);
         }
@@ -2755,6 +2771,7 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
             f->render.frame_level=1;f->render.frame_fg_x=ram16(0xEE60);
             f->render.frame_fg_y=ram16(0xEE64);f->render.frame_bg_y=ram16(0xEE6C);
             f->render.frame_zone=s2_video_level_zone()>>8;f->render.frame_act=s2_video_level_zone()&255;
+            f->render.frame_resize=g_ram[0xEEDF];
             f->render.stage_width=stage_width();
             f->render.width=width;
         }

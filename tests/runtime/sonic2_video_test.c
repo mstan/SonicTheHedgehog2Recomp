@@ -525,6 +525,44 @@ static void cnz_closure_margin_test(void)
     world[0x8C54]=0xF9;CHECK(foreground_attr(world,0x2A00,0x600,1,zone,act)==0x222); /* Right closure unchanged. */
     clear_guest();
 }
+static void wfz_early_background_margin_test(void)
+{
+    /* A real capture ends at A800: event state is separate frozen metadata.
+     * First-room x160/y144 wraps raw -51 into11597 in native chunk93. */
+    static uint8_t world[0xA800],before[0xA800];memset(world,0,sizeof world);
+    static const unsigned composition[2][4]={{0x90,0x91,0x92,0x93},{0x97,0x96,0x95,0x94}};
+    for(unsigned chunk=0x8F;chunk<=0x98;++chunk)
+        for(unsigned i=0;i<128;i+=2)word(world,chunk*128+i,1);
+    for(unsigned i=0;i<8;i+=2)word(world,0x9008+i,0x123);
+    clear_guest();g_ram[0xEEDF]=4; /* Live state cannot override frozen early state. */
+    for(unsigned row=0;row<2;++row)for(unsigned col=0;col<4;++col) {
+        int x=0x2B80+(int)col*128,y=0x580+(int)row*128;
+        unsigned layout=0x8080+((y>>7)&15)*256+(x>>7);
+        world[layout]=(uint8_t)composition[row][col];
+        for(int dy=0;dy<128;dy+=8)for(int dx=0;dx<128;dx+=8) {
+            CHECK(background_attr(world,x+dx,y+dy,-51,1,6,2)==0);
+            CHECK(background_attr(world,x+dx,y+dy,-51,0,6,2)==0x123); /* Native view/width. */
+            CHECK(background_attr(world,x+dx,y+dy,0,1,6,2)==0x123); /* Positive interior. */
+            CHECK(background_attr(world,x+dx,y+dy,-51,1,7,2)==0x123);
+            CHECK(background_attr(world,x+dx,y+dy,-51,1,6,4)==0x123); /* Genuine getaway. */
+        }
+    }
+    int x=11597,y=0x54C+144;
+    unsigned layout=0x8080+((y>>7)&15)*256+(x>>7);
+    for(unsigned chunk=0x8F;chunk<=0x98;chunk+=9) {
+        world[layout]=(uint8_t)chunk;
+        CHECK(background_attr(world,x,y,-51,1,6,2)==0x123); /* Other cloud/scenery. */
+    }
+    static const int outside[4][2]={{0x2B7F,0x5DC},{0x2D80,0x5DC},{0x2D4D,0x57F},{0x2D4D,0x680}};
+    for(unsigned i=0;i<4;++i) {
+        int ox=outside[i][0],oy=outside[i][1];
+        world[0x8080+((oy>>7)&15)*256+(ox>>7)]=0x90;
+        CHECK(background_attr(world,ox,oy,-51,1,6,2)==0x123);
+    }
+    memcpy(before,world,sizeof before);
+    CHECK(background_attr(world,x,y,-51,1,6,2)==0x123);
+    CHECK(!memcmp(before,world,sizeof before));clear_guest();
+}
 static void wfz_robotnik_preview_test(void)
 {
     static SceneFrame scene;static uint8_t before[65536];uint8_t egg_map[20],platform_map[12];
@@ -2330,6 +2368,7 @@ int main(void)
     dez_corpse_presentation_test();
     ending_plane_preview_test();
     cnz_closure_margin_test();
+    wfz_early_background_margin_test();
     wfz_robotnik_preview_test();
     slot_presentation_test();
     native_scene_art_test();
