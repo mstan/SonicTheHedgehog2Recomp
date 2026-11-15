@@ -343,8 +343,10 @@ int s2_megamix_item_art_decode(const uint8_t *r,size_t size,unsigned shadow,S2It
 unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,
                                     uint8_t *out,size_t capacity)
 {
-    static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C,0x83BF6,0x84332,0x84F18};
-    static const unsigned lengths[]={1452,908,2027,1852,1374,126},tiles[]={78,49,128,96,111,8};
+    static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C,0x83BF6,0x84332,0x84F18,
+        0x8030A,0x81048,0x81C96,0x81AB0,0x809D0,0x8E886,0x8EE52};
+    static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660,468,323},
+        tiles[]={78,49,128,96,111,8,4,4,18,32,40,24,28};
     if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
        capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
@@ -489,6 +491,16 @@ int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *
         !nemesis(r+0xCA5E0,1396,a->tiles+0xAC40,sizeof a->tiles-0xAC40)) goto failure;
     for (unsigned i=0;i<16;++i) a->palette[i]=(uint16_t)be16(r+0x39D262+i*2);
     for (unsigned i=0;i<32;++i) a->palette[16+i]=(uint16_t)be16(r+0xCA78+i*2);
+    /* Native Load_Icon_Art: Sonic uses static frames24/25. Tails and
+     * Knuckles use DMA portraits with their corresponding zone-card
+     * palettes; the static frame27 is the later all-character emblem. */
+    uint8_t finish[0x1DC0];
+    if(!kosinski(r+0x15EDB2,3680,finish,sizeof finish))goto failure;
+    memcpy(a->finish_tiles,finish,sizeof a->finish_tiles);
+    const unsigned finish_palettes[]={0xCAB8,0xCAD8,0xCD18,0xCCD8};
+    for(unsigned p=0;p<4;p++)for(unsigned i=0;i<16;i++)
+        a->finish_palette[p][i]=(uint16_t)be16(r+finish_palettes[p]+i*2);
+    a->finish_ready=1;
     /* Map_DataSelect_Player_LivesContinues has three 32-byte blocks. Keep
      * the original character art and shared counter/multiply tiles. */
     for (unsigned character=0;character<3;++character) for (unsigned i=0;i<15;++i) {

@@ -30,6 +30,10 @@ int s2_stage_layouts_decode(const uint8_t *rom,size_t size,S2StageLayouts *out)
         memcpy(candidate->data+candidate->size,rom+start,bytes);
         candidate->size+=bytes;
     }
+    if(size>=0x3071D2+28){
+        memcpy(candidate->special_ring_requirements,rom+0x3071D2,28);
+        candidate->special_ring_requirements_ready=1;
+    }
     *out=*candidate;
     free(candidate);
     return 1;

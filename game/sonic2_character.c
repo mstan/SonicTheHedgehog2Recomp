@@ -11,6 +11,33 @@ static int absword(int value) { return value<0?-value:value; }
 static int direction(const S2Motion *m) { return m->status&FACE?-1:1; }
 void s2_character_reset(S2CharacterState *s, unsigned kind)
 { memset(s,0,sizeof *s); s->kind=kind; s->animation=~0u; }
+int16_t s2_knuckles_air_speed(int16_t speed, uint16_t acceleration,
+    uint16_t top, uint8_t held, uint8_t *extend)
+{
+    /* KiS2 Sonic_ChgJumpDir retains speed already beyond the air limit.
+     * Its left test precedes its right test, including when both are held.
+     * The undo ADD/SUB also owns X; CMP/MOVE leave that bit unchanged. */
+    if(held&LEFT) {
+        uint16_t before=(uint16_t)speed, next=(uint16_t)(before-acceleration);
+        *extend=acceleration>before; speed=(int16_t)next;
+        int16_t limit=(int16_t)(0u-top);
+        if(speed<=limit) {
+            uint32_t restored=(uint32_t)next+acceleration;
+            *extend=restored>0xFFFFu; speed=(int16_t)(uint16_t)restored;
+            if(speed>limit)speed=limit;
+        }
+    }
+    if(held&RIGHT) {
+        uint32_t next=(uint32_t)(uint16_t)speed+acceleration;
+        *extend=next>0xFFFFu; speed=(int16_t)(uint16_t)next;
+        if(speed>=(int16_t)top) {
+            uint16_t before=(uint16_t)speed;
+            *extend=acceleration>before; speed=(int16_t)(uint16_t)(before-acceleration);
+            if(speed<(int16_t)top)speed=(int16_t)top;
+        }
+    }
+    return speed;
+}
 int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m)
 {
     if(s->kind!=S2_CHAR_KNUCKLES || m->hurt || m->control_locked || m->animation==0x10)return 0;

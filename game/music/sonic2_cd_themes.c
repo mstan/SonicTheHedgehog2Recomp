@@ -87,6 +87,8 @@ static int32_t sample(Song *s,uint32_t frame,unsigned channel)
  }
  return s->cache[slot][(frame-start)*2+channel];
 }
+int s2_cd_theme_native_channels(unsigned t)
+{return t<S2_MUSIC_COUNT&&!songs[t].vgm&&!songs[t].pcm;}
 unsigned s2_cd_theme_channel_count(unsigned t)
 {return t>=S2_MUSIC_COUNT?1:songs[t].vgm?1+(unsigned)gme_voice_count(songs[t].vgm):songs[t].pcm?1:11;}
 const char *s2_cd_theme_channel_name(unsigned t,unsigned solo)
@@ -229,7 +231,7 @@ int s2_cd_custom_build(unsigned t,unsigned kind,const uint8_t *data,size_t bytes
 {
  if(t>=S2_MUSIC_COUNT||!frames||!used||*used>cap||!data||!bytes)return 0;
  Song song={0};song.frames=frames;song.gain=65536;memcpy(song.hash,hash,32);song.loop=~0u;
- if(kind==S2_CUSTOM_PCM){song.pcm=malloc(bytes);if(!song.pcm)return 0;memcpy(song.pcm,data,bytes);if(custom_loops(t))song.loop=0;}
+ if(kind==S2_CUSTOM_PCM){song.pcm=malloc(bytes);if(!song.pcm)return 0;memcpy(song.pcm,data,bytes);if(loop&&loop<=frames)song.loop=loop-1;else if(custom_loops(t))song.loop=0;}
  else if(kind==S2_CUSTOM_VGM){
   if(gme_open_data(data,(long)bytes,&song.vgm,44100))goto fail;
   gme_ignore_silence(song.vgm,1);gme_set_autoload_playback_limit(song.vgm,0);

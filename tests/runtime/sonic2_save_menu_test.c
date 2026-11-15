@@ -101,11 +101,12 @@ int main(void)
     reset(9,S2_SAVE_EMPTY); input(8,0); input(4,0xC0); assert(view.selection==8);
     reset(1,S2_SAVE_COMPLETE); input(12,0); assert(view.selection==1);
     input(0,0); input(3,0); assert(replay_stage==S2_CAMPAIGN_STAGES);
+    input(0x80,0);assert(!exit_action&&!commits&&view.data.slots[0].state==S2_SAVE_COMPLETE);
     input(1,0xCD); assert(replay_stage==0);
     input(0,0); /* held input has no new press edge */
-    input(2,0xCD); assert(replay_stage==S2_CAMPAIGN_STAGES);
     input(2,0xCD); assert(replay_stage==S2_CAMPAIGN_STAGES-1);
-    input(1,0xCD); assert(replay_stage==S2_CAMPAIGN_STAGES);
+    input(1,0xCD); assert(replay_stage==0);
+    input(1,0xCD); assert(replay_stage==1);
     for (unsigned i=0;i<2;++i) {
         reset(1,(int)i); input(1,0); input(2,0); /* new/in-progress: not replayable */
     }

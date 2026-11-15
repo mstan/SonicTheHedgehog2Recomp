@@ -55,16 +55,20 @@ def object_at(at,identity,x,y):
         f'WRITE_RAM16 {0xff0008+at:X} {x:X}',f'WRITE_RAM16 {0xff000c+at:X} {y:X}']
 start=['WAIT 600','PRESS START 2','WAIT 40','PRESS START 2','WAIT 220','ASSERT_RAM8 FFF600 0C']
 emeralds=['WRITE_RAM8 FFFFB1 7']+[f'WRITE_RAM8 {0xffffb2+i:X} FF' for i in range(7)]
+def jump_to_super(first):
+    # KiS2 uses a fresh press after the variable jump-height interval;
+    # the other native characters retain Sonic 2's automatic apex trigger.
+    return (['PRESS B 2','WAIT 12','HOLD B'] if first=='knuckles' else ['HOLD B'])
 for first in ('sonic','tails','amy','knuckles'):
     roster=configure(first)
     name=first+'-lifecycle'
-    run(name,start+capture(first+'-normal')+emeralds+['WRITE_RAM16 FFFE20 80',
-        'HOLD B','WAIT_RAM8 FFFE19 1']+capture(first+'-transform')+[
+    run(name,start+capture(first+'-normal')+emeralds+['WRITE_RAM16 FFFE20 80']+
+        jump_to_super(first)+['WAIT_RAM8 FFFE19 1']+capture(first+'-transform')+[
         'RELEASE','WAIT 90']+
         capture(first+'-super')+['SAVE_STATE '+first+'.state','WAIT 8',
         'WRITE_RAM16 FFFE20 1','WRITE_RAM16 FFF670 0','WAIT 65',
         'ASSERT_RAM8 FFFE19 0','WAIT 50','ASSERT_RAM8 FFF65F 0','ASSERT_RAM8 FFB02A 0']+
-        capture(first+'-reverted')+['WRITE_RAM16 FFFE20 80','HOLD B','WAIT_RAM8 FFFE19 1',
+        capture(first+'-reverted')+['WRITE_RAM16 FFFE20 80']+jump_to_super(first)+['WAIT_RAM8 FFFE19 1',
         'RELEASE','WAIT 90','ASSERT_RAM8 FFB02A 0']+capture(first+'-again'))
     normal=ram(first+'-normal'); powered=ram(first+'-super'); reverted=ram(first+'-reverted')
     assert powered[0xfe19]==1 and reverted[0xfe19]==0,first+' Super lifecycle'
@@ -78,11 +82,22 @@ for first in ('sonic','tails','amy','knuckles'):
     assert word(reverted,0xfe20)==0,first+' depleted rings'
     assert not any(powered[o+0x2b]&2 for o in (0xb040,0xcfc0,0xcf80)),first+' companions stay normal'
 
+    if first=='knuckles':
+        lines=[]
+        for key in ('A','B','C'):
+            lines+=load(first+'-normal')+emeralds+['WRITE_RAM16 FFFE20 80',
+                'HOLD '+key,'WAIT 40']+capture('knuckles-held-'+key)+[
+                'RELEASE','WAIT 50']+capture('knuckles-single-'+key)
+        run('knuckles-single-jumps',lines)
+        for key in ('A','B','C'):
+            assert not ram('knuckles-held-'+key)[0xfe19],key+' held jump must not transform'
+            assert not ram('knuckles-single-'+key)[0xfe19],key+' single jump must not transform'
+
     run(first+'-eligibility',load(first+'-normal')+emeralds+[
         'WRITE_RAM16 FFFE20 31','HOLD B','WAIT 85','RELEASE']+capture(first+'-49-rings')+[
         'WRITE_RAM16 FFFE20 32','WRITE_RAM8 FFFFB1 6','HOLD B','WAIT 85','RELEASE']+
         capture(first+'-6-emeralds')+['WRITE_RAM8 FFFFB1 7','WAIT 30']+
-        capture(first+'-grounded')+['HOLD B','WAIT_RAM8 FFFE19 1','RELEASE','WAIT 80']+
+        capture(first+'-grounded')+jump_to_super(first)+['WAIT_RAM8 FFFE19 1','RELEASE','WAIT 80']+
         capture(first+'-50-rings'))
     for suffix in ('49-rings','6-emeralds','grounded'):
         assert ram(first+'-'+suffix)[0xfe19]==0,first+' '+suffix
@@ -135,7 +150,7 @@ for first in ('sonic','tails','amy','knuckles'):
     # Enabling water in EHZ is invalid: its zone-specific water dispatch is data.
     run(first+'-arz',load(first+'-normal')+['WRITE_RAM16 FFFE10 F00',
         'WRITE_RAM16 FFFE02 1','WAIT 400','ASSERT_RAM16 FFFE10 F00']+emeralds+[
-        'WRITE_RAM16 FFFE20 80','HOLD B','WAIT_RAM8 FFFE19 1','RELEASE','WAIT 90']+
+        'WRITE_RAM16 FFFE20 80']+jump_to_super(first)+['WAIT_RAM8 FFFE19 1','RELEASE','WAIT 90']+
         capture(first+'-arz'))
     water_ram=ram(first+'-arz'); plane=word(water_ram,0xf646)
     # Pause around placement: a VBlank can otherwise interrupt an imported

@@ -880,6 +880,19 @@ static int update_player(unsigned p, uint32_t entry)
             putword(0xF65C,0); s_transforming=1; native_helper(0x1AB38); s_transforming=0;
         }
     }
+    if (kind(p)==S2_CHAR_KNUCKLES && !p && g_ram[object+0x24]==2 &&
+        !word(0xFFF0) && !word(0xFFD8) && !characters[p].special &&
+        (g_ram[object+0x22]&2) && g_ram[object+0x3C] &&
+        !(g_ram[object+0x2A]&1) && !g_ram[0xF7CC] &&
+        (int16_t)word(object+0x12)>=((g_ram[object+0x22]&64)?-0x200:-0x400) &&
+        (g_ram[0xF605]&0x70) && !g_ram[0xFE19] &&
+        g_ram[0xFFB1]==7 && word(0xFE20)>=50 && g_ram[0xFE1E]) {
+        /* KiS2 JumpHeight checks the new airborne press once the variable
+         * jump-height interval ends. Transform before the same press can
+         * start a glide; holding the first jump never transforms Knuckles. */
+        putword(0xF65C,0); s_transforming=1; native_helper(0x1AB38); s_transforming=0;
+        if(g_ram[0xFE19])characters[p].special=0;
+    }
     if (imported() && g_ram[object+0x24]==2) {
         S2Motion m=motion(object);
         int moved_early=0;
@@ -1118,6 +1131,17 @@ int s2_runtime_hook(uint32_t pc)
         }
         return 0;
     }
+    if(pc==0x771C) {
+        /* SSStartNewAct has selected its native table and index. Substitute
+         * the verified KiS2 solo requirement before the ordinary goal/BCD
+         * writer. Keep ROM immutable across boot, quickload and rollback. */
+        const S2StageLayouts *original=s2_resource_knuckles_stages();
+        unsigned index=(uint16_t)g_cpu.D[0];
+        if(word(0xFF70) && kind(0)==S2_CHAR_KNUCKLES && original &&
+           original->special_ring_requirements_ready && index<28)
+            g_cpu.D[1]=(g_cpu.D[1]&0xFFFF0000u)|original->special_ring_requirements[index];
+        return 0;
+    }
     if (pc==0x4F64) {
         s2_video_hook(pc);
         /* Stock solo roles and the original Amy/Knuckles use the native solo
@@ -1322,6 +1346,7 @@ int s2_runtime_hook(uint32_t pc)
         if (!inside_player) return 0;
         if (actor>0 || word(0xFFD8)) return 1; /* never companions or VS */
         if (pc==0x1AB38 && kind(0)==S2_CHAR_SHADOW && !s_transforming) return 1;
+        if (pc==0x1AB38 && kind(0)==S2_CHAR_KNUCKLES && !s_transforming) return 1;
         if (pc==0x1AB38 && kind(0)!=S2_CHAR_SONIC) {
             if (s_transforming) return 0;
             if (g_ram[0xFE19] || g_ram[0xFFB1]!=7 || word(0xFE20)<50 || !g_ram[0xFE1E]) return 1;
@@ -1378,6 +1403,18 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;
     unsigned o=g_cpu.A[0]&0xFFFF;
+    if(pc==0x1A92E && kind(actor)==S2_CHAR_KNUCKLES && !word(0xFFF0)) {
+        /* Native air steering has not stored x_vel yet. Recreate KiS2's
+         * uncapped steering from that original word, retaining native face
+         * changes and every other register. The following MOVE supplies
+         * NZVC; only its source word and the arithmetic's X differ. */
+        uint8_t extend=!!(g_cpu.SR&0x10);
+        int16_t speed=s2_knuckles_air_speed((int16_t)word(o+0x10),
+            (uint16_t)g_cpu.D[5],(uint16_t)g_cpu.D[6],g_ram[0xF602],&extend);
+        g_cpu.D[0]=(g_cpu.D[0]&0xFFFF0000u)|(uint16_t)speed;
+        g_cpu.SR=(g_cpu.SR&~0x10u)|(extend?0x10u:0);
+        return 0;
+    }
     if(pc==0x3F7C8 && kind(actor)==S2_CHAR_KNUCKLES &&
         characters[actor].special==S2_SK_GLIDE && g_ram[((g_cpu.A[1]&65535u)+0x21)&65535u]) {
         /* KiS2 Touch_Enemy_Part2: retain native damage/reversal, then fall
@@ -1702,6 +1739,8 @@ static void competition_hud(const GVDP *v,int line,uint32_t *out,int width,int d
 static S2RuntimePresentation s_overlay_frame;
 static int actor_lerp(int a,int b,double phase)
 { return a+(int)((b-a)*phase+((b>=a)?0.5:-0.5)); }
+static int actor_delta_y(int difference)
+{ return ((difference+1024)&2047)-1024; }
 static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width,
                                   const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,double phase)
 {
@@ -1742,11 +1781,18 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
             donor_water=zone==15 && b->water_palette_count>1?b->water_palette_alt:b->water_palette;
         const S2DonorFrame *f=b && frame<b->count?&b->frames[frame]:NULL;
         if (!f) continue;
+        int wrap=(picture->world[0xF600]&127)==12;
         int x=s->x-origin_x,y=s->y-origin_y;
+        /* Native level sprites wrap vertically through the 2048px world.
+         * MTZ can publish a negative camera while the actor still has its
+         * wrapped positive coordinate. Subtracting them directly loses the
+         * entire donor body despite valid movement and display submission. */
+        if(wrap)y=actor_delta_y(y);
         if(previous) {
             const PartySprite *old=&previous->sprites[index];
             x=actor_lerp(old->x,s->x,phase)-origin_x;
-            y=actor_lerp(old->y,s->y,phase)-origin_y;
+            if(wrap)y+=actor_lerp(actor_delta_y(old->y-s->y),0,phase);
+            else y=actor_lerp(old->y,s->y,phase)-origin_y;
         }
         unsigned flip=s->flip;
         int fy=line-y-(flip&2?-f->y-f->height:f->y);
@@ -1786,7 +1832,9 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
     }
     for (unsigned n=0;n<DUST_SLOTS;++n) {
         const PartySprite *s=&picture->dust[n]; if (!s->visible) continue;
-        int row=line-(s->y-origin_y-8); if (row<0 || row>=16) continue;
+        int y=s->y-origin_y;
+        if((picture->world[0xF600]&127)==12)y=actor_delta_y(y);
+        int row=line-(y-8); if (row<0 || row>=16) continue;
         int fy=s->flip&2?15-row:row;
         for (int px=0;px<16;++px) {
             int dx=s->x-origin_x-8+px; if (dx<0 || dx>=width) continue;
@@ -1817,7 +1865,11 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
         int native_runoff=!active && g_ram[0xF711] && !word(0xFFD8) &&
             (g_ram[0xB000]==1 || g_ram[0xB000]==2) &&
             (published_sprites[0].visible || published_sprites[1].visible);
-        f->active=(presented_level() || native_runoff || knuckles_ending()) && (g_ram[0xF711] || !word(0xFFD8));
+        /* Credits remain inside EndingSequence but stop building objects.
+         * Their native clear retires the actor even without another sprite
+         * publication; do not keep its last pose over the credits slides. */
+        int ending_actor=knuckles_ending() && g_ram[0xB000]==1;
+        f->active=(presented_level() || native_runoff || ending_actor) && (g_ram[0xF711] || !word(0xFFD8));
         memcpy(f->sprites,published_sprites,sizeof f->sprites);
         memcpy(f->dust,published_dust,sizeof f->dust);
         f->vdp=*v; memcpy(f->world,g_ram,sizeof f->world);
@@ -1864,8 +1916,10 @@ int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2Runti
     if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
     for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
         const PartySprite *p=&a->sprites[i],*q=&b->sprites[i];
+        int dy=p->y-q->y;
+        if((a->world[0xF600]&127)==12 && (b->world[0xF600]&127)==12)dy=actor_delta_y(dy);
         if(p->visible!=q->visible || (q->visible &&
-           (p->art!=q->art || abs(p->x-q->x)>48 || abs(p->y-q->y)>48)))return 0;
+           (p->art!=q->art || abs(p->x-q->x)>48 || abs(dy)>48)))return 0;
     }
     return 1;
 }

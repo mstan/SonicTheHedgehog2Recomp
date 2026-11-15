@@ -139,6 +139,12 @@ kind = "game_hook"
 addr = 0x4F64 # SpecialStage: always native Sonic + Tails, independent of roster
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x771C # SSStartNewAct: verified campaign solo ring requirement
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x367A0 # SCZ actors: retain the native deletion branch across widened margins
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x5300 # Special-stage results: retire pending level tile redraws
 kind = "game_hook"
 [[widescreen_site]]
@@ -1015,6 +1021,9 @@ kind = "game_hook"
 
 [[widescreen_site]]
 addr = 0x1AF2C # Knuckles gliding uses the original KiS2 floor acceptance
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1A92E # KiS2 air steering retains existing momentum before native x_vel store
 kind = "game_hook"
 
 # Optional ROM-derived sound driver; stock execution remains the default.

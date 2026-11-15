@@ -153,7 +153,7 @@ static int option(void *ctx, const char *p, const char *f, int n, RecompLauncher
     if(owner(p,f)!=8)return owner(p,NULL)<0 && base && base->feature_option_get && base->feature_option_get(base->ctx,p,f,n,out);
     if(n<0 || n>=5 || !out)return 0;memset(out,0,sizeof *out);
     COPY(out->id,presentation_ids[n]);COPY(out->label,presentation_labels[n]);
-    COPY(out->description,"Original preserves the existing presentation. Changes apply after restart.");
+    COPY(out->description,n==4?"Slow doubles the short transitions between the Options background lettering patterns. The long hold keeps its original duration. Changes apply after restart.":"Original preserves the existing presentation. Changes apply after restart.");
     COPY(out->value,*presentation_flag(n)?presentation_values[n]:"original");COPY(out->default_value,"original");
     out->type=RECOMP_MOD_OPTION_CHOICE;out->choice_count=2;return 1;
 }

@@ -267,6 +267,8 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x157C4:
     case 0x1DE4A: case 0x1DE88:
     case 0x4F64:
+    case 0x771C: /* original Knuckles solo Special Stage goals */
+    case 0x1A92E: /* original Knuckles airborne overspeed steering */
     case 0x189CA: case 0x18AEE: case 0x18CC6: case 0x18DB4: case 0x18EE6:
     case 0x4450: case 0x446E: case 0x19F50: case 0x1B8A4:
     case 0x19FE6: case 0x1B96E:
