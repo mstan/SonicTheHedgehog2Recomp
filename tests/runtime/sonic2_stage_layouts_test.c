@@ -20,6 +20,7 @@ int main(int argc,char **argv)
     for(unsigned i=0;i<S2_STAGE_LAYOUT_COUNT;++i)put32(rom+0xDF370+i*4,at);
     rom[at+1]=16;rom[at+7]=32;rom[at+12]=rom[at+13]=255;
     assert(s2_stage_layouts_decode(rom,size,out));
+    assert(!out->special_ring_requirements_ready);
     assert(out->size==S2_STAGE_LAYOUT_COUNT*18);
     assert(s2_stage_layout_address(out,12,1)==S2_STAGE_LAYOUT_ROM+25*18);
     assert(!s2_stage_layout_address(out,17,0) && !s2_stage_layout_address(out,0,2));
@@ -35,6 +36,9 @@ int main(int argc,char **argv)
         FILE *f=fopen(argv[1],"rb");assert(f);fseek(f,0,SEEK_END);size=(size_t)ftell(f);rewind(f);
         rom=malloc(size);assert(rom && fread(rom,1,size,f)==size);fclose(f);
         assert(s2_stage_layouts_decode(rom,size,out));
+        const uint8_t goals[]={30,70,130,110,50,90,130,130,50,100,140,160,40,90,140,150,
+            40,80,130,130,70,130,170,170,50,100,140,140};
+        assert(out->special_ring_requirements_ready && !memcmp(out->special_ring_requirements,goals,sizeof goals));
         for(unsigned i=0;i<S2_STAGE_LAYOUT_COUNT;++i) {
             unsigned p=(unsigned)rom[0xDF370+i*4]<<24|(unsigned)rom[0xDF371+i*4]<<16|
                 (unsigned)rom[0xDF372+i*4]<<8|rom[0xDF373+i*4];

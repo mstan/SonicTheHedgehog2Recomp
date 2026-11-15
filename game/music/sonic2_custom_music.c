@@ -24,6 +24,33 @@ static unsigned le32(const uint8_t *p)
 {return p[0]|((unsigned)p[1]<<8)|((unsigned)p[2]<<16)|((unsigned)p[3]<<24);}
 static void put32(uint8_t *p,unsigned v)
 {for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(i*8));}
+/* RIFF sampler-loop positions are source sample frames, with an inclusive
+ * end. Keep the intro, trim after that end, and convert markers with audio. */
+static int wav_loop(const uint8_t *p,size_t n,unsigned rate,unsigned *frames,unsigned *loop)
+{
+ if(!rate || n<12 || le32(p+4)>n-8)return 0;
+ size_t end=(size_t)le32(p+4)+8;
+ for(size_t at=12;at+8<=end;){
+  unsigned bytes=le32(p+at+4);size_t data=at+8;
+  if(bytes>end-data)return 0;
+  if(!memcmp(p+at,"smpl",4)){
+   if(bytes<36)return 0;
+   unsigned count=le32(p+data+28);
+   if(count>(bytes-36)/24)return 0;
+   for(unsigned i=0;i<count;i++){
+    const uint8_t *mark=p+data+36+i*24;
+    if(le32(mark+4)!=0)continue; /* Only forward loops are supported. */
+    uint64_t first=le32(mark+8),last=(uint64_t)le32(mark+12)+1;
+    if(first>=last || le32(mark+16) || le32(mark+20))return 0;
+    first=(first*44100+rate/2)/rate;last=(last*44100+rate/2)/rate;
+    if(first>=last || last>*frames)return 0;
+    *frames=(unsigned)last;*loop=(unsigned)first+1;return 1;
+   }
+  }
+  at=data+bytes+(bytes&1u);
+ }
+ return 1;
+}
 /* Genesis VGM commands only. Verify every boundary, DAC read and loop before
  * asking a synthesizer to run untrusted data. A loop must advance audio time. */
 static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop)
@@ -133,6 +160,12 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
     if(cvt.buf){memcpy(cvt.buf,wave,length);if(SDL_ConvertAudio(&cvt)==0){payload=cvt.buf;bytes=(size_t)cvt.len_cvt;frames=(unsigned)(bytes/4);kind=S2_CUSTOM_PCM;}else free(cvt.buf);}
    }
    SDL_FreeWAV(wave);
+   if(kind==S2_CUSTOM_PCM){
+    if(!wav_loop(raw,n,(unsigned)spec.freq,&frames,&loop)){
+     free(payload);payload=NULL;kind=0;
+     if(error&&capacity)snprintf(error,capacity,"The WAV sampler loop is invalid or unsupported.");
+    }else bytes=(size_t)frames*4;
+   }
   }
  }else if(n>=0x40&&!memcmp(raw,"Vgm ",4)&&vgm_info(raw,n,&frames,&loop)){
   Music_Emu *emu=NULL;

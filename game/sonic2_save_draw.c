@@ -138,6 +138,30 @@ static unsigned glyph(char c)
     if (c=='.') return 29; /* skdisasm LEVELSELECT charset */
     return 0;
 }
+static void finish_portrait(const S2SaveAssets *a,const S2SaveView *v,const S2CampaignSlot *slot,
+                           int x,int line,uint32_t *out,int width)
+{
+    unsigned kind=v->counter_character,super=kind==0 && slot->emeralds==127;
+    unsigned image=kind==1?2:0,palette=kind==2?3:kind==1?2:super?1:0;
+    const S2MenuFrame *frame=&a->frames[kind?35:super?25:24];
+    for(int n=(int)frame->count-1;n>=0;n--){
+        const S2MenuPiece *p=&frame->pieces[n];int row=line-136-p->y;
+        if(row<0 || row>=p->height*8)continue;
+        for(unsigned col=0;col<p->width*8;col++){
+            int dx=x+p->x+(int)col;if(dx<0 || dx>=width)continue;
+            unsigned sx=p->tile&0x800?p->width*8-1-col:col;
+            unsigned sy=p->tile&0x1000?p->height*8-1-(unsigned)row:(unsigned)row;
+            unsigned tile=(p->tile&2047)+(sx/8)*p->height+sy/8;
+            const uint8_t *data=a->tiles;size_t at=tile*32+(sy&7)*4+(sx&7)/2;
+            if(kind){
+                if(tile<0x51C || tile>=0x51C+70)continue;
+                data=a->finish_tiles[image];at-=0x51C*32;
+            }
+            unsigned ink=(data[at]>>((sx&1)?0:4))&15;
+            out[dx]=genesis_dac_cram_to_argb(a->finish_palette[palette][ink],GENESIS_DAC_NORMAL);
+        }
+    }
+}
 static void text(const S2SaveAssets *a,int x,int y,const char *s,int line,
                  uint32_t *out,int width)
 {
@@ -229,6 +253,8 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
             if (picked && line>=16 && line<72) for (int px=x-40;px<x+40;++px)
                 if (px>=0 && px<width) out[px]=a->stages_ready?
                     genesis_dac_cram_to_argb(a->stages[slot->stage][(line-16)*80+px-x+40],GENESIS_DAC_NORMAL):color(a,0,0,1);
+            if(!picked && v->selection==i+1 && !v->erase && v->native_clear_portrait && a->finish_ready)
+                finish_portrait(a,v,slot,x,line,out,width);
             const S2CampaignStage *s=&s2_campaign_stages[slot->stage];
             if (picked && v->show_act) snprintf(label,sizeof label,"ZONE %02u.%u",s->zone+1,s->act);
             else if (picked) snprintf(label,sizeof label,"ZONE %02u",s->zone+1);

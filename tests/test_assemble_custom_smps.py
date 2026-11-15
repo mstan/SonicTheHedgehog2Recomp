@@ -6,6 +6,14 @@ spec=importlib.util.spec_from_file_location('custom_smps',Path(__file__).resolve
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 
 class CustomSmpsTests(unittest.TestCase):
+    def test_disassembly_pan_routing_and_ams_fms(self):
+        self.assertEqual(module.assemble('smpsPan panLeft, $37\nsmpsPan panRight, $00\nsmpsPan panCenter'),bytes.fromhex('e0b7e040e0c0'))
+        for source in ['smpsPan','smpsPan panLeft, 0, 1','smpsPan panLeft, 256']:
+            with self.subTest(source=source),self.assertRaises(ValueError):module.assemble(source)
+
+    def test_sonic1_disassembly_constants_and_aliases(self):
+        self.assertEqual(module.assemble('smpsNop $01\nsmpsAlterNote $FF\ndc.b smpsNoAttack,nEb6,nMaxPSG'),bytes.fromhex('e201e1ffe7ccc6'))
+
     def test_raw_data_and_relative_labels(self):
         self.assertEqual(module.assemble('Song:\n dc.b $80, -1\n dc.w End-Song\nEnd:\n dc.b 0'),bytes.fromhex('80ff000400'))
 

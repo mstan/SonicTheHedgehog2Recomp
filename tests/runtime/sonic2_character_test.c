@@ -8,6 +8,22 @@ static S2Motion standing(void)
 { S2Motion m={0}; m.radius_x=9; m.radius_y=19; m.animation=5; return m; }
 int main(void)
 {
+    {
+        static const struct {int16_t before,after;uint8_t held,extend;} air[]={
+            {0x1000,0x1000,8,0},{-0x1000,-0x1000,4,0},
+            {0x5F8,0x600,8,0},{-0x5F8,-0x600,4,0},
+            {0x1000,0xFE8,4,0},{-0x1000,-0xFE8,8,0},
+            {0x1000,0xFE8,12,0},{-0x1000,-0xFE8,12,0},
+            {0x5F8,0x5F8,12,0},{-8,16,8,1},{8,-16,4,1},
+            {-32768,32744,4,0},{32760,-32752,8,0},{500,500,0,1}
+        };
+        for(unsigned i=0;i<sizeof air/sizeof *air;++i) {
+            uint8_t extend=1;
+            assert(s2_knuckles_air_speed(air[i].before,0x18,0x600,
+                air[i].held,&extend)==air[i].after);
+            assert(extend==air[i].extend);
+        }
+    }
     S2Contacts c={64,64,64,sine}; S2CharacterState s; S2Motion m=standing();
     s2_character_reset(&s,S2_CHAR_AMY);
     s2_character_before(&s,&m,0x42,0x40,&c);

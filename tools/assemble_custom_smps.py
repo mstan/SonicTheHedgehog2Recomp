@@ -14,13 +14,14 @@ OPS={ast.Add:operator.add,ast.Sub:operator.sub,ast.Mult:operator.mul,
 def assemble(text):
     if len(text)>1024*1024:
         raise ValueError('SMPS source exceeds 1 MiB')
-    symbols={'nrst':0x80,'panleft':0x80,'panright':0x40,'pancenter':0xc0,'pannone':0,
+    symbols={'nrst':0x80,'smpsnoattack':0xe7,'panleft':0x80,'panright':0x40,'pancenter':0xc0,'pancentre':0xc0,'pannone':0,
              'dkick':0x81,'dsnare':0x82,'dclap':0x83,'dscratch':0x84,'dtimpani':0x85}
     for octave in range(8):
-        for note,semitone in [('c',0),('cs',1),('df',1),('d',2),('ds',3),('ef',3),('e',4),('f',5),('fs',6),('gf',6),('g',7),('gs',8),('af',8),('a',9),('as',10),('bf',10),('b',11)]:
+        for note,semitone in [('c',0),('cs',1),('df',1),('db',1),('d',2),('ds',3),('ef',3),('eb',3),('e',4),('f',5),('fs',6),('gf',6),('gb',6),('g',7),('gs',8),('af',8),('ab',8),('a',9),('as',10),('bf',10),('bb',10),('b',11)]:
             value=0x81+octave*12+semitone
             if value<0xe0:symbols[f'n{note}{octave}']=value
     symbols.update({f'ftone_{n:02x}':n for n in range(14)})
+    symbols['nmaxpsg']=symbols['na5']
     lines=[(i,line.split(';',1)[0].strip()) for i,line in enumerate(text.splitlines(),1)]
     if len(lines)>16384:raise ValueError('Too many SMPS source lines')
     for pass_number in range(3):
@@ -86,6 +87,11 @@ def assemble(text):
                     byte({'smpsjump':0xf6,'smpscall':0xf8,'smpsloop':0xf7}[op])
                     if op=='smpsloop':byte(expr(args[0]));byte(expr(args[1]))
                     word(expr(args[-1])-len(output)-1)
+                elif op=='smpspan':
+                    # The disassembly macro packs stereo routing and AMS/FMS
+                    # into one byte. Older data-only sources omit AMS/FMS.
+                    if len(args) not in (1,2):raise ValueError('Pan needs direction and optional AMS/FMS')
+                    byte(0xe0);byte(expr(args[0]) + (expr(args[1]) if len(args)==2 else 0))
                 elif op.startswith('smpsvc'):
                     key=op[6:];voice[key]=[expr(arg)for arg in args]
                     if key=='totallevel':
@@ -102,7 +108,7 @@ def assemble(text):
                         for v in four('totallevel'):byte(v&127)
                         voice={}
                 else:
-                    commands={'smpspan':(0xe0,1),'smpsdetune':(0xe1,1),'smpsreturn':(0xe3,0),'smpsfade':(0xe4,0),
+                    commands={'smpspan':(0xe0,1),'smpsdetune':(0xe1,1),'smpsalternote':(0xe1,1),'smpsnop':(0xe2,1),'smpsreturn':(0xe3,0),'smpsfade':(0xe4,0),
                               'smpsaltervol':(0xe6,1),'smpsnoattack':(0xe7,0),'smpsnotefill':(0xe8,1),
                               'smpsalterpitch':(0xe9,1),'smpssettempo':(0xea,1),'smpssettempodiv':(0xeb,1),
                               'smpspsgaltervol':(0xec,1),'smpssetvoice':(0xef,1),'smpsmodset':(0xf0,4),

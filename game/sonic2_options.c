@@ -34,7 +34,6 @@ enum { SOUND_ROW=S2_MAX_PLAYERS+1,
 static unsigned s_notice;
 #ifdef SONIC2_MUSIC_DRIVER
 static unsigned s_player_open,s_player_track,s_player_solo,s_player_stopped,s_player_pending,s_player_delay;
-static const char *const player_channels[]={"ALL CHANNELS","FM 1","FM 2","FM 3","FM 4","FM 5","FM 6","DAC","PSG 1","PSG 2","PSG 3 / NOISE"};
 static void player_mask(void)
 {
  unsigned fm=0x7f,psg=15;
@@ -51,6 +50,12 @@ static void player_change(int direction)
 {
  do{s_player_track=(s_player_track+S2_MUSIC_COUNT+direction)%S2_MUSIC_COUNT;}while(!player_used(s_player_track));
 }
+static void player_channel(int direction)
+{
+ unsigned count=s2_cd_theme_channel_count(s_player_track);
+ unsigned available=s2_cd_theme_native_channels(s_player_track)?s2_sound_music_channels(s2_music_target(s_player_track)):~0u;
+ do{s_player_solo=(s_player_solo+count+direction)%count;}while(!(available&(1u<<s_player_solo)));
+}
 static void player_queue(unsigned native)
 {
  /* A native stop ends a preceding 1-UP backup before the next preview. */
@@ -59,6 +64,11 @@ static void player_queue(unsigned native)
 static void player_play(void)
 {
  s_player_stopped=0;s_player_solo%=s2_cd_theme_channel_count(s_player_track);player_mask();player_queue(s2_music_target(s_player_track)+0x80);
+}
+static void player_select(void)
+{
+ s_player_stopped=1;s_player_solo=s_player_pending=s_player_delay=0;
+ g_ram[0xFFE0]=0xFD;player_mask();
 }
 static void player_close(void)
 {s_player_open=s_player_stopped=s_player_solo=0;player_mask();player_queue(0x91);}
@@ -274,14 +284,14 @@ int s2_options_hook(uint32_t pc)
 #ifdef SONIC2_MUSIC_DRIVER
         if(s_player_open) {
             if(online() || (press&16)){player_close();return 1;}
-            if(press&3){player_change((press&1)?-1:1);player_play();}
-            if(press&12){unsigned count=s2_cd_theme_channel_count(s_player_track);s_player_solo=(s_player_solo+count+((press&4)?-1:1))%count;player_mask();}
+            if(press&3){player_change((press&1)?-1:1);player_select();}
+            if(press&12){player_channel((press&4)?-1:1);player_mask();}
             if(press&(0x40|0x80))player_play();
             if(press&0x20){s_player_stopped=1;s_player_pending=s_player_delay=0;g_ram[0xFFE0]=0xFD;player_mask();}
             g_ram[0xF605]&=0x7f;return 1;
         }
         if(s_cursor==PLAYER_ROW && (press&0xE0) && !online()) {
-            s_player_open=1;s_player_track=0;s_player_solo=0;player_play();g_ram[0xF605]&=0x7f;return 1;
+            s_player_open=1;s_player_track=0;player_select();g_ram[0xF605]&=0x7f;return 1;
         }
 #endif
         if ((press & 3) == 1) s_cursor = (s_cursor + OPTIONS_ROWS-1) % OPTIONS_ROWS;
@@ -314,8 +324,9 @@ int s2_options_hook(uint32_t pc)
         /* Native Start branches here before MenuScreen_Controls. Audition
          * stays in the same Options loop and never applies/exits the menu. */
         if(!online()&&(s_player_open||s_cursor==PLAYER_ROW)) {
-            if(!s_player_open){s_player_open=1;s_player_track=s_player_solo=0;}
-            player_play();g_ram[0xF605]&=0x7f;
+            if(!s_player_open){s_player_open=1;s_player_track=0;player_select();}
+            else player_play();
+            g_ram[0xF605]&=0x7f;
             recomp_tail_call(0x9060);return 1;
         }
 #endif
@@ -378,9 +389,28 @@ void s2_options_rb_state(S2StateIO *io)
  * the background/palette animation is still the original Options screen. */
 static unsigned glyph(char c)
 {
+    if(c>='a' && c<='z')c=(char)(c-'a'+'A');
     if (c >= 'A' && c <= 'Z') return (unsigned)(30 + c - 'A');
     if (c >= '0' && c <= '9') return (unsigned)(16 + c - '0');
     return 0;
+}
+static unsigned punctuation(char c,unsigned row)
+{
+    static const uint8_t marks[][8]={
+        {0,0,0x18,0x18,0,0x18,0x18,0}, /* : */
+        {0,0,0,0x7E,0,0,0,0}, /* - */
+        {0x30,0x48,0x48,0x30,0x4A,0x44,0x3A,0}, /* & */
+        {2,4,8,0x10,0x20,0x40,0x80,0}, /* / */
+        {0x0C,0x10,0x20,0x20,0x20,0x10,0x0C,0}, /* ( */
+        {0x30,8,4,4,4,8,0x30,0}, /* ) */
+        {0,0,0,0,0,0x18,0x18,0}, /* . */
+        {0,0x18,0x18,0x7E,0x18,0x18,0,0}, /* + */
+        {0,0,0,0,0,0,0x7E,0}, /* _ */
+        {0x18,0x18,0x10,0,0,0,0,0} /* ' */
+    };
+    static const char chars[]=":-&/().+_'";
+    const char *p=strchr(chars,c);
+    return p && c && row<8?marks[p-chars][row]:0;
 }
 static unsigned s_draw_alpha=255;
 static uint32_t blend(uint32_t under,uint32_t ink)
@@ -395,7 +425,12 @@ static void text_row(const GVDP *v, int line, uint32_t *out, int width,
     if (line < y || line >= y + 8) return;
     for (; *text; ++text, x += 8) {
         unsigned tile = glyph(*text);
-        if (!tile) continue;
+        if (!tile) {
+            unsigned bits=punctuation(*text,(unsigned)(line-y));
+            for(int px=0;px<8;++px)if((bits&(0x80u>>px)) && x+px>=0 && x+px<width)
+                out[x+px]=blend(out[x+px],color);
+            continue;
+        }
         for (int px = 0; px < 8; ++px) {
             if (x + px < 0 || x + px >= width) continue;
             unsigned byte = v->vram[tile * 32 + (line - y) * 4 + px / 2];
@@ -437,7 +472,7 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
         for(char *p=name;*p;++p)if(*p>='a'&&*p<='z')*p-=32;
         text_row(v,line,out,width,left+12,76,name,0xFFB5C5F5u);
         const char *channel=s2_cd_theme_channel_count(s_player_track)==1?"STEREO RECORDING":s2_cd_theme_channel_name(s_player_track,s_player_solo);
-        snprintf(name,sizeof name,"%.35s",*channel?channel:player_channels[s_player_solo]);
+        snprintf(name,sizeof name,"%.35s",*channel?channel:s2_sound_music_channel_name(s_player_solo,!s_player_stopped&&!s_player_pending));
         for(char *p=name;*p;++p)if(*p>='a'&&*p<='z')*p-=32;
         text_row(v,line,out,width,left+12,104,name,0xFFFFD85Cu);
         int playing=s2_sound_music_playing();

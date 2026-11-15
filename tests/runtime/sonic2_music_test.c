@@ -124,7 +124,7 @@ int main(int argc,char **argv)
  unsigned covered=0;
  for(int g=0;g<3;g++){
   RecompLauncherCModFeature feature;assert(provider->feature_get(provider->ctx,g,&feature));
-  assert(feature.option_count==(g==0?12:g==1?13:4));
+  assert(feature.option_count==(g==0?11:g==1?13:4));
   for(int i=0;i<feature.option_count;i++){
    RecompLauncherCModOption option;assert(provider->feature_option_get(provider->ctx,feature.package_id,feature.id,i,&option));
    unsigned t=track(option.id);assert(s2_music_group(t)==(unsigned)g&&!(covered&(1u<<t)));covered|=1u<<t;
@@ -135,7 +135,7 @@ int main(int argc,char **argv)
    }
   }
  }
- assert(covered==(0x7FFFFFFFu&~((1u<<track("ending"))|(1u<<track("hidden-palace")))));
+ assert(covered==(0x7FFFFFFFu&~((1u<<track("ending"))|(1u<<track("hidden-palace"))|(1u<<track("emerald")))));
  assert(s2_music_pick(inv,"s3-proto-unused"));
  assert(s2_theme_choice(inv,(unsigned)s2_themes[inv].choice)->song==0x2E);
  assert(s2_themes_save());s2_music_load(settings);

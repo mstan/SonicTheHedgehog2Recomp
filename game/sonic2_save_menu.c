@@ -23,12 +23,12 @@ static const char *const notices[]={NULL,"SAVE FAILED   SELECT FILE TO RETRY",
     "DELETE FAILED   CHECK SAVE PATH"};
 typedef struct MenuViewState {
     uint32_t selection,frame,counter,delete_frame;
-    int32_t cursor,scroll,erase,confirm,delete_x,replay_selected,notice;
+    int32_t cursor,scroll,erase,confirm,delete_x,replay_selected,notice,native_clear;
 } MenuViewState;
 static MenuViewState view_state(const S2SaveView *v)
 {
     MenuViewState s={v->selection,v->frame,v->counter_character,v->delete_frame,
-        v->cursor,v->scroll,v->erase,v->confirm,v->delete_x,v->replay_selected,0};
+        v->cursor,v->scroll,v->erase,v->confirm,v->delete_x,v->replay_selected,0,v->native_clear_portrait};
     for(unsigned i=1;i<sizeof notices/sizeof *notices;++i)
         if(v->notice && !strcmp(v->notice,notices[i]))s.notice=(int32_t)i;
     return s;
@@ -39,7 +39,7 @@ static int valid_view(const MenuViewState *s)
         s->scroll>=0 && s->scroll<=704 && (s->erase==0 || s->erase==1) &&
         (s->confirm==0 || s->confirm==1) && s->delete_x>=0 && s->delete_x<=976 &&
         (s->replay_selected==0 || s->replay_selected==1) && s->notice>=0 &&
-        (unsigned)s->notice<sizeof notices/sizeof *notices;
+        (unsigned)s->notice<sizeof notices/sizeof *notices && (s->native_clear==0 || s->native_clear==1);
 }
 static void apply_view(S2SaveView *v,const MenuViewState *s)
 {
@@ -47,6 +47,7 @@ static void apply_view(S2SaveView *v,const MenuViewState *s)
     v->delete_frame=s->delete_frame;v->cursor=s->cursor;v->scroll=s->scroll;
     v->erase=s->erase;v->confirm=s->confirm;v->delete_x=s->delete_x;
     v->replay_selected=s->replay_selected;v->notice=notices[s->notice];
+    v->native_clear_portrait=s->native_clear;
     v->read_only=store->read_only;
 }
 void s2_save_menu_state(S2StateIO *io)
@@ -166,6 +167,8 @@ static void bind_portrait(void)
     view.portrait=NULL;
     view.counter_character=!strcmp(s2_party.roster.character[0],"knuckles")?2:
         !strcmp(s2_party.roster.character[0],"tails")?1:0;
+    view.native_clear_portrait=!strcmp(s2_party.roster.character[0],"sonic") ||
+        !strcmp(s2_party.roster.character[0],"tails") || !strcmp(s2_party.roster.character[0],"knuckles");
     unsigned count=0; const char *ids[6];
     for (unsigned p=0;p<s2_party.roster.slots && p<6;++p)
         if (strcmp(s2_party.roster.character[p],"none")) ids[count++]=s2_party.roster.character[p];
@@ -294,8 +297,8 @@ static void controls(void)
         S2CampaignSlot *s=&view.data.slots[view.selection-1];
         if (s->state==S2_SAVE_COMPLETE) {
             unsigned old=replay_stage;
-            if ((press&3)==1) replay_stage=(replay_stage+1)%(S2_CAMPAIGN_STAGES+1);
-            if ((press&3)==2) replay_stage=(replay_stage+S2_CAMPAIGN_STAGES)%(S2_CAMPAIGN_STAGES+1);
+            if ((press&3)==1) replay_stage=replay_stage>=S2_CAMPAIGN_STAGES?0:(replay_stage+1)%S2_CAMPAIGN_STAGES;
+            if ((press&3)==2) replay_stage=replay_stage>=S2_CAMPAIGN_STAGES?S2_CAMPAIGN_STAGES-1:(replay_stage+S2_CAMPAIGN_STAGES-1)%S2_CAMPAIGN_STAGES;
             if (old!=replay_stage) navigation_sound(0xCD);
         }
     }
@@ -318,6 +321,8 @@ static void controls(void)
     }
     if (!store->ready) return;
     unsigned selected=view.selection-1;
+    /* CLEAR is the completed-file summary, not a playable destination. */
+    if(view.data.slots[selected].state==S2_SAVE_COMPLETE && replay_stage>=S2_CAMPAIGN_STAGES)return;
     S2CampaignData before=view.data;
     int was_dirty=dirty;
     if (!view.data.slots[selected].state) {

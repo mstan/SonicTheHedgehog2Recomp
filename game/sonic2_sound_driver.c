@@ -4,6 +4,7 @@
 #include "sonic2_music.h"
 #include "sonic2_cd_themes.h"
 #include "sonic2_music_clone_metadata.h"
+#include "sonic3_sound_legacy.h"
 #endif
 #include "host_atomic_file.h"
 #include <SDL2/SDL.h>
@@ -22,6 +23,7 @@ static int selected, active, verified, bound;
 #ifdef SONIC2_MUSIC_DRIVER
 static int music_active;
 static uint8_t music_identity[32];
+static unsigned stock_channel_masks[31];
 #define DRIVER(name) (music_active?S2_MUSIC_CLONE_##name:S2_CLONE_##name)
 #else
 #define DRIVER(name) S2_CLONE_##name
@@ -62,6 +64,80 @@ int s2_sound_music_playing(void)
     return -1;
 }
 int s2_sound_verified(void) { return verified; }
+unsigned s2_sound_music_channels(unsigned native)
+{
+#ifdef SONIC2_MUSIC_DRIVER
+    if(!active && native>=1 && native<=31){
+        unsigned *cached=&stock_channel_masks[native-1];
+        if(*cached)return *cached;
+        /* Reuse the bounded cartridge header decoder; original-Z80 audition
+         * needs only its channel roots, not a second prepared sound bank. */
+        S3LegacySource source;
+        if(s3_legacy_music_source(g_rom,0x100000,S2_DONOR_S2,native-1,&source)){
+            const uint8_t *data=source.compressed?source.song:g_rom+source.bank;
+            unsigned bytes=source.compressed?source.high-source.low:0x8000;
+            unsigned at=source.compressed?0:source.source-source.bank;
+            if(at<=bytes && bytes-at>=6){
+                unsigned fm=data[at+2],psg=data[at+3],mask=1;
+                if(fm<=7 && psg<=3 && bytes-at>=6+fm*4+psg*6){
+                    for(unsigned i=0;i<fm+psg;i++){
+                        unsigned h=at+6+(i<fm?i*4:fm*4+(i-fm)*6);
+                        unsigned stream=data[h]|((unsigned)data[h+1]<<8);
+                        stream=source.compressed?stream-source.low:stream&0x7FFFu;
+                        for(unsigned n=0;n<8 && stream<bytes && bytes-stream>=2 && data[stream]==0xE2;n++)stream+=2;
+                        unsigned voice=i==0?7:i<fm?i:8+i-fm;
+                        if(stream<bytes && data[stream]!=0xF2 && data[stream]!=0xE4 && data[stream]!=0xEE)mask|=1u<<voice;
+                    }
+                    return *cached=mask;
+                }
+            }
+        }
+    }
+#endif
+#ifdef SONIC2_CLONE_DRIVER
+    if(active && native>=1 && native<=31){
+        unsigned table=S2_CLONE_MUSICINDEX;
+#ifdef SONIC2_MUSIC_DRIVER
+        if(music_active)table=S2_MUSIC_CLONE_MUSIC_INDEX;
+#endif
+        const uint8_t *entry=g_rom+table+(native-1)*4;
+        unsigned at=(((unsigned)entry[1]<<16)|((unsigned)entry[2]<<8)|entry[3])&0xFFFFFEu;
+        if(at<0x3FFFFCu){
+            unsigned fm=g_rom[at+2],psg=g_rom[at+3],mask=1;
+            if(fm<=7 && psg<=3 && at<=0x400000u-(8+fm*4+psg*6)){
+                /* Headers include dummy DAC/PSG streams that stop at once.
+                 * Do not offer those silent placeholders as audition voices. */
+                for(unsigned i=0;i<fm+psg;i++){
+                    unsigned h=at+8+(i<fm?i*4:fm*4+(i-fm)*6);
+                    unsigned stream=at+((unsigned)g_rom[h]<<8)+g_rom[h+1];
+                    unsigned voice=i==0?7:i<fm?i:8+i-fm;
+                    for(unsigned n=0;n<8 && stream<0x3FFFFDu && g_rom[stream]==0xFF && g_rom[stream+1]==2;n++)stream+=3;
+                    if(stream<0x3FFFFFu && !(g_rom[stream]==0xFF &&
+                       (g_rom[stream+1]==0x10 || g_rom[stream+1]==4)))mask|=1u<<voice;
+                }
+                return mask;
+            }
+        }
+    }
+#endif
+    return 0x7FF;
+}
+const char *s2_sound_music_channel_name(unsigned channel,int playing)
+{
+    static const char *const names[]={"ALL CHANNELS","FM 1","FM 2","FM 3","FM 4","FM 5","FM 6","DAC","PSG 1","PSG 2","PSG 3"};
+#ifdef SONIC2_CLONE_DRIVER
+    if(channel==10 && active && playing){
+        unsigned stride=44;
+#ifdef SONIC2_MUSIC_DRIVER
+        if(music_active)stride=46;
+#endif
+        unsigned at=(DRIVER(RAM_ADDRESS)&65535u)+9*stride;
+        if(g_ram[at+1]==0xE0)return "PSG NOISE";
+    }
+#endif
+    if(channel==10 && (!playing || !active))return "PSG 3 / NOISE";
+    return channel<11?names[channel]:"";
+}
 const char *s2_sound_error(void) { return error; }
 
 int s2_sound_select(int enabled)
@@ -78,7 +154,7 @@ void s2_sound_load_settings(const char *settings)
 {
     selected=verified=active=bound=0;error[0]=0;
 #ifdef SONIC2_MUSIC_DRIVER
-    music_active=0;memset(music_identity,0,sizeof music_identity);
+    music_active=0;memset(music_identity,0,sizeof music_identity);memset(stock_channel_masks,0,sizeof stock_channel_masks);
 #endif
     const char *slash1=strrchr(settings,'/'), *slash2=strrchr(settings,'\\');
     const char *slash=slash1;
@@ -118,11 +194,40 @@ int s2_sound_commit(void)
     }
     return 1;
 }
+/* Reserve the cartridge's unused Giant Ring slot for the Sonic 3 save-entry
+ * variant. Its voice, note and duration match S2 Special Stage Entry; only
+ * the modulation delta differs. Prepare one immutable execution image before
+ * boot and cold-state validation, independent of the chosen menu preference. */
+static void prepare_save_warp(void)
+{
+    enum { SOURCE=0xFF782, DEST=0xFF5E5, BYTES=45 };
+    memcpy(g_rom+DEST,g_rom+SOURCE,BYTES);
+    unsigned voice=DEST+20-0xF0000,track=DEST+10-0xF0000;
+    g_rom[DEST]=(uint8_t)voice;g_rom[DEST+1]=(uint8_t)(voice>>8);
+    g_rom[DEST+6]=(uint8_t)track;g_rom[DEST+7]=(uint8_t)(track>>8);
+    g_rom[DEST+15]=0x50;
+#if defined(SONIC2_CLONE_DRIVER) && defined(S2_CLONE_ASSETS_FROM_ROM)
+    if(active){
+        unsigned from=S2_SOUND_SFX_BASE+(0xCA-0xA0)*S2_SOUND_SFX_STRIDE;
+        unsigned to=S2_SOUND_SFX_BASE+(0xC3-0xA0)*S2_SOUND_SFX_STRIDE;
+        memcpy(g_rom+to,g_rom+from,S2_SOUND_SFX_STRIDE);
+        unsigned stream=((unsigned)g_rom[to+6]<<8)|g_rom[to+7];
+        /* Native S3 modulation uses Z80 timing, including its turn frames. */
+        g_rom[to+stream+4]=0x21;
+        g_rom[to+stream+7]=0x50;
+    }
+#endif
+    /* Keep the game's genuine checksum gate for the derived execution image.
+     * Original source-media identity is still verified before this step. */
+    unsigned checksum=0;
+    for(unsigned at=0x200;at<0x100000;at+=2)checksum+=((unsigned)g_rom[at]<<8)|g_rom[at+1];
+    g_rom[0x18E]=(uint8_t)(checksum>>8);g_rom[0x18F]=(uint8_t)checksum;
+}
 void s2_sound_post_reset(void)
 {
     if(bound)return;
     active=selected;bound=1;
-    if (!active) return;
+    if (!active) {prepare_save_warp();return;}
     if(!s2_sound_available()){fprintf(stderr,"[sound-driver] Unsupported Z80 backend\n");exit(1);}
 #ifdef S2_CLONE_ASSETS_FROM_ROM
     const S2SoundAssetLayout layout={S2_CLONE_MUSICINDEX,S2_CLONE_SOUNDINDEX,S2_CLONE_SPECSOUNDINDEX,S2_CLONE_PSG_INDEX,S2_CLONE_SAMPLE_TABLE};
@@ -139,6 +244,7 @@ void s2_sound_post_reset(void)
 #endif
     verified=1;fprintf(stderr,"[sound-driver] Clone Driver + Mega PCM; sound assets prepared locally from ROM\n");
 #endif
+    prepare_save_warp();
 }
 
 /* Consume the original WRAM queue at its original VBlank call site. This
@@ -200,8 +306,18 @@ int s2_sound_hook(uint32_t pc)
         }
         recomp_call_addr(DRIVER(GUARDED_UPDATE));
 #ifdef SONIC2_MUSIC_DRIVER
-        if(music_active)s2_cd_theme_frame((m68k_read8(DRIVER(RAM_ADDRESS)+DRIVER(PAUSE_OFFSET))&1)!=0,
+        /* HandlePause changes the request byte from 1 to the held state 2.
+         * Both positive states pause recordings; 0x80 is an unpause request. */
+        if(music_active)s2_cd_theme_frame((m68k_read8(DRIVER(RAM_ADDRESS)+DRIVER(PAUSE_OFFSET))&0x7F)!=0,
             (m68k_read8(DRIVER(RAM_ADDRESS)+S2_MUSIC_CLONE_TEMPO_OFFSET+1)&1)!=0);
+        if(music_active && g_ram[0xF600]==4 && s2_music_title_frames()>640){
+            /* The longer allowance protects complete imported title cues.
+             * Once the cue finishes, retain a short logo hold instead of
+             * waiting out the full allowance. Startup cannot count as EOF. */
+            unsigned remaining=((unsigned)g_ram[0xF614]<<8)|g_ram[0xF615];
+            if(remaining>90 && remaining<1620 && !s2_sound_music_playing())
+                glue_poke16(0xFFF614u,90);
+        }
 #endif
         g_cpu=saved;return 1;
     }

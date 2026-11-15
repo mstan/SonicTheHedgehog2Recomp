@@ -79,7 +79,7 @@ static void catalog(void)
   if(rows[t].group!=S2_MUSIC_SHARED && cue!=0x92)continue;
   switch(rows[t].native){
    case 0x98:for(unsigned d=4;d<=6;d++)add(t,d,0x2A);break;
-   case 0x9B:add(t,S2_DONOR_SK,0x27);add(t,S2_DONOR_CD_US,0);break;
+   case 0x9B:named(t,S2_DONOR_SK,0x27,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
    case 0x9C:add(t,S2_DONOR_S3,0x28);add(t,S2_DONOR_SK,0x28);break;
    case 0x9A:add(t,S2_DONOR_PROTO,0x29);named(t,S2_DONOR_SK,0x29,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
    case 0x97:
@@ -101,7 +101,7 @@ static void catalog(void)
     named(t,S2_DONOR_PROTO,0x2E,"s3-proto","Sonic 3 prototype: Unknown / Unused");
     add(t,S2_DONOR_S3,0x2C);add(t,S2_DONOR_SK,0x2C);
     named(t,S2_DONOR_PROTO,0x2C,"s3-proto-invincibility","Sonic 3 prototype: Invincibility");break;
-   case 0x92:add(t,S2_DONOR_PROTO,0x1C);break;
+   case 0x92:add(t,S2_DONOR_PROTO,0x1C);add(t,S2_DONOR_S1,8);named(t,S2_DONOR_SK,0x1C,"sk","Sonic 3 & Knuckles");break;
   }
  }
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native!=0x95&&rows[t].native!=0x90)named(t,S2_DONOR_CUSTOM,0,"custom","Custom music");

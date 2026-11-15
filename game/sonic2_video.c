@@ -71,8 +71,6 @@ typedef struct S2RenderContext {
     int frame_fg_y;
     int frame_bg_y;
     unsigned frame_zone;
-    unsigned frame_htz_phase;
-    int frame_htz_valid;
     int frame_campaign_view;
     int frame_view_x;
     int frame_view_y;
@@ -165,8 +163,6 @@ static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_frame_fg_y (s_render->frame_fg_y)
 #define s_frame_bg_y (s_render->frame_bg_y)
 #define s_frame_zone (s_render->frame_zone)
-#define s_frame_htz_phase (s_render->frame_htz_phase)
-#define s_frame_htz_valid (s_render->frame_htz_valid)
 #define s_frame_campaign_view (s_render->frame_campaign_view)
 #define s_frame_view_x (s_render->frame_view_x)
 #define s_frame_view_y (s_render->frame_view_y)
@@ -378,6 +374,12 @@ static int ehz_cloud_x(int x,unsigned *flip)
     *flip=phase>=512?0x800u:0;
     return (int)(phase>=512?1023-phase:phase);
 }
+static int reflected_cloud_x(int x,int span,unsigned *flip)
+{
+    int phase=x%(span*2);if(phase<0)phase+=span*2;
+    *flip=phase>=span?0x800u:0;
+    return phase>=span?span*2-1-phase:phase;
+}
 static uint8_t pattern_pixel(const GVDP *v, uint16_t attr, int x, int y)
 {
     int cell=(v->reg[12]&6)==6?16:8;
@@ -466,13 +468,30 @@ const GVDP *s2_video_slots_overlay(const GVDP *v,int line,uint32_t *out,int widt
  * ceiling, or 20-sprites-per-line ceiling. Native BuildSprites still executes
  * for the hardware pass and publishes a signature used to align our list
  * with the exact VBlank upload displayed by the VDP. */
-typedef struct { int x, y; uint16_t attr; uint8_t size, hud; } SceneSprite;
+typedef struct { int x, y; uint16_t attr; uint8_t size, hud, art; } SceneSprite;
 enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024,
        SCENE_FOREGROUND_SCREEN = 4, SCENE_WATER_REPEAT = 16,
        SCENE_ART_SIGNPOST = 8, SCENE_ART_CAPSULE = 32,
-       SCENE_ART_EHZ_CAR = 40, SCENE_ART_MASK = 40 };
+       SCENE_ART_EHZ_CAR = 40, SCENE_ART_MASK = 40,
+       SCENE_ART_NATIVE_VIEW = 128 };
 typedef struct { uint8_t pixels[4096]; unsigned ready,bytes; } NativeSpriteArt;
 static NativeSpriteArt s_native_sprite_art[S2_NATIVE_SPRITE_ART_COUNT];
+static uint8_t native_asset_pixel(const GVDP *v,unsigned asset,unsigned base,uint16_t attr,int x,int y,int width)
+{
+    if(!enabled() || width<=320 || (v->reg[12]&6)==6 || asset>=S2_NATIVE_SPRITE_ART_COUNT)
+        return pattern_pixel(v,attr,x,y);
+    NativeSpriteArt *art=&s_native_sprite_art[asset];
+    if(!art->ready) {
+        art->bytes=s2_native_sprite_art_decode(g_rom,0x100000,asset,art->pixels,sizeof art->pixels);
+        art->ready=art->bytes?1:2;
+    }
+    unsigned tile=(attr&2047)-base;
+    if(art->ready!=1 || tile>=art->bytes/32)return pattern_pixel(v,attr,x,y);
+    unsigned fx=x&7,fy=y&7;
+    if(attr&0x800)fx^=7;if(attr&0x1000)fy^=7;
+    unsigned byte=art->pixels[tile*32+fy*4+fx/2],ink=fx&1?byte&15:byte>>4;
+    return ink?(uint8_t)(((attr>>9)&48)|ink):0;
+}
 static uint8_t native_scene_pixel(const GVDP *v,unsigned material,uint16_t attr,int x,int y,int width)
 {
     unsigned asset,base;
@@ -489,18 +508,7 @@ static uint8_t native_scene_pixel(const GVDP *v,unsigned material,uint16_t attr,
         break;
     default:return pattern_pixel(v,attr,x,y);
     }
-    if(!enabled() || width<=320 || (v->reg[12]&6)==6)return pattern_pixel(v,attr,x,y);
-    NativeSpriteArt *art=&s_native_sprite_art[asset];
-    if(!art->ready) {
-        art->bytes=s2_native_sprite_art_decode(g_rom,0x100000,asset,art->pixels,sizeof art->pixels);
-        art->ready=art->bytes?1:2;
-    }
-    unsigned tile=(attr&2047)-base;
-    if(art->ready!=1 || tile>=art->bytes/32)return pattern_pixel(v,attr,x,y);
-    unsigned fx=x&7,fy=y&7;
-    if(attr&0x800)fx^=7;if(attr&0x1000)fy^=7;
-    unsigned byte=art->pixels[tile*32+fy*4+fx/2],ink=fx&1?byte&15:byte>>4;
-    return ink?(uint8_t)(((attr>>9)&48)|ink):0;
+    return native_asset_pixel(v,asset,base,attr,x,y,width);
 }
 typedef struct {
     SceneSprite sprites[SCENE_SPRITES];
@@ -1374,7 +1382,20 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
            (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         if(keys)keys[dst->count]=owner|(unsigned)n;
         SceneSprite *q=&dst->sprites[dst->count++];
+        memset(q,0,sizeof *q); /* Serialized padding must be deterministic. */
         q->x=x+dx;q->y=y+dy;q->attr=attr;q->size=(uint8_t)(vs?((size&12)|((size&3)>>1)):size);
+        /* Native PLCs can reclaim these tiles once their old objects leave
+         * the hardware viewport. A wider view still owns those mappings.
+         * Keep the original object, collision and animation; only its art
+         * source remains available before/after the native load window. */
+        q->art=0;
+        if(!vs) {
+            if(map==0x250BA)q->art=(uint8_t)(1+((gfx&2047)==0x3FF?S2_NATIVE_OOZ_BLOCK_HORIZ:S2_NATIVE_OOZ_BLOCK_VERT));
+            else if(map==0x2B07E)q->art=1+S2_NATIVE_CNZ_PLUNGER_VERT;
+            else if(map==0x2B0EC)q->art=1+S2_NATIVE_CNZ_PLUNGER_DIAG;
+            else if(map==0x110C6)q->art=1+S2_NATIVE_OOZ_COLLAPSE;
+        }
+        if(flags&0x8000)q->art|=SCENE_ART_NATIVE_VIEW;
         unsigned art=vs?0:map==0x195BE?SCENE_ART_SIGNPOST:map==0x3F436?SCENE_ART_CAPSULE:
             (map==0x2FA58 || map==0x2ED8C || map==0x2EADC || map==0x2EE88)?SCENE_ART_EHZ_CAR:0;
         q->hud=(uint8_t)(art|anchor|((flags&0x400)?128:0)|((flags&0x800)?64:0)|
@@ -1618,13 +1639,19 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                     if((parent==0xB000 || parent==0xB040) && s_runoff[role].active &&
                        g_ram[parent+0x16]<19)y-=19-g_ram[parent+0x16];
                 }
-                int radius=g_ram[o+(multi?0xE:0x19)];
+                int radius=g_ram[o+(multi?0xE:0x19)],visible_y=1;
                 if(!campaign && !vs) {
                     /* Cosmetic runoff must not change the native on-screen
                      * bit or AI activation when its drawing leaves the view. */
                     if(visible_x+radius<left-cam || visible_x-radius>=left-cam+render_width)continue;
-                    if(flags&16){int h=g_ram[o+(multi?0x14:0x16)];if(y+h<0 || y-h>=224)continue;}
-                    else {y=((y+128)&2047)-128;if(y<-32 || y>=256)continue;}
+                    if(flags&16){int h=g_ram[o+(multi?0x14:0x16)];visible_y=y+h>=0 && y-h<224;}
+                    else {y=((y+128)&2047)-128;visible_y=y>=-32 && y<256;}
+                    /* Native root bounds are approximate (a starpost reaches
+                     *40px above its origin). In a wider presentation retain
+                     *actual queued pieces until their own bounds leave the
+                     *picture. The native on-screen/AI flag still follows the
+                     *original root check; no object is loaded or activated. */
+                    if(!visible_y && render_width<=320)continue;
                 }
                 if (vs) {
                     int visible=0;
@@ -1635,7 +1662,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                     }
                     if (!visible) continue;
                 }
-                if(!read_only && s_visible_count<144)s_visible_objects[s_visible_count++]=o;
+                if(!read_only && visible_y && s_visible_count<144)s_visible_objects[s_visible_count++]=o;
             } else {
                 x=(int16_t)ram16(o+8)-128;y=(int16_t)ram16(o+10)-128;anchor=2;
                 /* The drowning number has become native screen-space, but
@@ -1660,6 +1687,14 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                 }
             }
             unsigned map=scene_read32(0xFF0000u+o+4),gfx=ram16(o+2);
+            /* This is the waiting Eggman in DEZ's next room, not the
+             * monitor actor or his door. Keep his native pixels and all
+             * visibility/AI bookkeeping above, but do not preview him in
+             * margins before his original proximity routine starts him. */
+            if(render_width>320 && !vs && (g_ram[0xF600]&127)==12 && s2_video_level_zone()==0xE00 &&
+               g_ram[o]==0xC6 && g_ram[o+0x24]==2 && g_ram[o+0x25]==2 &&
+               g_ram[o+0x1A]==0 && map==0x3D0EE && ram16(o+8)==0x440 && ram16(o+12)==0x168)
+                flags|=0x8000;
             /* Chemical Plant and Aquatic Ruin use separate Obj04 maps.
              * Both use two surface objects to form a 384-pixel cycle. */
             if(!vs && g_ram[o]==4 && (map==0x20A0E || map==0x20AFE))flags|=0x1000;
@@ -1849,6 +1884,18 @@ int s2_video_hook(uint32_t pc)
     case 0x17AA4:return 0;
     case 0x16604:capture_objects();return 0;
     case 0x16712:case 0x1671A:publish_sprites();return 0;
+    case 0x367A0: {
+        /* Obj_DeleteBehindScreen uses BMI on its own original left-cell
+         * subtraction. SCZ enemies may still be visible in the wider left
+         * margin. Change only the N flag that this branch consumes. */
+        if(!gameplay() || demo || competition())return 0;
+        unsigned o=g_cpu.A[0]&65535u;
+        int lo,hi;activation_bounds(ram16(0xEE00),s_requested_width,&lo,&hi);
+        int behind=(ram16(o+8)&~127)<lo;
+        if(s2_runtime_campaign_online())behind=!active_x(ram16(o+8));
+        g_cpu.SR=(uint16_t)((g_cpu.SR&~8u)|(behind?8u:0u));
+        return 0;
+    }
     case 0x170D0:
         /* Use the game's original collision/reward/consumption routines for
          * both Sonic and Tails. Only lift the old camera's ring search gate. */
@@ -1982,6 +2029,10 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
         if(s->attr&0x1000)iy=ch*cell_height-1-iy;
         for(int i=0;i<cw*8;++i) {
             int x=base+i;
+            /* Clip only the dormant story actor's added margins. The live
+             * viewport origin includes clamping and each campaign view, so
+             * even a partially entering body preserves its native center. */
+            if((s->art&SCENE_ART_NATIVE_VIEW) && (x<origin || x>=origin+320))continue;
             if(repeat) {x%=period;if(x<0)x+=period;}
             else if(x<0 || x>=width || (s_priority[x]&2))continue;
             int ix=(s->attr&0x800)?cw*8-1-i:i;
@@ -1990,6 +2041,13 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
             uint32_t custom=0;
             int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
             uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
+            unsigned object_art=s->art&~SCENE_ART_NATIVE_VIEW;
+            if(!knux && object_art) {
+                unsigned asset=object_art-1,base=asset==S2_NATIVE_OOZ_BLOCK_VERT?0x332:
+                    asset==S2_NATIVE_OOZ_BLOCK_HORIZ?0x3FF:asset==S2_NATIVE_CNZ_PLUNGER_VERT?0x422:
+                    asset==S2_NATIVE_CNZ_PLUNGER_DIAG?0x402:0x39D;
+                p=native_asset_pixel(v,asset,base,cell,ix,iy,width);
+            }
             if (s->size&0x80) {
                 unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
                 unsigned at=(cell&2047)*((v->reg[12]&6)==6?64:32)+(iy&(((v->reg[12]&6)==6)?15:7))*4+(ix&7)/2;
@@ -2031,118 +2089,6 @@ static int attributes_differ(const GVDP *v,uint16_t a,uint16_t b,int x,int y)
     }
     return 0;
 }
-/* Emerald Hill's camera-dependent component of SwScrl_EHZ ($C562).
- * Retain live water ripple phase; only reproject camera motion at stage edges. */
-static int ehz_parallax(int camera,int line)
-{
-    int n=-camera;
-    if(line<22 || (line>=101 && line<112))return 0;
-    if(line<101)return -(n>>6);
-    if(line<128)return -(n>>4);
-    if(line<144){int a=n>>4;return -(a+(a>>1));}
-    int row=line-144;
-    if(row>=15 && row<33)row=15+(row-15)/2*2;
-    else if(row>=33)row=33+(row-33)/3*3;
-    int step=(((n>>1)-(n>>3))*256)/48;
-    return -((n>>3)+((step*row)>>8));
-}
-/* SwScrl_EHZ_2P emits one scroll word for each pair of IM2 output rows.
- * Its bands differ from 1P, and the lower gradient advances every two rows. */
-static int ehz_2p_parallax(int camera,int line)
-{
-    int n=-camera;
-    if(line<22 || (line>=102 && line<112))return 0;
-    if(line<102)return -(n>>6);
-    if(line<128)return -(n>>4);
-    if(line<144){int a=n>>4;return -(a+(a>>1));}
-    int step=(((n>>1)-(n>>3))*256)/48;
-    return -((n>>3)+((step*((line-144)/2))>>8));
-}
-/* SwScrl_CPZ uses BG1 at one-eighth speed through row18 (including its
- * animated ripple), then BG2 at one-half speed. Keep the live ripple. */
-static int cpz_parallax(int camera,int background_y)
-{ return camera>>((background_y&1023)<304?3:1); }
-static int arz_parallax(int camera,int background_y)
-{
-    static const unsigned heights[]={176,112,48,96,21,12,14,6,12,31,48,192,240,240,240,240};
-    unsigned y=(unsigned)background_y&2047u,row=0;
-    while(row<15 && y>=heights[row]){y-=heights[row];++row;}
-    /* SwScrl_ARZ quantizes its mountain speeds before multiplying rows.
-     * Leaves and the lower rows use Camera_BG_X_pos's 281/256 phase. */
-    if(row>=3 && row<=10) {
-        int step=camera*16/10,multiple=row==3?1:(int)row-1;
-        return (step*multiple)>>4;
-    }
-    return (camera*281)>>8;
-}
-
-static int mcz_parallax(int camera,int background_y)
-{
-    static const unsigned heights[]={37,23,18,7,7,2,2,48,13,19,32,64,32,19,13,48,2,2,7,7,32,18,23,37};
-    static const unsigned speeds[]={9,8,7,5,4,3,2,1,5,7,8,9,8,7,5,1,2,3,4,5,6,7,8,9};
-    unsigned y=(unsigned)background_y&511u,row=0;
-    while(row<23 && y>=heights[row]){y-=heights[row];++row;}
-    return ((camera*16/10)*(int)speeds[row])>>4;
-}
-static int cnz_parallax(int camera,int background_y)
-{
-    unsigned row=((unsigned)background_y&511u)/16;
-    /* The rippling row retains its native time-dependent offset in hs_b. */
-    if(row<7)return (camera*8+((camera>>3)-camera)*(int)row)>>3;
-    return row<9?camera>>4:camera>>3;
-}
-
-static int htz_scroll(int camera,unsigned phase,int line)
-{
-    if(line<128)return (-camera)>>3;
-    /* SwScrl_HTZ deliberately discards the fractional part of d1 before
-     * constructing its cloud bands. Retain that original quantization. */
-    int delta=(int16_t)(uint16_t)(-camera-(int)phase),d1=delta>>4;
-    int quotient=((delta>>1)-d1)*256/112;
-    unsigned coefficient=line<131?17:line<136?21:line<143?25:line<151?33:
-        line<161?41:line<176?53:line<192?65:line<208?81:97;
-    uint32_t fixed=((uint32_t)(uint16_t)d1<<16)+(uint32_t)(quotient*256)*coefficient;
-    return (int16_t)(fixed>>16);
-}
-static int htz_display_phase(const GVDP *v,int camera,unsigned current,unsigned *out)
-{
-    static const unsigned rows[]={128,136,151,176,208};
-    unsigned base=(v->reg[13]&63u)<<10;
-    for(unsigned age=0;age<8;++age) {
-        unsigned phase=(current-age*4)&65535u;int matches=1;
-        for(unsigned n=0;n<sizeof rows/sizeof rows[0];++n)
-            if(htz_scroll(camera,phase,(int)rows[n])!=(int16_t)vram16(v,base+rows[n]*4+2)){matches=0;break;}
-        if(matches){*out=phase;return 1;}
-    }
-    return 0; /* Earthquake/unknown publications keep their original mapping. */
-}
-static int ooz_parallax(int camera,int background_y)
-{
-    int background=camera>>3,y=background_y;
-    if(y>=80)return background;
-    if(y>=16 && y<49)return 0; /* native heat haze is independent of camera */
-    unsigned shift=y>=72?3:y>=64?4:y>=56?2:y>=49?4:y>=8?3:4;
-    return (background+(1<<shift)-1)>>shift;
-}
-static int wfz_camera_row(int background_y,int transition)
-{
-    unsigned y=(unsigned)background_y&2047u,base=transition?0xC8CA:0xC916;
-    unsigned count=transition?38:39;
-    for(unsigned n=0;n<count;++n) {
-        unsigned height=g_rom[base+n*2],index=g_rom[base+n*2+1];
-        if(!height)return -1;
-        if(y<height)return index==0 || index==4;
-        y-=height;
-    }
-    return -1; /* Preserve the original's short normal table beyond its end. */
-}
-static int dez_parallax(int camera,int background_y)
-{
-    unsigned y=(unsigned)background_y&2047u;
-    /* Stars and Earth's edge use their native independent time counters. */
-    return y<128 || y>=384?camera:0;
-}
-
 /* Native IM2 remains two independent224-row world views. Reuse the world
  * maps and completed sprite publication; the native SAT still owns each HUD.
  * This path does not change the source camera or either player's controls. */
@@ -2191,8 +2137,6 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
         if(s_world_frame[0x8080+(((by>>7)&15)*256)+col])bg_width=(col+1)*128;
     uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
-    if(world && s_frame_zone==0)
-        bg_base=-margin-hs_b+ehz_2p_parallax(left+margin,y)-ehz_2p_parallax(camera,y);
     int cloud_band=world && s_frame_zone==0 && y>=22 && y<102;
     for(int x=0;x<width;++x) {
         int wx=left+x,wy=plane_y,bx=x+bg_base;
@@ -2372,46 +2316,12 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         int row=((by>>7)&15)*256;
         for(int col=0;col<128;++col)if(s_world_frame[0x8080+row+col])bg_width=(col+1)*128;
     }
-    if(!line && !s_interpolating) {
-        s_frame_htz_valid=level && origin!=(width-nw)/2 && s_frame_zone==7 && !g_ram[0xEEBC] &&
-            htz_display_phase(&s_video_frame,native_camera,ram16(0xA822),&s_frame_htz_phase);
-    }
     uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
-    if(level && s_frame_zone==0) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+ehz_parallax(s_left+margin,line)-ehz_parallax(native_camera,line);
-    } else if(level && s_frame_zone==13 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+cpz_parallax(s_left+margin,by)-cpz_parallax(native_camera,by);
-    } else if(level && s_frame_zone==15 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+arz_parallax(s_left+margin,by)-arz_parallax(native_camera,by);
-    } else if(level && s_frame_zone==11 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+mcz_parallax(s_left+margin,by)-mcz_parallax(native_camera,by);
-    } else if(level && s_frame_zone==12 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+cnz_parallax(s_left+margin,by)-cnz_parallax(native_camera,by);
-    } else if(level && (s_frame_zone==4 || s_frame_zone==5) && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+((s_left+margin)>>3)-(native_camera>>3);
-    } else if(level && s_frame_zone==7 && origin!=(width-nw)/2 && !s_frame_campaign_view && s_frame_htz_valid) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b-htz_scroll(s_left+margin,s_frame_htz_phase,line)+htz_scroll(native_camera,s_frame_htz_phase,line);
-    } else if(level && s_frame_zone==10 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+ooz_parallax(s_left+margin,by)-ooz_parallax(native_camera,by);
-    } else if(level && s_frame_zone==6 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int follows=wfz_camera_row(by,native_camera>=0x2700),margin=(width-nw)/2;
-        if(follows>=0)bg_base=-margin-hs_b+(follows?s_left+margin-native_camera:0);
-    } else if(level && s_frame_zone==14 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+dez_parallax(s_left+margin,by)-dez_parallax(native_camera,by);
-    } else if(level && s_frame_zone==16 && origin!=(width-nw)/2 && !s_frame_campaign_view) {
-        int margin=(width-nw)/2;
-        bg_base=-margin-hs_b+((s_left+margin)>>1)-(native_camera>>1);
-    } else if(level && s_frame_campaign_view) bg_base+=(camera-native_camera)/2;
+    /* Keep the live native scroll anchored to its foreground viewport.
+     * At a clamped edge its origin differs from the canvas midpoint.
+     * Recentering bands shifts priority masks across unchanged terrain. */
+    if(level && s_frame_campaign_view)bg_base+=(camera-native_camera)/2;
     int background_x=bg_base;
     if(bg_width>0) {
         background_x%=bg_width;
@@ -2437,8 +2347,15 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
             gtile_row_begin(&fg,v->vram,attr,level?wx:nx-hs_a,level?wy:line+(v->vsram[0]&1023));
             fg_slot=slot_skin && slot_material(v,attr);
         }
+        if(bg_world && s_frame_zone==16 && (nx==0 || nx==nw))bg.remaining=0;
         if(!bg.remaining) {
             unsigned flip=0;int source=cloud_band?ehz_cloud_x(background_x,&flip):background_x;
+            /* SCZ's full layout ends in a clipped cloud. Joining its final
+             * column to column0 creates a wall of cloud in a left margin.
+             * Reflect only outside the original viewport and layout; native
+             * samples, movement and the stage's real interior stay exact. */
+            if(bg_world && s_frame_zone==16 && bg_width>0 && (nx<0 || nx>=nw))
+                source=reflected_cloud_x(bg_base+x,bg_width,&flip);
             uint16_t attr=bg_world?(world_attr(s_world_frame,source,by,1)^(uint16_t)flip):plane_attr(v,base_b,bx,by);
             gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
             bg_slot=slot_skin && slot_material(v,attr);
@@ -2460,10 +2377,14 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
             }
         }
         if(!level && (g_ram[0xF600]&127)==0x20 && (nx<0 || nx>=nw)) {
-            /* Ending maps populate the original viewport only. Extend its
-             * live edge column instead of reading abandoned stage tiles. */
-            int edge=(nx<0?0:nw-1)-hs_b;
-            b=plane_attr(v,base_b,edge,by);bp=pattern_pixel(v,b,edge,by);
+            /* Ending maps populate one viewport. Reflect its background
+             * composition into the margins: stars/cloud bands keep their
+             * live scrolling instead of stretching one edge into stripes.
+             * Foreground photographs and credit text stay centered. */
+            int sample=nx%(nw*2);if(sample<0)sample+=nw*2;
+            if(sample>=nw)sample=nw*2-1-sample;
+            int source=sample-hs_b;
+            b=plane_attr(v,base_b,source,by);bp=pattern_pixel(v,b,source,by);
         }
         if (s_frame_card) {
             /* Stretch only the original geometric fill. Its live name table
@@ -2520,6 +2441,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         if (!native) native = native_row(native_ctx);
         /* Logos/copyright/menus remain centered at their original pixel
          * scale. The full-width background follows the live scene palette. */
+        if((g_ram[0xF600]&127)==0x20 && s_display)
+            draw_scene_sprites(v,line,out,width,origin,palette);
         if(origin>=0)memcpy(out+origin,native,(size_t)nw*sizeof(uint32_t));
     } else if(s_display) {
         draw_scene_sprites(v,line,out,width,origin,palette);
@@ -2725,7 +2648,7 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
             (abs(p->x+a->scene.camera_x-q->x-b->scene.camera_x)>48 ||
              abs(p->y+a->scene.camera_y-q->y-b->scene.camera_y)>48);
         if(player && jump)return 0;
-        s_lerp_sprite[i]=!jump && p->size==q->size && p->hud==q->hud?previous:-1;
+        s_lerp_sprite[i]=!jump && p->size==q->size && p->hud==q->hud && p->art==q->art?previous:-1;
     }
     if(phase==0 || phase==1) {
         const PresentationFrame *f=phase==0?a:b;
