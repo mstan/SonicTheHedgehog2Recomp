@@ -81,7 +81,8 @@ int s2_native_stars_decode(const uint8_t *rom,size_t size,uint8_t out[34*32]);
 enum { S2_NATIVE_SIGNPOST, S2_NATIVE_CAPSULE, S2_NATIVE_EHZ_CAR, S2_NATIVE_CPZ_POD, S2_NATIVE_CPZ_PUMP, S2_NATIVE_CPZ_JETS,
        S2_NATIVE_OOZ_BLOCK_VERT, S2_NATIVE_OOZ_BLOCK_HORIZ,
        S2_NATIVE_CNZ_PLUNGER_VERT, S2_NATIVE_CNZ_PLUNGER_DIAG,
-       S2_NATIVE_OOZ_COLLAPSE, S2_NATIVE_SPRITE_ART_COUNT };
+       S2_NATIVE_OOZ_COLLAPSE, S2_NATIVE_ROBOTNIK_UPPER, S2_NATIVE_ROBOTNIK_LOWER,
+       S2_NATIVE_SPRITE_ART_COUNT };
 /* Original world art can be visible before the native pattern load finishes.
  * Returns decoded bytes; the guest's VRAM and load queue remain unchanged. */
 unsigned s2_native_sprite_art_decode(const uint8_t *rom,size_t size,unsigned asset,

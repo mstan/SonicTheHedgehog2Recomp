@@ -344,9 +344,9 @@ unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset
                                     uint8_t *out,size_t capacity)
 {
     static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C,0x83BF6,0x84332,0x84F18,
-        0x8030A,0x81048,0x81C96,0x81AB0,0x809D0};
-    static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660},
-        tiles[]={78,49,128,96,111,8,4,4,18,32,40};
+        0x8030A,0x81048,0x81C96,0x81AB0,0x809D0,0x8E886,0x8EE52};
+    static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660,468,323},
+        tiles[]={78,49,128,96,111,8,4,4,18,32,40,24,28};
     if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
        capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
