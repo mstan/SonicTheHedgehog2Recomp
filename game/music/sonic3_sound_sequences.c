@@ -77,6 +77,7 @@ static unsigned mod_id(Convert *c,unsigned id)
 static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
 {
     unsigned roots[10],kinds[10],headers[10],root_count=0,header;
+    unsigned competition_loop=0;
     int prototype_oneup=music && c->source.prototype &&
         input==s3_sound_music_source(&c->source,c->rom,0x2A);
     c->input_bank=input&~0x7FFFu;c->count=0;c->voices=-1;memset(c->map,0xFF,sizeof c->map);
@@ -103,6 +104,17 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
             }
         }
         if(fm>1)c->voices=0;
+        if(c->source.prototype && input==s3_sound_music_source(&c->source,c->rom,0x2D)){
+            /* Competition Menu's shared FM2/FM5 loop skips the initial
+             * voice, detune and modulation setup. Restore those settings at
+             * the backward jump, preserving the first pass and its one-time
+             * 96-tick rest. */
+            static const uint8_t setup[]={0xEF,0x0D,0xE1,0x03,0xF0,0x0F,0x01,0x06,0x06,0x80,0x60};
+            if(fm<6)return 0;
+            uint32_t start=c->input_bank+(roots[2]&0x7FFFu);
+            if(start>c->source.rom_size-sizeof setup || memcmp(c->rom+start,setup,sizeof setup))return 0;
+            competition_loop=roots[2]+sizeof setup;
+        }
     }else{
         unsigned tracks=rb(c,input+3);
         if(tracks<1 || tracks>6){c->bad=1;return 0;}
@@ -147,6 +159,7 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
          * Omit only that source byte, as in the corrected retail stream. */
         if(c->source.prototype && pc==0xBBD73 && op==0x8A)n->encoded=0;
         if(op==0xF6 || op==0xF7 || op==0xF8 || op==0xFC){n->target=(uint16_t)rw(c,pc+length-2);node(c,n->target,n->kind);}
+        if(n->kind==0 && op==0xF6 && n->target==competition_loop)n->encoded+=12;
         if(op!=0xE3 && op!=0xF2 && op!=0xF9 && op!=0xF6)node(c,n->pc+length,n->kind);
     }
     if(c->bad)return 0;
@@ -162,6 +175,10 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
     for(int i=0;i<c->count && !c->bad;i++){
         Node *n=&c->nodes[i];uint32_t pc=c->input_bank+(n->pc&0x7FFFu);size_t out=dest+n->output;unsigned op=rb(c,pc);
         if(!n->encoded)continue;
+        if(n->kind==0 && op==0xF6 && n->target==competition_loop){
+            static const uint8_t setup[]={0xFF,0x0D,0x0D,0xFF,0x01,0x03,0xFF,0x21,0x0F,0x01,0x06,0x06};
+            memcpy(c->bank+out,setup,sizeof setup);out+=sizeof setup;
+        }
         if(op<0xE0){
             c->bank[out]=(uint8_t)(n->kind==1 && op>=0x81 && c->dac_map?c->dac_map[op&127]:op+(c->source.prototype && n->kind==1 && op>=0x81?70:0));
             continue;
@@ -193,7 +210,7 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
             int target=c->nodes[find_node(c,n->target,n->kind)].output;
             int relative=target-(n->output+n->encoded-(op==0xF8?0:1));
             if(relative<-32768 || relative>32767){c->bad=1;return 0;}
-            ww(c,out+n->encoded-2,(unsigned)relative);
+            ww(c,dest+n->output+n->encoded-2,(unsigned)relative);
         }
     }
     /* Retail uses operators 4/3/2/1 with TL last; Clone uses 4/2/3/1
