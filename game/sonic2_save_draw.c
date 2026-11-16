@@ -141,8 +141,9 @@ static unsigned glyph(char c)
 static void finish_portrait(const S2SaveAssets *a,const S2SaveView *v,const S2CampaignSlot *slot,
                            int x,int line,uint32_t *out,int width)
 {
-    unsigned kind=v->counter_character,super=kind==0 && slot->emeralds==127;
-    unsigned image=kind==1?2:0,palette=kind==2?3:kind==1?2:super?1:0;
+    unsigned kind=v->counter_character,super=slot->emeralds==127;
+    unsigned image=(kind==1?2:0)+super;
+    unsigned palette=kind==2?(super?5:3):kind==1?(super?4:2):super?1:0;
     const S2MenuFrame *frame=&a->frames[kind?35:super?25:24];
     for(int n=(int)frame->count-1;n>=0;n--){
         const S2MenuPiece *p=&frame->pieces[n];int row=line-136-p->y;
@@ -250,10 +251,12 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
                 (v->selection==i+1 && v->replay_selected && !v->erase);
             /* Exact stock S2 terrain, keeping the donor card's 80x56 window.
              * Put readable zone/act labels below, not over the artwork. */
-            if (picked && line>=16 && line<72) for (int px=x-40;px<x+40;++px)
+            int settled=v->selection==i+1 && !v->erase &&
+                v->cursor==40+(int)v->selection*104;
+            if (settled && picked && line>=16 && line<72) for (int px=x-40;px<x+40;++px)
                 if (px>=0 && px<width) out[px]=a->stages_ready?
                     genesis_dac_cram_to_argb(a->stages[slot->stage][(line-16)*80+px-x+40],GENESIS_DAC_NORMAL):color(a,0,0,1);
-            if(!picked && v->selection==i+1 && !v->erase && v->native_clear_portrait && a->finish_ready)
+            if(settled && !picked && v->native_clear_portrait && a->finish_ready)
                 finish_portrait(a,v,slot,x,line,out,width);
             const S2CampaignStage *s=&s2_campaign_stages[slot->stage];
             if (picked && v->show_act) snprintf(label,sizeof label,"ZONE %02u.%u",s->zone+1,s->act);

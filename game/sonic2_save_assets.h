@@ -9,8 +9,8 @@ typedef struct S2SaveAssets {
     uint16_t palette[64], background[40*28], layout[405];
     uint16_t new_card[70], static_card[4][70];
     uint16_t counter_icons[3][15]; /* native Sonic/Tails/Knuckles life/continue cells */
-    uint8_t finish_tiles[3][0x8C0];
-    uint16_t finish_palette[4][16]; /* Sonic, Super Sonic, Tails, Knuckles */
+    uint8_t finish_tiles[4][0x8C0]; /* Knuckles, super Knuckles, Tails, super Tails */
+    uint16_t finish_palette[6][16]; /* Sonic, super Sonic, Tails, Knuckles, super Tails, super Knuckles */
     int finish_ready;
     S2MenuFrame frames[S2_MENU_MAP_FRAMES];
     /* Stock Sonic 2 REV01 terrain thumbnails, one per campaign act. Native

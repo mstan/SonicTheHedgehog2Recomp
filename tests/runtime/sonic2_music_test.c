@@ -11,6 +11,7 @@
 #include "audio.h"
 #include "recomp_launcher.h"
 #include <SDL2/SDL.h>
+#include <gme/gme.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,8 +44,20 @@ int s2_custom_assemble(const char *source,const char *track,const char *settings
 {(void)source;(void)track;(void)settings;(void)output;(void)error;(void)capacity;(void)progress;(void)user;return 0;}
 int main(int argc,char **argv)
 {
+ /* Mixed-chip VGMs expose only sounding voices, including separate PSG
+  * tones/noise. The PSG audition copy keeps every command offset and wait. */
+ {
+  uint8_t vgm[128]={0},psg[128];memcpy(vgm,"Vgm ",4);vgm[8]=0x50;vgm[9]=1;
+  const uint8_t commands[]={0x52,0x28,0xf0,0x52,0x28,0xf6,0x52,0x2b,0x80,0x52,0x2a,0x80,
+   0x50,0x90,0x50,0xb0,0x50,0xd0,0x50,0xf0,0x62,0x66};
+  size_t bytes=0x40+sizeof commands;vgm[4]=(uint8_t)(bytes-4);memcpy(vgm+0x40,commands,sizeof commands);
+  assert(s2_custom_vgm_channels(vgm,bytes,psg)==((1u<<0)|(1u<<5)|(1u<<6)|0x780u));
+  assert(!memcmp(psg+0x4c,vgm+0x4c,sizeof commands-12));
+  for(unsigned i=0;i<12;i+=3)assert(psg[0x40+i]==0x61&&!psg[0x41+i]&&!psg[0x42+i]);
+  vgm[0x40]=0xff;assert(!s2_custom_vgm_channels(vgm,bytes,NULL));
+ }
 #ifdef SONIC2_MUSIC_DRIVER
- if(argc==6&&(!strcmp(argv[1],"--custom-import")||!strcmp(argv[1],"--custom-reject"))){
+ if(argc==6&&(!strcmp(argv[1],"--custom-import")||!strcmp(argv[1],"--custom-reject")||!strcmp(argv[1],"--vgm-voices"))){
   int reject=!strcmp(argv[1],"--custom-reject");char settings[1200],error[256]={0};
   envset("GENESIS_USER_DIR",argv[2]);snprintf(settings,sizeof settings,"%s/settings.ini",argv[2]);s2_music_load(settings);
   unsigned t=track(argv[3]);assert(s2_music_pick(t,"custom"));
@@ -63,6 +76,37 @@ int main(int argc,char **argv)
   const S2SoundAssetLayout l={S2_CLONE_MUSICINDEX,S2_CLONE_SOUNDINDEX,S2_CLONE_SPECSOUNDINDEX,S2_CLONE_PSG_INDEX,S2_CLONE_SAMPLE_TABLE};
   assert(s2_sound_build_assets(rom,0x100000,rom,0x400000,&l,error,sizeof error));
   assert(s2_music_prepare(rom,0x400000,l.music_index,l.sfx_index,l.psg_index,l.sample_table,error,sizeof error));
+  if(extra&&s2_cd_theme_channel_count(t)!=11){
+   unsigned song=read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(s2_music_target(t)-1)*4)&0xFFFFFF;
+   assert(song>=0x2A0000&&song<0x400000-25);
+   unsigned voice=((unsigned)rom[song]<<8)|rom[song+1];
+   assert(voice>=56&&voice<=0x400000-song-25&&rom[song+54]==0x80);
+   for(unsigned i=0;i<4;i++)assert(rom[song+voice+5+i]==0x7F&&rom[song+voice+21+i]==0x0F);
+   /* Keep finite stop/1-UP completion and infinite rest-loop commands. */
+   assert((rom[song+voice-2]==0xFF&&(rom[song+voice-1]==0x10||rom[song+voice-1]==0x04))||
+          (voice==60&&rom[song+56]==0xFF&&rom[song+57]==0x14&&rom[song+58]==0xFF&&rom[song+59]==0xFB));
+  }
+  if(!strcmp(argv[1],"--vgm-voices")){
+   static const char *names[]={"ALL CHANNELS","FM1","PSG1","PSG2","PSG3","PSG NOISE"};
+   int16_t voices[6][2048]={{0}},restored[2048]={0};assert(extra&&s2_cd_theme_channel_count(t)==6&&!s2_cd_theme_native_channels(t));
+   for(unsigned solo=0;solo<6;solo++){
+    assert(!strcmp(s2_cd_theme_channel_name(t,solo),names[solo]));s2_cd_theme_audition(t,solo,0);
+    s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(voices[solo],1024,44100);
+    int nonzero=0;for(unsigned i=0;i<2048;i++)nonzero|=voices[solo][i];assert(nonzero);
+    for(unsigned i=0;i<solo;i++)assert(memcmp(voices[i],voices[solo],sizeof voices[solo]));
+   }
+   s2_cd_theme_audition(t,0,0);s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(restored,1024,44100);
+   assert(!memcmp(voices[0],restored,sizeof restored));
+   /* The auxiliary PSG-only decoder must keep mixed-chip GME's 0.405
+    * balance, rather than making PSG solos louder than their source. */
+   uint8_t raw[512],psg[512];FILE *source=fopen(argv[4],"rb");assert(source);
+   size_t bytes=fread(raw,1,sizeof raw,source);assert(feof(source)&&bytes<sizeof raw);fclose(source);
+   assert(s2_custom_vgm_channels(raw,bytes,psg));Music_Emu *reference=NULL;
+   assert(!gme_open_data(psg,(long)bytes,&reference,44100));gme_ignore_silence(reference,1);gme_set_autoload_playback_limit(reference,0);
+   assert(!gme_start_track(reference,0));gme_mute_voices(reference,~1);int16_t direct[2048];assert(!gme_play(reference,2048,direct));gme_delete(reference);
+   for(unsigned i=0;i<2048;i++)assert(voices[2][i]==(int32_t)direct[i]*405/1000);
+   puts("PASS mixed VGM: active FM/individual PSG isolation and exact All restoration");s2_cd_themes_reset();free(rom);return 0;
+  }
   if(extra&&s2_cd_theme_channel_count(t)!=11){
    s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,t==0);s2_cd_theme_tick(0);
    int16_t pcm[2048]={0},again[2048]={0};extra(pcm,1024,44100);
@@ -108,7 +152,7 @@ int main(int argc,char **argv)
   assert(s2_music_target(t)>=1&&s2_music_target(t)<=31);
   for(unsigned j=0;j<t;j++)assert(s2_music_target(j)!=s2_music_target(t));
   if(!strcmp(s2_music_section(t),"Zones"))
-   for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)assert(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||s2_theme_choice(t,c)->donor==S2_DONOR_WAI||s2_theme_choice(t,c)->donor==S2_DONOR_AUG||(!strcmp(s2_theme_ids[t],"ehz-2p")&&s2_theme_choice(t,c)->donor==S2_DONOR_SEP14));
+   for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)assert(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||s2_theme_choice(t,c)->donor==S2_DONOR_WAI||s2_theme_choice(t,c)->donor==S2_DONOR_AUG||(!strcmp(s2_theme_ids[t],"ehz-2p")&&s2_theme_choice(t,c)->donor==S2_DONOR_SEP14)||(!strcmp(s2_theme_ids[t],"ooz")&&!strcmp(s2_theme_choice(t,c)->id,"s2-aug-oil-ocean")));
  }
  assert(s2_theme_choices(inv)==9);
  assert(!s2_music_available(track("ending"))&&!s2_music_available(track("hidden-palace")));
@@ -148,7 +192,18 @@ int main(int argc,char **argv)
  assert(s2_music_pick(title,"base"));
  unsigned oil=track("ooz");
  assert(s2_music_pick(oil,"s2-aug-oil-ocean")&&s2_theme_choice(oil,(unsigned)s2_themes[oil].choice)->song==7);
+ assert(s2_music_native_choice(oil)&&s2_theme_ready(oil)&&s2_theme_donor(oil)==-1);
+ assert(s2_music_group_enable(S2_MUSIC_CAMPAIGN,1)&&s2_music_active(oil));
+ assert(provider->feature_resource_count(provider->ctx,"sonic2.audio.event-themes","sonic2-campaign")==0);
+ assert(s2_themes_save());s2_music_load(settings);assert(s2_music_native_choice(oil)&&s2_theme_ready(oil));
  assert(s2_music_pick(oil,"base"));
+ unsigned credits=track("credits");assert(s2_music_pick(credits,"s3c-may17"));
+ assert(s2_theme_choice(credits,(unsigned)s2_themes[credits].choice)->donor==S2_DONOR_MAY17&&s2_theme_choice(credits,(unsigned)s2_themes[credits].choice)->song==0x26);
+ assert(s2_themes_save());s2_music_load(settings);assert(!strcmp(s2_theme_choice(credits,(unsigned)s2_themes[credits].choice)->id,"s3c-may17"));
+ assert(!s2_music_pick(track("drowning"),"s3c-may17"));assert(s2_music_pick(credits,"base"));
+ unsigned final=track("final-boss");assert(s2_music_pick(final,"s3"));
+ const S2MusicChoice *final_choice=s2_theme_choice(final,(unsigned)s2_themes[final].choice);
+ assert(final_choice->song==0x30&&!strcmp(final_choice->label,"Sonic 3 & Knuckles"));assert(s2_music_pick(final,"base"));
  if(argc==2){
   assert(s2_music_pick(ehz,"s2-wai"));
   assert(s2_music_pick(cpz,"s2-wai"));
@@ -184,7 +239,12 @@ int main(int argc,char **argv)
   unsigned selected=0;memset(s2_themes,0,sizeof s2_themes);
   for(unsigned g=0;g<S2_MUSIC_GROUPS;g++)assert(s2_music_group_enable(g,0));
   for(unsigned t=0;t<S2_MUSIC_COUNT;t++)
-   for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)if(s2_theme_choice(t,c)->donor==d){assert(s2_music_pick(t,s2_theme_choice(t,c)->id));++selected;break;}
+   for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)if(s2_theme_choice(t,c)->donor==d){
+    assert(s2_music_pick(t,s2_theme_choice(t,c)->id));
+    if(d==S2_DONOR_CD_US&&t==S2_MUSIC_BOSS&&!s2_theme_ready(t)){assert(s2_music_pick(t,"base"));break;}
+    ++selected;break;
+   }
+  if(d==S2_DONOR_S3)assert(s2_music_pick(boss,"s3-miniboss"));
   if(!selected)continue;
   uint8_t before[32],after[32];s2_music_config_identity(before);
   if(!s2_music_prepare(rom,0x400000,l.music_index,l.sfx_index,l.psg_index,l.sample_table,error,sizeof error)){
@@ -193,14 +253,41 @@ int main(int argc,char **argv)
   s2_music_config_identity(after);assert(!memcmp(before,after,32));
   assert(!memcmp(baseline,rom,0x2A0000));
   assert(!memcmp(rom+S2_MUSIC_CLONE_SOUND_INDEX,rom+l.sfx_index,81*4));
+  if(d==S2_DONOR_S3||d==S2_DONOR_SK||d==S2_DONOR_MAY17){
+   /* Mini-Boss uses retail modulation envelope4. Its actual Z80 loop
+    * returns to source index9, which is11 after the two-byte prefix. */
+   unsigned envelope=read32(rom+S2_MUSIC_CLONE_MODENV_INDEX+(18+3)*4);
+   assert(envelope>=0x2A0000&&envelope<0x400000-16);
+   assert(rom[envelope]==0x84&&rom[envelope+1]==1);
+   assert(rom[envelope+14]==0x82&&rom[envelope+15]==11);
+  }
+  if(d==S2_DONOR_SK||d==S2_DONOR_MAY17){
+   /* Both Credits arrangements start FM1 with ED4C: key +12, not +76. */
+   unsigned target=s2_music_target(track("credits"));
+   unsigned song=read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(target-1)*4)&0xFFFFFF;
+   assert(song>=0x2A0000&&song<0x400000-14);
+   unsigned fm1=((unsigned)rom[song+12]<<8)|rom[song+13];
+   assert(fm1<0x400000-song-3);
+   assert(rom[song+fm1]==0xFF&&rom[song+fm1+1]==0x1B&&rom[song+fm1+2]==0x0C);
+  }
   for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_active(t))
-   assert((read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(s2_music_target(t)-1)*4)&0xFFFFFF)>=0x2A0000);
+   if(s2_music_native_choice(t))assert(read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(s2_music_target(t)-1)*4)==read32(rom+l.music_index+7*4));
+   else assert((read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(s2_music_target(t)-1)*4)&0xFFFFFF)>=0x2A0000);
   if(d==S2_DONOR_CD_US){
+   /* Continue SFX give borrowed FM channels back to the silent CD entry.
+    * Its restored voice must mute every operator with a fast release. */
+   unsigned song=read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(s2_music_target(S2_THEME_CLEAR)-1)*4)&0xFFFFFF;
+   assert(song>=0x2A0000&&song<0x400000-86);
+   unsigned voice=((unsigned)rom[song]<<8)|rom[song+1];
+   assert(voice==60&&rom[song+54]==0x80);
+   for(unsigned i=0;i<4;i++)assert(rom[song+voice+5+i]==0x7F&&rom[song+voice+21+i]==0x0F);
    assert(extra);int16_t pcm[512]={0};s2_cd_theme_request(0x17);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(pcm,256,44100);
    unsigned active=0;s2_cd_theme_debug(&active,NULL,NULL);assert(active);
    uint8_t state[128];S2StateIO save={state,sizeof state,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
    uint64_t position=0;s2_cd_theme_debug(NULL,NULL,&position);
    assert(position>0);extra(pcm,256,44100);uint64_t held;s2_cd_theme_debug(NULL,NULL,&held);assert(position==held);
+   s2_cd_theme_frame(1,0);s2_cd_theme_tick(1);memset(pcm,0,sizeof pcm);extra(pcm,256,44100);
+   for(unsigned i=0;i<512;i++)assert(!pcm[i]);s2_cd_theme_debug(NULL,NULL,&held);assert(position==held);
    s2_cd_theme_frame(0,1);s2_cd_theme_tick(1);extra(pcm,256,44100);s2_cd_theme_debug(NULL,NULL,&held);assert(position==held);
    s2_cd_theme_frame(0,0);s2_cd_theme_tick(2);extra(pcm,256,44100);s2_cd_theme_debug(NULL,NULL,&held);assert(held>position);
    S2StateIO validate={state,save.pos,0,1,1};s2_cd_theme_state(&validate);assert(validate.ok);
@@ -219,7 +306,7 @@ int main(int argc,char **argv)
   for(unsigned t=0;t<S2_MUSIC_COUNT;t++){
    if(!s2_theme_choices(t))continue;
    unsigned c=(t*5+mix)%(unsigned)s2_theme_choices(t);
-   while(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM)c=(c+1)%(unsigned)s2_theme_choices(t);
+   while(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||(t==S2_MUSIC_BOSS&&s2_theme_choice(t,c)->donor==S2_DONOR_CD_US&&!(s2_cd_donor_available(s2_donor_path(S2_DONOR_CD_US),S2_DONOR_CD_US)&(1u<<t))))c=(c+1)%(unsigned)s2_theme_choices(t);
    assert(s2_music_pick(t,s2_theme_choice(t,c)->id));
    assert(s2_music_active(t));
   }

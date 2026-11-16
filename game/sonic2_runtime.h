@@ -10,6 +10,12 @@ typedef struct S2RuntimeSprite {
     uint8_t frame,flip,visible,wet;
 } S2RuntimeSprite;
 enum { S2_PRESENTATION_DUST=(0xD000-0xB400)/64 };
+typedef struct S2RuntimeActors {
+    S2RuntimeSprite sprites[S2_MAX_PLAYERS+1],dust[S2_PRESENTATION_DUST];
+    uint16_t object[S2_MAX_PLAYERS];
+    int16_t x[S2_MAX_PLAYERS],y[S2_MAX_PLAYERS];
+} S2RuntimeActors;
+void s2_runtime_published_actors(S2RuntimeActors *out);
 /* Immutable presentation snapshot; never part of simulation or rollback. */
 typedef struct S2RuntimePresentation {
     S2RuntimeSprite sprites[S2_MAX_PLAYERS+1],dust[S2_PRESENTATION_DUST];

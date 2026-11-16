@@ -38,6 +38,8 @@
 static int active, inside_player, actor = -1;
 static uint8_t previous_input[S2_MAX_PLAYERS];
 static uint32_t input_poll_serial;
+static uint16_t ss_return_zone,ss_return_rings;
+static uint8_t ss_return_post,ss_return_lives,ss_return_pending;
 /* The native character decides whether to submit a sprite, including hurt
  * flashing. Reuse that decision instead of approximating its timer phase. */
 static uint8_t displayed[S2_MAX_PLAYERS];
@@ -155,6 +157,8 @@ void s2_runtime_load(void)
 {
     active=inside_player=0; actor=-1;
     input_poll_serial=0;
+    ss_return_zone=ss_return_rings=0;
+    ss_return_post=ss_return_lives=ss_return_pending=0;
     gvdp_set_unlimited_sprites(0);
     s2_video_prepare_knuckles_items();
     hud_art_ready=0;
@@ -458,7 +462,7 @@ static int companion_recovering(void)
     unsigned state=word(0xF708);
     return state==2 || state==4;
 }
-static void companion_control(unsigned p, unsigned o)
+static void companion_control(unsigned p, unsigned o, int act_end)
 {
     if (g_ram[o+0x24]!=2) return;
     /* Host-rendered actors never go through BuildSprites' on-screen writer.
@@ -469,6 +473,10 @@ static void companion_control(unsigned p, unsigned o)
         y>=-32 && y<256;
     g_ram[o+1]=(g_ram[o+1]&0x7F)|(visible?0x80:0);
     int human=human_companion(p);
+    /* The signpost lets P1 run beyond the fixed camera's native viewport.
+     * Settled party followers reach that same boundary. They remain in the
+     * act, so do not restart the offscreen recovery timer during the tally. */
+    if (act_end && !human) g_ram[o+1]|=0x80;
     /* Every online human has a camera. Distance from P1 is no longer a
      * reason to start Tails' 300-tick offscreen recovery timer. Actual death
      * and its normal recovery continue through the original controller. */
@@ -479,7 +487,7 @@ static void companion_control(unsigned p, unsigned o)
     uint16_t index=word(0xEED2),record_x=0;
     unsigned record=0;
     int six=s2_party.roster.slots>4;
-    int varied=(p>=2 || six) && !human && word(0xF708)==6 && !g_ram[o+0x2A] &&
+    int varied=!act_end && (p>=2 || six) && !human && word(0xF708)==6 && !g_ram[o+0x2A] &&
         visible && !(g_ram[o+0x22]&0x2E);
     if (varied) {
         /* Retain native history timing, jump retries and acceleration. Only
@@ -511,6 +519,14 @@ static void companion_control(unsigned p, unsigned o)
         for (unsigned at=0xF66A;at<=0xF66B;++at)
             g_ram[at]=(g_ram[at]&~0x70)|((g_ram[at]&0x70)?0x10:0);
         if (kind(p)==S2_CHAR_KNUCKLES && (g_ram[o+0x22]&2)) g_ram[0xF66B]&=~0x10;
+        if(act_end && !companion_recovering()) {
+            /* Once the real tally has stopped P1's timer, expanded-party
+             * followers keep native horizontal following without retrying
+             * jumps/spindashes against the act's fixed right boundary. */
+            g_ram[0xF66A]&=~0x72;g_ram[0xF66B]&=~0x72;
+            g_ram[0xF70F]=0;
+            if(word(0xF708)==8)putword(0xF708,6);
+        }
     }
     if (companion_recovering()) {
         characters[p].special=0;
@@ -574,7 +590,7 @@ static void runtime_state(S2StateIO *io)
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
-    unsigned header[3+S2_MAX_PLAYERS+11]={7,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+11]={8,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
@@ -600,6 +616,8 @@ static void runtime_state(S2StateIO *io)
     }
     S2_STATE(io,header); S2_STATE(io,active);
     S2_STATE(io,previous_input); S2_STATE(io,input_poll_serial);
+    S2_STATE(io,ss_return_zone); S2_STATE(io,ss_return_rings);
+    S2_STATE(io,ss_return_post); S2_STATE(io,ss_return_lives); S2_STATE(io,ss_return_pending);
     S2_STATE(io,displayed); S2_STATE(io,displayed_tails); S2_STATE(io,companion_cpu);
     S2_STATE(io,characters); S2_STATE(io,physics); S2_STATE(io,objects);
     S2_STATE(io,solid_flags); S2_STATE(io,solid_ids); S2_STATE(io,published_sprites);
@@ -713,6 +731,38 @@ static int extra_players(void)
 {
     for (unsigned p=2;p<S2_MAX_PLAYERS;++p) if (objects[p]) return 1;
     return 0;
+}
+static void switch_extra_planes(void)
+{
+    unsigned trigger=g_cpu.A[0]&65535u;
+    if(word(0xFFD8) || word(0xFE08) || !extra_players() ||
+       trigger<0xB000 || trigger>=0xD000 || g_ram[trigger]!=3)return;
+    unsigned routine=g_ram[trigger+0x24];
+    if(routine!=2 && routine!=4)return;
+    unsigned axis=routine==2?8:12;
+    /* Obj03 owns only34/35 for P1/P2. Its remaining object bytes are unused;
+     * keep the extra crossing sides in36..39 and an initialization tag in3A.
+     * Native object allocation, current states and rollback carry them. */
+    if(g_ram[trigger+0x3A]!=0xA7) {
+        for(unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+            unsigned o=objects[p];
+            g_ram[trigger+0x34+p]=o && g_ram[o] && word(o+axis)>word(trigger+axis);
+        }
+        g_ram[trigger+0x3A]=0xA7;
+        return;
+    }
+    M68KState saved=g_cpu;
+    for(unsigned p=2;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p) {
+        unsigned o=objects[p];if(!o || !g_ram[o])continue;
+        /* Exact native single-character entry: A0 trigger, A1 actor, A2 its
+         * side flag, D1 trigger axis. The original range, air, solid-plane
+         * and art-priority decisions remain authoritative for this actor. */
+        g_cpu=saved;g_cpu.A[1]=0xFFFF0000u|o;
+        g_cpu.A[2]=0xFFFF0000u|(trigger+0x34+p);
+        g_cpu.D[1]=(g_cpu.D[1]&0xFFFF0000u)|word(trigger+axis);
+        native_helper(routine==2?0x1FDBE:0x1FEC8);
+    }
+    g_cpu=saved;
 }
 static int collide_extras(uint32_t pc, uint32_t single)
 {
@@ -835,6 +885,8 @@ static int update_player(unsigned p, uint32_t entry)
     if(preserve_sidekick_history)memcpy(sidekick_history,g_ram+0xE600,sizeof sidekick_history);
     uint16_t logical2=word(0xF66A);
     uint8_t locked=g_ram[0xF7CC];
+    int act_end=companion && s2_party.roster.slots>2 && locked &&
+        (g_ram[0xF602]&8) && !g_ram[0xFE1E] && g_ram[0xB024]==2;
     uint8_t super=g_ram[0xFE19];
     uint8_t original_physics[6]; memcpy(original_physics,g_ram+0xF760,6);
     uint8_t original_dust[64]; memcpy(original_dust,g_ram+0xD100,64);
@@ -858,9 +910,9 @@ static int update_player(unsigned p, uint32_t entry)
         uint8_t pressed=(uint8_t)(held&~previous_input[p]); previous_input[p]=held;
         g_ram[0xF604]=g_ram[0xF602]=g_ram[0xF606]=g_ram[0xF66A]=held;
         g_ram[0xF605]=g_ram[0xF603]=g_ram[0xF607]=g_ram[0xF66B]=pressed;
-        g_ram[0xF7CC]=g_ram[0xF7CD];
+        g_ram[0xF7CC]=g_ram[0xF7CF]; /* native P2 lock; F7CD is starpost entry */
         if (companion) {
-            companion_control(p,object);
+            companion_control(p,object,act_end);
             g_ram[0xF604]=g_ram[0xF602]=g_ram[0xF606]=g_ram[0xF66A];
             g_ram[0xF605]=g_ram[0xF603]=g_ram[0xF607]=g_ram[0xF66B];
         }
@@ -1143,6 +1195,14 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if (pc==0x4F64) {
+        /* KiS2 keeps the starpost's saved ring/extra-life pool. The stars
+         * do not save it again, so rings collected afterwards are excluded. */
+        ss_return_pending=kind(0)==S2_CHAR_KNUCKLES && !word(0xFFD8) &&
+            g_ram[0xFE31] && g_ram[0xFE30]==g_ram[0xFE31];
+        if(ss_return_pending) {
+            ss_return_zone=word(0xFE10);ss_return_rings=word(0xFE36);
+            ss_return_post=g_ram[0xFE31];ss_return_lives=g_ram[0xFE54];
+        }
         s2_video_hook(pc);
         /* Stock solo roles and the original Amy/Knuckles use the native solo
          * half-pipe controller. The campaign roster survives the round trip;
@@ -1156,6 +1216,8 @@ int s2_runtime_hook(uint32_t pc)
         return 0;
     }
     if (pc==0x4450) { /* Level_SetPlayerMode: attract demos remain byte-identical */
+        if(ss_return_pending && (kind(0)!=S2_CHAR_KNUCKLES || word(0xFFD8) ||
+           word(0xFE10)!=ss_return_zone || g_ram[0xFE31]!=ss_return_post))ss_return_pending=0;
         s2_video_hook(pc); /* title-card initialization installs a fresh palette directly */
         for(unsigned p=0;p<s2_party.roster.slots && p<2;++p)prepare_native_bank(kind(p));
         active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_online());
@@ -1174,7 +1236,22 @@ int s2_runtime_hook(uint32_t pc)
         putword(0xFF70,native_id(0)==2?2:native_id(1)?0:1);
         return 1;
     }
+    if(pc==0x1F384) {
+        /* The stock ring/extra-life clears have completed. Restore only the
+         * matching Knuckles Special Stage return, leaving native MOVE.L and
+         * its flags/register contract untouched. Ordinary retries stay stock. */
+        if(ss_return_pending) {
+            if(kind(0)==S2_CHAR_KNUCKLES && !word(0xFFD8) &&
+               (g_ram[0xF600]&127)==12 && word(0xFE10)==ss_return_zone &&
+               g_ram[0xFE30]==ss_return_post && g_ram[0xFE31]==ss_return_post) {
+                putword(0xFE20,ss_return_rings);g_ram[0xFE1B]=ss_return_lives;
+            }
+            ss_return_pending=0;
+        }
+        return 0;
+    }
     if (!level()) return 0;
+    if(pc==0x1FCEA) {switch_extra_planes();return 0;}
     if(pc==0x3AB46 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
         /* The same KiS2 pose correction applies after boarding the plane. */
         g_ram[0xB01A]=characters[0].frame;
@@ -1547,6 +1624,12 @@ void s2_runtime_capture(void)
         s->frame=g_ram[o+0x1A]; s->visible=displayed[p];
         s->flip=kind(p)==S2_CHAR_AMY || kind(p)==S2_CHAR_KNUCKLES || kind(p)==S2_CHAR_SHADOW?characters[p].render_flip:g_ram[o+1]&3;
         s->wet=!!(g_ram[o+0x22]&64);
+        if(p && !word(0xFFD8) && kind(p)==S2_CHAR_KNUCKLES &&
+           companion_cpu[p][6]==0 && companion_cpu[p][7]==4) {
+            /* Native recovery owns the flight and rejoin. Only its visible
+             * pose differs: Knuckles glides instead of using roll artwork. */
+            s->frame=0xC0;s->flip=g_ram[o+0x22]&1;
+        }
         if(runoff) {
             s->visible=1;
             /* A glide can cross the signpost and reach the native camera
@@ -1572,6 +1655,18 @@ void s2_runtime_capture(void)
         PartySprite *s=&published_sprites[S2_MAX_PLAYERS];
         s->x=(int16_t)(word(0xD008)+s2_video_runoff_x(0,0xB000,word(0xB008))-word(0xB008)); s->y=(int16_t)word(0xD00C); s->art=word(0xD002);
         s->frame=g_ram[0xD01A]; s->visible=1; s->flip=g_ram[0xD001]&3;
+    }
+}
+void s2_runtime_published_actors(S2RuntimeActors *out)
+{
+    memset(out,0,sizeof *out);
+    memcpy(out->sprites,published_sprites,sizeof out->sprites);
+    memcpy(out->dust,published_dust,sizeof out->dust);
+    for(unsigned p=0;p<S2_MAX_PLAYERS;++p) {
+        unsigned o=objects[p];
+        if(!o || !g_ram[o])continue;
+        out->object[p]=(uint16_t)o;
+        out->x[p]=(int16_t)word(o+8);out->y[p]=(int16_t)word(o+12);
     }
 }
 static unsigned card_vram_word(const GVDP *v,unsigned a)
@@ -1873,6 +1968,7 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
         memcpy(f->sprites,published_sprites,sizeof f->sprites);
         memcpy(f->dust,published_dust,sizeof f->dust);
         f->vdp=*v; memcpy(f->world,g_ram,sizeof f->world);
+        s2_video_presented_actors(&f->vdp,f->sprites,f->dust);
         if(f->active) {
             unsigned zone=s2_video_level_zone();
             f->world[0xFE10]=(uint8_t)(zone>>8);f->world[0xFE11]=(uint8_t)zone;
@@ -1944,6 +2040,7 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
     RB(io,c->turn); RB(io,c->held); RB(io,c->pressed); RB(io,c->native_held); RB(io,c->native_pressed);
     RB(io,c->move); RB(io,c->before_air); RB(io,c->before_jumping);
     RB(io,c->jump_adjustment); RB(io,c->wall_x);
+    RB(io,c->landing_buffer); RB(io,c->landing_jump);
     RB(io,c->animation); RB(io,c->animation_index); RB(io,c->animation_timer);
     RB(io,c->frame); RB(io,c->render_flip); RB(io,c->animation_changed);
     RB(io,c->shadow_air_used); RB(io,c->shadow_target); RB(io,c->shadow_last_target); RB(io,c->shadow_target_age);
@@ -1961,6 +2058,8 @@ static void rb_all(S2StateIO *io)
     int32_t a=active, ip=inside_player, ac=actor, icc=inside_companion_cpu, is=inside_solid;
     RB(io,a); RB(io,ip); RB(io,ac); RB(io,icc); RB(io,is);
     RB(io,previous_input); RB(io,displayed); RB(io,companion_cpu);
+    RB(io,ss_return_zone); RB(io,ss_return_rings);
+    RB(io,ss_return_post); RB(io,ss_return_lives); RB(io,ss_return_pending);
     RB(io,dust_emit_age);
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) rb_character(io,&characters[p]);
     RB(io,physics); RB(io,objects); RB(io,solid_flags); RB(io,solid_ids);

@@ -124,8 +124,9 @@ static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned c
     for(int i=0;i<c->count;i++) {
         Node *n=&c->nodes[i];unsigned out=dest+n->output,op=rb(c,n->pc);
         if(op<0xE0) {
-            /* Clone's PSG table includes one extra maximum-frequency slot. */
-            if(n->kind>=2 && !c->pitch[n->kind] && op==0xC6)++op;
+            /* S2's maximum PSG period is zero. Resolve that sentinel after
+             * the header transpose, including the leaf SFX's -8 shift. */
+            if(n->kind>=2 && op>=0x81 && ((op+c->pitch[n->kind])&255)==0xC6)++op;
             c->memory[out]=(uint8_t)op;continue;
         }
         if(op==0xE7){c->memory[out]=0xFE;continue;}

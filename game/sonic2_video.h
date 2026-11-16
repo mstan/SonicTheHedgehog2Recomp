@@ -10,6 +10,8 @@ extern const GameVideo sonic2_video;
 int s2_video_hook(uint32_t pc);
 void s2_video_command(int id, const char *json);
 void s2_video_actor_origin(const struct GVDP *vdp, int line, int width, int *left, int *top);
+struct S2RuntimeSprite;
+int s2_video_presented_actors(const struct GVDP *vdp,struct S2RuntimeSprite *sprites,struct S2RuntimeSprite *dust);
 int s2_video_runoff_x(unsigned role,unsigned object,int x);
 int s2_video_runoff_velocity(unsigned role);
 int s2_video_actor_pixel_visible(const struct GVDP *vdp, int wx, int wy, int high, const unsigned char *world);

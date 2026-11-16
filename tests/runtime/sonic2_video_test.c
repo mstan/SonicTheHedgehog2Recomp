@@ -22,8 +22,13 @@ const S2DonorBank *s2_resource_bank(unsigned id) {return imported_hud_mock || (a
 const S2DonorBank *s2_resource_shadow_bank(void) { return imported_hud_mock?&amy_item_bank:NULL; }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 { (void)r;(void)size;(void)out;return 0; }
+static unsigned native_decode_calls,native_decode_bytes,native_decode_asset=S2_NATIVE_EXPLOSION;
 unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset,uint8_t *out,size_t cap)
-{(void)r;(void)size;(void)asset;(void)out;(void)cap;return 0;}
+{
+    (void)r;(void)size;++native_decode_calls;
+    if(asset!=native_decode_asset || !native_decode_bytes || native_decode_bytes>cap)return 0;
+    memset(out,0x66,native_decode_bytes);return native_decode_bytes;
+}
 static int slot_mock;
 int s2_knuckles_slot_patterns(const uint8_t *r,size_t size,const S2KnucklesArt *art,unsigned slot,const uint8_t source[512],uint8_t out[512])
 {(void)r;(void)size;(void)art;(void)slot;if(!slot_mock || source[0]!=0x11)return 0;memset(out,0x22,512);return 1;}
@@ -46,6 +51,15 @@ int genesis_netplay_local_player(void){return local_player;}
 int s2_runtime_campaign_online(void){return online && !ram16(0xFFD8) && (g_ram[0xF600]&127)==12;}
 int s2_runtime_player_position(unsigned p,int *x,int *y)
 {if(p>=4)return 0;*x=positions[p][0];*y=positions[p][1];return 1;}
+void s2_runtime_published_actors(S2RuntimeActors *out)
+{
+    memset(out,0,sizeof *out);
+    for(unsigned p=0;p<2;++p) {
+        unsigned o=0xB000+p*64;if(!g_ram[o])continue;
+        out->object[p]=(uint16_t)o;out->x[p]=(int16_t)ram16(o+8);out->y[p]=(int16_t)ram16(o+12);
+        out->sprites[p].x=out->x[p];out->sprites[p].y=out->y[p];out->sprites[p].visible=1;
+    }
+}
 void s2_options_overlay(const GVDP *v,int line,uint32_t *out,int width)
 { (void)v; (void)line; (void)out; (void)width; }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
@@ -63,12 +77,18 @@ void cmd_send_response(const char *json){(void)json;}
 static void word(uint8_t *p,unsigned a,unsigned v){p[a]=(uint8_t)(v>>8);p[a+1]=(uint8_t)v;}
 /* Synthetic stage fixtures replace RAM without running Level_SetPlayerMode. */
 static void clear_guest(void)
-{ memset(g_ram,0,sizeof g_ram);s_level_zone_valid=0;s_boss_preview_complete=0;memset(&s_dez_corpse,0,sizeof s_dez_corpse); }
+{ memset(g_ram,0,sizeof g_ram);s_level_zone_valid=0;s_boss_preview_complete=0;memset(&s_dez_corpse,0,sizeof s_dez_corpse);memset(&s_ending_scenery,0,sizeof s_ending_scenery); }
 static void clamped_background_alignment_test(void)
 {
     static GVDP v;uint32_t out[796],native[320]={0};
     const unsigned zones[]={0,4,7,10,11,12,13,14,15,16};
     const unsigned cameras[]={0,512,1700};
+    /* Source SwScrl terms at line40, C=0/512/1700 and wide origins0/274/1252.
+     * The extra11px is a live native animation offset, retained verbatim. */
+    static const unsigned native_terms[][3]={{0,8,27},{0,64,212},{0,64,213},{0,64,212},
+        {0,409,1360},{0,400,1328},{0,64,212},{0,512,1700},{0,562,1866},{0,0,0}};
+    static const unsigned wide_terms[][3]={{0,5,20},{0,34,156},{0,35,157},{0,34,156},
+        {0,219,1001},{0,214,978},{0,34,156},{0,274,1252},{0,300,1374},{0,0,0}};
     presentation_configure(0);online=0;
     CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
     for(unsigned z=0;z<sizeof zones/sizeof *zones;++z)
@@ -82,19 +102,33 @@ static void clamped_background_alignment_test(void)
             for(unsigned n=0;n<64;++n){word(g_ram,128+n*2,1);word(g_ram,256+n*2,2);}
             for(unsigned n=0;n<4;++n){word(g_ram,0x9008+n*2,1);word(g_ram,0x9010+n*2,2);}
             unsigned camera=cameras[c];word(g_ram,0xEE00,camera);word(g_ram,0xEE60,camera);
+            uint32_t bg=camera*(zones[z]==15?281u*256u:8192u);
+            word(g_ram,0xEE68,bg>>16);word(g_ram,0xEE6A,bg);
             v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
             v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;v.cram[1]=0xE;v.cram[2]=0xE00;
             memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
-            for(unsigned y=0;y<224;++y){word(v.vram,0xFC00+y*4,-camera);word(v.vram,0xFC02+y*4,-(int)(camera/8));}
+            for(unsigned y=0;y<224;++y){word(v.vram,0xFC00+y*4,-camera);word(v.vram,0xFC02+y*4,-(int)(native_terms[z][c]+11));}
             render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
             render_source_scanline(&v,40,native,320,out,796,NULL,NULL);
             CHECK(s_display && s_native_x==(int)camera-view_left((int)camera,796));
-            /* Native viewport cells retain the live background scroll even
-             * when the canvas midpoint moves away from that viewport. */
-            for(unsigned nx=0;nx<320;++nx) {
-                unsigned source=(nx+camera/8)%512;
+            /* The expanded foreground viewport owns its background origin.
+             * At a clamp it no longer inherits native-camera translation. */
+            for(unsigned nx=0;nx<796;++nx) {
+                unsigned source=nx+wide_terms[z][c]+11;
+                if(zones[z]==0 || zones[z]==16) {
+                    source%=1024;if(source>=512)source=1023-source;
+                } else source%=512;
                 unsigned ink=source/128%2?2:1;
-                CHECK(out[s_native_x+nx]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
+                if(out[nx]!=genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL))
+                    fprintf(stderr,"BG zone=%u camera=%u left=%d x=%u source=%u actual=%08X\n",
+                            zones[z],camera,s_left,nx,source,out[nx]);
+                CHECK(out[nx]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
+            }
+            render_source_scanline(&v,0,native,320,out,320,NULL,NULL);
+            render_source_scanline(&v,40,native,320,out,320,NULL,NULL);
+            for(unsigned nx=0;nx<320;++nx) {
+                unsigned source=(nx+native_terms[z][c]+11)%512,ink=source/128%2?2:1;
+                CHECK(out[nx]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
             }
         }
     CHECK(configure("off"));
@@ -273,6 +307,45 @@ static void mapping_vertical_bounds_test(void)
     CHECK(scene.count==1 && s_visible_count==1); /* Native AI boundary. */
     CHECK(configure("off"));clear_guest();
 }
+static void mapping_horizontal_bounds_test(void)
+{
+    static SceneFrame scene;static GVDP v;uint32_t out[796],palette[64]={0};
+    uint8_t before[65536];
+    clear_guest();memset(&v,0,sizeof v);g_ram[0xF600]=12;g_ram[0xF711]=1;
+    g_ram[0xB000]=1;g_ram[0x800F]=1;word(g_ram,0xE808,0xFFFF);
+    for(unsigned f=0;f<4;++f)word(g_rom,0x40A9A+f*2,8);
+    word(g_rom,0x40AA2,0);
+    /* Actual Turtloid jet frame6:16x8 at(+28,+6), root radius8.
+     * Its last opaque pixels must survive both wide edges and flips. */
+    g_ram[0xB400]=0x9C;g_ram[0xB401]=4;g_ram[0xB419]=8;g_ram[0xB41A]=6;
+    glue_poke32(0xFFB404,0x37B62);word(g_ram,0xB402,0x38A);
+    word(g_rom,0x37B62+12,20);word(g_rom,0x37B62+20,1);
+    unsigned p=0x37B62+22;g_rom[p]=6;g_rom[p+1]=4;
+    word(g_rom,p+2,0x8036);word(g_rom,p+4,0x801B);word(g_rom,p+6,28);
+    word(g_ram,0xAE80,2);word(g_ram,0xAE82,0xB400);word(g_ram,0xB40C,100);
+    memset(v.vram+0x3C0*32,0x11,64);palette[1]=0xFFFFFFFF;
+    CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);CHECK(reserve_sprite_row(796));
+    s_frame_level=1;s_frame_vs=0;s_camera=1024;s_camera_y=0;
+    word(g_ram,0xEE00,1024);word(g_ram,0xEEF0,1024);
+    for(unsigned side=0;side<2;++side) {
+        word(g_ram,0xB408,1024+(side?568:-248));g_ram[0xB401]=(uint8_t)(4|side);
+        memcpy(before,g_ram,sizeof before);capture_objects_into(&scene,796,0,NULL);
+        CHECK(scene.count==1 && !s_visible_count && !memcmp(before,g_ram,sizeof before));
+        CHECK(scene.sprites[0].x==(side?524:-220));s_display=&scene;
+        memset(s_priority,0,796);memset(out,0,sizeof out);
+        draw_scene_sprites(&v,106,out,796,238,palette);
+        unsigned left=side?762:18;
+        CHECK(out[left]==0xFFFFFFFF && out[left+15]==0xFFFFFFFF);
+        CHECK(!out[left-1] && !out[left+16]);
+        capture_objects_into(&scene,320,0,NULL);CHECK(!scene.count && !s_visible_count);
+    }
+    /* Native visibility retains its original coarse root boundary. */
+    g_ram[0xB401]=4;word(g_ram,0xB408,1024-246);
+    capture_objects_into(&scene,796,0,NULL);CHECK(scene.count==1 && s_visible_count==1);
+    /* Retaining pieces never invents an unqueued object. */
+    word(g_ram,0xAE80,0);capture_objects_into(&scene,796,0,NULL);CHECK(!scene.count);
+    s_display=NULL;CHECK(configure("off"));clear_guest();
+}
 static void dormant_dez_margin_test(void)
 {
     static SceneFrame scene;static uint8_t before[65536];
@@ -343,7 +416,7 @@ static void dez_window_preview_test(void)
     CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
     memcpy(before,g_ram,sizeof before);capture_objects_into(&scene,796,0,NULL);
     CHECK(!memcmp(before,g_ram,sizeof before) && !s_visible_count);
-    CHECK(scene.count==1 && scene.sprites[0].art==SCENE_ART_MARGIN_VIEW);
+    CHECK(scene.count==1 && scene.sprites[0].art==(SCENE_ART_MARGIN_VIEW|1+S2_NATIVE_DEZ_WINDOW));
     s_display=&scene;s_camera=scene.camera_x;s_camera_y=scene.camera_y;s_left=s_camera-238;
     static GVDP v;memset(&v,0,sizeof v);v.reg[12]=1;memset(v.vram+0x378*32,0x11,64);
     uint32_t native[320]={0},wide[796]={0},palette[64]={0};palette[1]=0xFFFFFFFF;
@@ -359,10 +432,10 @@ static void dez_window_preview_test(void)
     word(g_ram,0xB408,0x2C0);word(g_ram,0xB40C,0x139);word(g_ram,0xB402,0x378);
     glue_poke32(0xFFB404,0x3A08C);
     capture_objects_into(&scene,796,0,NULL);
-    CHECK(scene.count==1 && scene.sprites[0].art==SCENE_ART_MARGIN_VIEW);
+    CHECK(scene.count==1 && scene.sprites[0].art==(SCENE_ART_MARGIN_VIEW|1+S2_NATIVE_DEZ_WINDOW));
     word(g_ram,0xAF00,2);word(g_ram,0xAF02,0xB400);
     capture_objects_into(&scene,796,0,NULL);
-    CHECK(scene.count==1 && scene.sprites[0].art==0);
+    CHECK(scene.count==1 && scene.sprites[0].art==1+S2_NATIVE_DEZ_WINDOW);
     word(g_ram,0xAF00,0);
     for(unsigned kind=0;kind<5;++kind) {
         g_ram[0xEEDF]=0;g_ram[0xF711]=1;g_ram[0xB024]=2;word(g_ram,0xFE10,0xE00);
@@ -503,6 +576,253 @@ static void ending_plane_preview_test(void)
     word(g_ram,0xB13C,97);capture_objects_into(&scene,796,0,NULL);CHECK(!scene.count);
     word(g_ram,0xB13C,8);g_ram[0xB124]=12;capture_objects_into(&scene,796,0,NULL);CHECK(!scene.count);
     memcpy(g_rom+0x3AFF2,map,sizeof map);s_display=NULL;CHECK(configure("off"));clear_guest();
+}
+static void ending_scenery_retirement_test(void)
+{
+    /* Exact REV01 cloud and Animal2 mapping bytes, including both bird poses. */
+    static const uint8_t cloud[]={0,8,0,34,0,52,0,8,0,3,252,12,0,0,0,0,255,216,252,12,0,4,0,2,255,248,252,4,0,8,0,4,0,24,0,2,252,12,0,10,0,5,255,232,252,4,0,14,0,7,0,8,0,1,252,4,0,16,0,8,255,248};
+    static const uint8_t bird[]={0,16,0,26,0,6,0,1,236,7,0,0,0,0,255,248,0,1,248,5,0,8,0,4,255,248,0,1,248,5,0,12,0,6,255,248};
+    uint8_t saved_cloud[sizeof cloud],saved_bird[sizeof bird];static uint8_t before[65536];
+    memcpy(saved_cloud,g_rom+0x3B32C,sizeof cloud);memcpy(saved_bird,g_rom+0x11E1C,sizeof bird);
+    memcpy(g_rom+0x3B32C,cloud,sizeof cloud);memcpy(g_rom+0x11E1C,bird,sizeof bird);
+    clear_guest();CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;g_ram[0xB134]=0xFF;
+    unsigned o=0xB140;g_ram[o]=0xCB;g_ram[o+1]=0x84;g_ram[o+0x24]=4;g_ram[o+0x18]=5;
+    word(g_ram,o+2,0x654F);glue_poke32(0xFF0000+o+4,0x3B32C);
+    glue_poke32(0xFF0000+o+8,(uint32_t)-30*65536u);word(g_ram,o+12,100);word(g_ram,o+0x10,-0x300);
+    word(g_ram,0xAE80,2);word(g_ram,0xAE82,o);
+    prepare_ending_scenery(796,0);CHECK(!s_ending_scenery.continued[0].active);
+    /* A genuinely published native cloud crosses AA94; its slot is reused.
+     * The retained drawing must neither follow the new object nor alter RAM. */
+    g_ram[o]=0x58;word(g_ram,o+8,500);word(g_ram,0xAE80,0);
+    memcpy(before,g_ram,sizeof before);prepare_ending_scenery(796,0);
+    CHECK(!memcmp(before,g_ram,sizeof before));EndingScenery *c=&s_ending_scenery.continued[0];
+    CHECK(c->active && (int16_t)ending_word(c->object,8)==-33 && ending_word(c->object,12)==100);
+    static SceneFrame scene;scene.count=0;draw_ending_scenery(&scene,NULL,5,796,0);
+    CHECK(scene.count==3 && (scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
+    static GVDP v;memset(&v,0,sizeof v);v.reg[12]=1;memset(v.vram+0x54F*32,0x11,69*32);
+    uint32_t out[796]={0},palette[64]={0};palette[49]=0xFFFFFFFF;
+    s_display=&scene;s_camera=s_camera_y=0;s_left=-238;
+    CHECK(reserve_sprite_row(796));memset(s_priority,0,796);draw_scene_sprites(&v,100,out,796,238,palette);
+    CHECK(out[237]==palette[49]);for(unsigned x=238;x<558;++x)CHECK(!out[x]);
+    /* Read-only/native-width capture must not advance or discard continuations. */
+    uint8_t pose[64];memcpy(pose,c->object,64);prepare_ending_scenery(796,1);
+    CHECK(!memcmp(pose,c->object,64));scene.count=0;draw_ending_scenery(&scene,NULL,5,320,1);CHECK(!scene.count);
+    /* CD's terminal expiry is before Move/Animate. Continue once at -1px,
+     * -1/8px and the exact six-tick animation, independent of presentation rate. */
+    o=0xB180;g_ram[o]=0xCD;g_ram[o+1]=0x84;g_ram[o+0x24]=2;g_ram[o+0x25]=4;g_ram[o+0x18]=2;
+    word(g_ram,o+2,0x594);glue_poke32(0xFF0000+o+4,0x11E1C);
+    glue_poke32(0xFF0000+o+8,(uint32_t)-74*65536u);word(g_ram,o+12,77);
+    word(g_ram,o+0x10,-0x100);word(g_ram,o+0x12,-0x20);word(g_ram,o+0x3C,0);
+    word(g_ram,0xAD00,2);word(g_ram,0xAD02,o);prepare_ending_scenery(796,0);
+    g_ram[o]=0;word(g_ram,0xAD00,0);prepare_ending_scenery(796,0);
+    EndingScenery *b=&s_ending_scenery.continued[1];CHECK(b->active);
+    CHECK((int16_t)ending_word(b->object,8)==-75 && ending_long(b->object,12)==0x004CE000);
+    CHECK(b->object[0x1A]==1 && b->object[0x1E]==5);
+    for(unsigned n=0;n<6;++n)prepare_ending_scenery(796,0);
+    CHECK(b->object[0x1A]==0 && b->object[0x1E]==5);
+    for(unsigned rollback=0;rollback<2;++rollback) {
+        S2StateIO length={0};video_state(&length,rollback);uint8_t *bytes=malloc(length.pos);CHECK(bytes);
+        S2StateIO io={bytes,length.pos,0,0,1};video_state(&io,rollback);CHECK(io.ok);
+        memcpy(pose,b->object,64);memset(&s_ending_scenery,0,sizeof s_ending_scenery);
+        io=(S2StateIO){bytes,length.pos,0,2,1};video_state(&io,rollback);
+        CHECK(io.ok && b->active && !memcmp(pose,b->object,64));free(bytes);
+    }
+    /* Full mapped extent, rather than a root radius, owns the last column. */
+    b->active=0;c->object[8]=0xFE;c->object[9]=0xEB; /* -277: rightmost column remains. */
+    scene.count=0;draw_ending_scenery(&scene,NULL,5,796,0);CHECK(c->active && scene.count==3);
+    c->object[9]=0xEA;scene.count=0;draw_ending_scenery(&scene,NULL,5,796,0);CHECK(!c->active && !scene.count);
+    /* Arbitrary deletion, nonterminal cloud/bird phases and future scenes
+     * cannot create or retain ending art. Credits clear CA before new PLCs. */
+    g_ram[0xB100]=0;s2_video_hook(0x23C6); /* Existing credits fade hook, no BuildSprites needed. */
+    for(unsigned n=0;n<ENDING_CONTINUATIONS;++n)CHECK(!s_ending_scenery.continued[n].active);
+    g_ram[0xB100]=0xCA;g_ram[0xB134]=0;prepare_ending_scenery(796,0);CHECK(!ending_scenery_owner());
+    g_ram[0xB134]=0xFF;word(g_ram,0xF750,4);
+    uint8_t terminal[64]={0};terminal[0]=0xCD;terminal[0x24]=2;terminal[0x25]=4;
+    terminal[4]=0;terminal[5]=1;terminal[6]=0x1E;terminal[7]=0x1C;
+    word(terminal,2,0x594);word(terminal,0x10,-0x100);word(terminal,0x12,0x20);
+    CHECK(ending_terminal(terminal)); /* Tails Animal2 shares the mapping, not the art species. */
+    terminal[0x25]=2;CHECK(!ending_terminal(terminal));terminal[0x25]=4;
+    word(terminal,2,0x595);CHECK(!ending_terminal(terminal));word(terminal,2,0x594);
+    terminal[7]=0x1E;CHECK(!ending_terminal(terminal));
+    /* Deletion away from the exact source retirement predicate is unrelated. */
+    memset(terminal,0,sizeof terminal);terminal[0]=0xCB;terminal[0x24]=4;
+    terminal[5]=3;terminal[6]=0xB3;terminal[7]=0x2C;
+    word(terminal,2,0x654F);word(terminal,0x10,-0x300);word(terminal,8,100);
+    CHECK(ending_terminal(terminal));memcpy(s_ending_scenery.previous[2],terminal,64);
+    s_ending_scenery.armed=1;
+    prepare_ending_scenery(796,0);
+    for(unsigned n=0;n<ENDING_CONTINUATIONS;++n)CHECK(!s_ending_scenery.continued[n].active);
+    memcpy(g_rom+0x3B32C,saved_cloud,sizeof cloud);memcpy(g_rom+0x11E1C,saved_bird,sizeof bird);
+    s_display=NULL;CHECK(configure("off"));clear_guest();
+}
+static void title_card_world_margin_test(void)
+{
+    /* The incoming gameplay camera is already left-clamped (origin0), while
+     * the displayed title/native UI still occupies the centered320 interval.
+     * Exercise the actual compositor, not a second plane-sampling helper. */
+    clear_guest();online=0;presentation_configure(0);CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    static GVDP v;memset(&v,0,sizeof v);
+    memset(s_history,0,sizeof s_history);memset(&s_display_frame,0,sizeof s_display_frame);
+    v.reg[1]=0x40;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;
+    memset(v.vram+0x5D8*32,0xCC,32);memset(v.vram+0x5D9*32,0xCC,32);
+    memset(v.vram+0x5DA*32,0x33,64);memset(v.vram+0x5DC*32,0xCC,64);
+    memset(v.vram+32,0x22,32);v.cram[2]=0xE00;
+    v.cram[12]=v.cram[3]=v.cram[28]=v.cram[19]=0xE;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0xB080]=0x34;g_ram[0x801F]=1;
+    s_history[0].serial=1;s_history[0].scene=1;s_history[0].count=2;
+    s_history[0].sprites[0]=(SceneSprite){.x=0,.y=0,.attr=0x8001};
+    s_history[0].sprites[1]=(SceneSprite){.x=250,.y=0,.attr=0x8001};
+    uint32_t out[796],native[320]={0};
+    uint32_t red=genesis_dac_cram_to_argb(0xE,GENESIS_DAC_NORMAL);
+    uint32_t blue=genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL);
+    for(unsigned tile=0x5D8;tile<=0x5DD;++tile) {
+        unsigned attr=tile|(tile>=0x5DC?0x2000u:0);
+        /* Include exact measured WFZ85D8/high ink12 and genuine low fills. */
+        for(unsigned high=0;high<2;++high) {
+            for(unsigned i=0;i<64*32;++i)word(v.vram,0xC000+i*2,attr|(high?0x8000u:0));
+            scanline(&v,0,native,320,out,796);
+            CHECK(s_frame_card && s_frame_level && s_native_x==0);
+            CHECK((s_priority[0]&ROW_CARD_COVERED) && out[0]==red);
+            CHECK(out[250]==blue); /* Actual centered native title interval is unchanged. */
+        }
+    }
+    /* Gameplay origin0 must not be mistaken for the displayed title's native
+     * interval238..557. Original-width output retains its native submission. */
+    for(unsigned x=0;x<320;++x)
+        native[x]=(x<8 || (x>=250 && x<258))?blue:0xFF000000u;
+    scanline(&v,0,native,320,out,320);
+    CHECK(!memcmp(out,native,sizeof native));
+    for(unsigned i=0;i<64*32;++i)word(v.vram,0xC000+i*2,0);
+    scanline(&v,0,native,320,out,796);
+    CHECK(!(s_priority[0]&ROW_CARD_COVERED) && out[0]==blue); /* Actual geometric reveal. */
+    for(unsigned i=0;i<64*32;++i)word(v.vram,0xC000+i*2,0x85D8);
+    /* Card glyphs and HUD are screen-space UI, never queued world scenery. */
+    s_history[0].serial++;s_history[0].count=1;
+    s_history[0].sprites[0]=(SceneSprite){.x=-230,.y=0,.attr=0x8001,.hud=2};
+    scanline(&v,0,native,320,out,796);CHECK(out[8]==blue);
+    s_history[0].serial++;s_history[0].sprites[0].hud=1;s_history[0].sprites[0].x=8;
+    scanline(&v,0,native,320,out,796);CHECK(out[8]==blue);
+    /* Public actor visibility keeps its original priority contract. */
+    CHECK(s2_video_intro_pixel_visible(&v,0,0,1));
+    s_display=NULL;s_frame_card=0;s_width=320;CHECK(configure("off"));clear_guest();
+}
+static void htz_background_domain_test(void)
+{
+    static GVDP v;memset(&v,0,sizeof v);clear_guest();online=0;presentation_configure(0);
+    CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    memset(s_history,0,sizeof s_history);memset(&s_display_frame,0,sizeof s_display_frame);
+    s_history[0].serial=1;s_history[0].scene=1;
+    v.reg[1]=0x40;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;
+    const unsigned chunks[]={0xD6,0xDF,0xEA,0xEC,0xF7,1};
+    const unsigned colors[]={0,0xE,0xE0,0xE00,0xEE,0xEEE,0xE0E};
+    for(unsigned i=0;i<6;++i) {
+        for(unsigned j=0;j<64;++j)word(g_ram,chunks[i]*128+j*2,i+1);
+        for(unsigned j=0;j<4;++j)word(g_ram,0x9000+(i+1)*8+j*2,i+1);
+        memset(v.vram+(i+1)*32,(int)((i+1)*17),32);v.cram[i+1]=(uint16_t)colors[i+1];
+    }
+    for(unsigned i=0;i<8;++i) {
+        g_ram[0x8080+i]=(uint8_t)chunks[i&3];g_ram[0x8180+i]=0xF7;
+    }
+    /* Real normal layout has two authored512px copies, followed by empty
+     * cells and distant quake material. Those cells must not set its period. */
+    g_ram[0x8080+51]=1;g_ram[0x8180+49]=1;
+    for(unsigned i=70;i<80;++i)g_ram[0x8380+i]=1;
+    g_ram[0x807F]=1;g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    word(g_ram,0xFE10,0x700);g_ram[0xEEDF]=8;
+    for(unsigned y=0;y<32;++y)for(unsigned x=0;x<64;++x)
+        word(v.vram,0xE000+(y*64+x)*2,world_attr(g_ram,(int)x*8,(int)y*8,1));
+    const unsigned camera[]={0x29A0,0x3100},scroll[]={1332,1568},wide_base[]={1303,1539};
+    uint32_t out[796],native[320]={0};
+    for(unsigned c=0;c<2;++c)for(unsigned animation=0;animation<=3;animation+=3) {
+        word(g_ram,0xEE60,camera[c]);word(g_ram,0xEE00,camera[c]);word(g_ram,0xEEF0,camera[c]);
+        v.vsram[1]=512; /* Same native PlaneB row after positive/negative wrapping. */
+        for(unsigned y=0;y<224;++y) {
+            word(v.vram,0xFC00+y*4,-(int)camera[c]);
+            word(v.vram,0xFC02+y*4,-(int)(scroll[c]+animation));
+        }
+        scanline(&v,0,native,320,out,796);scanline(&v,40,native,320,out,796);
+        for(unsigned x=0;x<796;++x) {
+            unsigned tile=((wide_base[c]+animation+x)&511)/128+1;
+            CHECK(out[x]==genesis_dac_cram_to_argb((uint16_t)colors[tile],GENESIS_DAC_NORMAL));
+        }
+        /* Native-width sampling still agrees with the original512x256 VDP
+         * table, including live scroll/animation rather than a frozen image. */
+        scanline(&v,0,native,320,out,320);scanline(&v,40,native,320,out,320);
+        for(unsigned x=0;x<320;++x) {
+            uint16_t attr=plane_attr(&v,0xE000,(int)x+(int)scroll[c]+(int)animation,552);
+            unsigned ink=pattern_pixel(&v,attr,(int)x+(int)scroll[c]+(int)animation,552);
+            CHECK(out[x]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
+        }
+    }
+    /* The actual cave/lift also has resize8, but EEBC1 selects streamed
+     * quake coordinates24E0/016D. Preserve its distant row/domain. */
+    g_ram[0xEEBC]=1;word(g_ram,0xEE60,0x23C3);word(g_ram,0xEE68,0x24E0);word(g_ram,0xEE6C,0x16D);
+    v.vsram[1]=0x16D;
+    for(unsigned y=0;y<224;++y) {
+        word(v.vram,0xFC00+y*4,-0x23C3);word(v.vram,0xFC02+y*4,-0x24E0);
+    }
+    scanline(&v,0,native,320,out,796);g_ram[0xEEBC]=0;
+    scanline(&v,40,native,320,out,796);
+    CHECK(s_render->frame_htz_shake==1 && out[0]==genesis_dac_cram_to_argb(0xE0E,GENESIS_DAC_NORMAL));
+    word(g_ram,0xFE10,0x500);scanline(&v,0,native,320,out,796);scanline(&v,40,native,320,out,796);
+    CHECK(out[0]==genesis_dac_cram_to_argb(0xE0E,GENESIS_DAC_NORMAL)); /* Other zones unchanged. */
+    s_display=NULL;CHECK(configure("off"));clear_guest();
+}
+static void dez_window_native_material_test(void)
+{
+    static const uint8_t frame4[]={0,7,244,6,32,0,32,0,255,240,244,6,40,0,40,0,0,0,244,4,32,6,32,3,255,240,244,4,32,6,32,3,0,0,252,4,32,6,32,3,255,240,252,4,32,6,32,3,0,0,248,13,1,144,0,200,255,240};
+    static const uint8_t frame7[]={0,3,244,6,32,0,32,0,255,240,244,6,40,0,40,0,0,0,248,13,1,152,0,204,255,240};
+    uint8_t map[128],header[4];memcpy(map,g_rom+0x3A08C,sizeof map);memcpy(header,g_rom+0x100,4);
+    NativeSpriteArt saved=s_native_sprite_art[S2_NATIVE_DEZ_WINDOW];
+    unsigned calls=native_decode_calls,bytes=native_decode_bytes,asset=native_decode_asset;
+    memset(&s_native_sprite_art[S2_NATIVE_DEZ_WINDOW],0,sizeof saved);memset(g_rom+0x100,0,4);
+    native_decode_asset=S2_NATIVE_DEZ_WINDOW;native_decode_bytes=256;
+    CHECK(!native_art_ready(S2_NATIVE_DEZ_WINDOW) && native_decode_calls==calls);
+    CHECK(!s_native_sprite_art[S2_NATIVE_DEZ_WINDOW].ready);
+    memcpy(g_rom+0x100,"SEGA",4);CHECK(native_art_ready(S2_NATIVE_DEZ_WINDOW));
+    CHECK(native_decode_calls==calls+1 && s_native_sprite_art[S2_NATIVE_DEZ_WINDOW].bytes==256);
+    CHECK(native_art_ready(S2_NATIVE_DEZ_WINDOW) && native_decode_calls==calls+1);
+    memset(s_native_sprite_art[S2_NATIVE_DEZ_WINDOW].pixels,0x22,256);
+    word(g_rom,0x3A08C+8,16);memcpy(g_rom+0x3A08C+16,frame4,sizeof frame4);
+    word(g_rom,0x3A08C+14,80);memcpy(g_rom+0x3A08C+80,frame7,sizeof frame7);
+    clear_guest();CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;word(g_ram,0xFE10,0xE00);
+    g_ram[0xB500]=0xAF;g_ram[0xB524]=0x22;
+    static GVDP v;memset(&v,0,sizeof v);v.reg[12]=1;
+    memset(v.vram+0x378*32,0x11,256);memset(v.vram+0x508*32,0x33,16*32);
+    static uint8_t donor_patterns[65536],donor_lines[2048];memset(donor_lines,0,sizeof donor_lines);
+    for(unsigned i=0x378;i<0x380;++i)donor_lines[i]=GVDP_EXT_SPRITE_FORCE|2;
+    gvdp_set_sprite_patterns_bank(0,donor_patterns,sizeof donor_patterns,donor_lines);
+    CHECK(gvdp_sprite_palette_line(0,0x378,1)==0);
+    CHECK(gvdp_sprite_palette_line(0x80,0x378,1)==2);
+    static SceneFrame scene;scene.count=0;
+    add_mapping(&scene,NULL,0xB5000000u,0x3A08C,4,0x378,4,-180,100,0,0);
+    CHECK(scene.count==7);
+    for(unsigned i=0;i<6;++i)CHECK(scene.sprites[i].art==1+S2_NATIVE_DEZ_WINDOW && !(scene.sprites[i].size&0xC0));
+    CHECK(scene.sprites[6].art==0 && (scene.sprites[6].attr&2047)==0x508);
+    s_display=&scene;s_frame_card=0;s_camera=s_camera_y=0;s_left=-238;
+    uint32_t out[796]={0},palette[64]={0};palette[18]=0xFF123456;
+    CHECK(reserve_sprite_row(796));memset(s_priority,0,796);draw_scene_sprites(&v,100,out,796,238,palette);
+    CHECK(out[50]==palette[18] && gvdp_sprite_palette_line(0,0x378,1)==0 &&
+          gvdp_sprite_palette_line(0x80,0x378,1)==2);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_DEZ_WINDOW,0x378,0x2378,0,0,320)==17);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_DEZ_WINDOW,0x378,0x2378,0,0,796)==18);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_DEZ_WINDOW,0x378,0x508,0,0,796)==3);
+    scene.count=0;add_mapping(&scene,NULL,0xB5000000u,0x3A08C,7,0x378,4,-180,100,0,0);
+    CHECK(scene.count==3 && scene.sprites[0].art==1+S2_NATIVE_DEZ_WINDOW &&
+          scene.sprites[1].art==1+S2_NATIVE_DEZ_WINDOW && scene.sprites[2].art==0 &&
+          (scene.sprites[2].attr&2047)==0x510);
+    CHECK(dez_window_material(0xFFF60000u,0x3A08C,0x378));
+    CHECK(!dez_window_material(0xB5000000u,0x3A08E,0x378));
+    CHECK(!dez_window_material(0xB5000000u,0x3A08C,0x379));
+    g_ram[0xB524]=6;CHECK(!dez_window_material(0xB5000000u,0x3A08C,0x378));
+    g_ram[0xB524]=0x22;word(g_ram,0xFE10,0x700);
+    CHECK(!dez_window_material(0xB5000000u,0x3A08C,0x378));
+    gvdp_set_sprite_patterns_bank(0,NULL,0,NULL);s_display=NULL;
+    s_native_sprite_art[S2_NATIVE_DEZ_WINDOW]=saved;native_decode_calls=calls;native_decode_bytes=bytes;native_decode_asset=asset;
+    memcpy(g_rom+0x3A08C,map,sizeof map);memcpy(g_rom+0x100,header,4);
+    CHECK(configure("off"));clear_guest();
 }
 static void cnz_closure_margin_test(void)
 {
@@ -778,6 +1098,316 @@ static void native_scene_art_test(void)
         word(g_ram,0xFFD8,0);g_ram[0xF600]=0;
     }
     memset(s_native_sprite_art,0,sizeof s_native_sprite_art);s_display=NULL;s_build.count=0;
+}
+static void native_art_rom_readiness_test(void)
+{
+    uint8_t header[4];memcpy(header,g_rom+0x100,4);
+    unsigned calls=native_decode_calls,bytes=native_decode_bytes,asset=native_decode_asset;
+    for(unsigned n=0;n<sizeof s_native_object_art/sizeof *s_native_object_art;++n) {
+    const NativeObjectArt *b=&s_native_object_art[n];native_decode_asset=b->asset;
+    NativeSpriteArt *art=&s_native_sprite_art[b->asset],saved=*art;
+    memset(art,0,sizeof *art);memset(g_rom+0x100,0,4);
+    native_decode_calls=0;native_decode_bytes=b->tiles*32;
+    /* The actual settings-before-ROM sequence must leave a retryable cache,
+     * then publish decoded pixels once the original image is present. */
+    CHECK(!native_art_ready(b->asset));
+    CHECK(!art->ready && !art->bytes && !native_decode_calls);
+    memcpy(g_rom+0x100,"SEGA",4);
+    CHECK(native_art_ready(b->asset));
+    CHECK(art->ready==1 && art->bytes==b->tiles*32 && native_decode_calls==1);
+    CHECK(art->pixels[0]==0x66 && art->pixels[b->tiles*32-1]==0x66);
+    CHECK(native_art_ready(b->asset) && native_decode_calls==1);
+    /* An already decoded cache remains independent of later ROM reads. */
+    memset(g_rom+0x100,0,4);
+    CHECK(native_art_ready(b->asset) && native_decode_calls==1);
+    *art=saved;
+    }
+    memcpy(g_rom+0x100,header,4);
+    native_decode_calls=calls;native_decode_bytes=bytes;native_decode_asset=asset;
+}
+static void explosion_native_art_test(void)
+{
+    static GVDP v;static uint8_t before[65536];uint8_t indices[GVDP_MAX_WIDTH];
+    S2PartyConfig party=s2_party;int hud=hud_available,amy=amy_items_available,special=amy_special_available,imported=imported_hud_mock;
+    NativeSpriteArt saved=s_native_sprite_art[S2_NATIVE_EXPLOSION];
+    memset(&s2_party,0,sizeof s2_party);hud_available=amy_items_available=amy_special_available=imported_hud_mock=0;
+    clear_guest();memset(&g_cpu,0,sizeof g_cpu);memset(&v,0,sizeof v);online=0;
+    NativeSpriteArt *art=&s_native_sprite_art[S2_NATIVE_EXPLOSION];
+    art->ready=1;art->bytes=68*32;memset(art->pixels,0x22,art->bytes);
+    CHECK(configure("off"));s2_video_prepare_knuckles_items();
+    unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(0xC0,&bytes);
+    CHECK(patterns && bytes==65536 && !memcmp(patterns+0x5A4*32,art->pixels,art->bytes));
+    /* Only a native Obj27/map21120 publication selects this private atlas.
+     * The unused SAT marker changes no object, PLC or combat state. */
+    g_ram[0xB400]=0x27;glue_poke32(0xFFB404,0x21120);word(g_ram,0xB402,0x5A4);
+    g_cpu.A[0]=0xFFB400;g_cpu.A[1]=0x2112A;g_cpu.A[2]=0xFFF808;
+    word(g_ram,0xF804,0x5A4);memcpy(before,g_ram,sizeof before);
+    CHECK(!s2_video_hook(0x1684E));CHECK(g_ram[0xF802]==0xC0);
+    before[0xF802]|=0xC0;CHECK(!memcmp(before,g_ram,sizeof before));
+    g_ram[0xF802]=0;g_ram[0xB400]=0x34;CHECK(!s2_video_hook(0x1684E) && !g_ram[0xF802]);
+    g_ram[0xB400]=0x27;glue_poke32(0xFFB404,0x21122);
+    CHECK(!s2_video_hook(0x1684E) && !g_ram[0xF802]);
+    glue_poke32(0xFFB404,0x21120);word(g_ram,0xB402,0x5A5);
+    CHECK(!s2_video_hook(0x1684E) && !g_ram[0xF802]);
+    word(g_ram,0xB402,0x5A4);
+    /* Native320: marked explosion and unmarked title glyph deliberately
+     * share the same overwritten VRAM tile. Only the explosion is repaired. */
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
+    memset(v.vram+0x5A4*32,0x11,69*32);
+    word(v.vram,0xF800,144);v.vram[0xF802]=0xC0;v.vram[0xF803]=1;
+    word(v.vram,0xF804,0x5A4);word(v.vram,0xF806,144);
+    word(v.vram,0xF808,144);word(v.vram,0xF80C,0x5A4);word(v.vram,0xF80E,168);
+    CHECK(gvdp_render_scanline(&v,16,indices)==320 && indices[16]==2 && indices[40]==1);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,0x5A4,0,0,320)==2);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,0x5E7,0,0,320)==2);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,0x5E8,0,0,320)==1);
+    CHECK(configure("32:9"));
+    CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,0x5A4,0,0,796)==2);
+    /* Exact REV01 Obj27 pieces: small initial burst, then four 4x4
+     * palette-1 frames spanning the complete 68-tile atlas. */
+    static const uint8_t pieces[5][8]={
+        {0xF8,5,0,0,0,0,0xFF,0xF8},
+        {0xF0,15,0x20,4,0x20,2,0xFF,0xF0},
+        {0xF0,15,0x20,0x14,0x20,0xA,0xFF,0xF0},
+        {0xF0,15,0x20,0x24,0x20,0x12,0xFF,0xF0},
+        {0xF0,15,0x20,0x34,0x20,0x1A,0xFF,0xF0}};
+    for(unsigned f=0;f<5;++f) {
+        unsigned mp=0x2112A+f*10;word(g_rom,0x21120+f*2,10+f*10);
+        word(g_rom,mp,1);memcpy(g_rom+mp+2,pieces[f],8);
+        s_build.count=0;add_mapping(&s_build,NULL,0xB4000000u,0x21120,f,0x5A4,0,0,0,0,0);
+        CHECK(s_build.count==1 && s_build.sprites[0].art==1+S2_NATIVE_EXPLOSION);
+        SceneSprite *piece=&s_build.sprites[0];
+        CHECK(piece->size==(0xC0|pieces[f][1]));
+        v.vram[0xF802]=(uint8_t)(0xC0|piece->size);word(v.vram,0xF804,piece->attr);
+        word(v.vram,0xF80C,piece->attr);word(v.vram,0xF80E,192);
+        CHECK(gvdp_render_scanline(&v,16,indices)==320 && indices[16]==(f?18:2) && indices[64]==(f?17:1));
+        CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,piece->attr,0,0,320)==(f?18:2));
+        CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,piece->attr,0,0,796)==(f?18:2));
+    }
+    s_build.count=0;add_mapping(&s_build,NULL,0,0x21120,0,0x5A5,0,0,0,0,0);
+    CHECK(s_build.count==1 && !s_build.sprites[0].art);
+    /* Donor animal palettes overlap the original explosion tile numbers.
+     * The independent bank must preserve both materials simultaneously. */
+    CHECK(S2_SPECIAL_FRAMES*S2_SPECIAL_TILES==0x240);
+    hud_available=1;s2_party.s3k_enabled=1;strcpy(s2_party.roster.character[0],"knuckles");g_ram[0xF600]=12;
+    s2_video_prepare_knuckles_items();
+    CHECK(gvdp_sprite_palette_line(0x80,0x5A4,0)==2);
+    CHECK(gvdp_sprite_palette_line(0xC0,0x5A4,0)==0);
+    patterns=gvdp_sprite_patterns(0x80,&bytes);
+    CHECK(patterns && patterns[0x4BE*32]==hud_art.shield_stars[0]);
+    CHECK(patterns[0]==hud_art.special[0].tiles[0]);
+    patterns=gvdp_sprite_patterns(0xC0,&bytes);
+    CHECK(patterns && !memcmp(patterns+0x5A4*32,art->pixels,art->bytes));
+    CHECK(gvdp_render_scanline(&v,16,indices)==320 && indices[16]==18 && indices[64]==17);
+    amy_items_available=amy_special_available=1;strcpy(s2_party.roster.character[0],"amy");
+    s2_video_prepare_knuckles_items();patterns=gvdp_sprite_patterns(0x80,&bytes);
+    CHECK(patterns && patterns[0]==amy_special.frames[0].tiles[0]);
+    CHECK(patterns[0x7D4*32]==amy_items.life[0]);
+    CHECK(gvdp_sprite_palette_line(0xC0,0x5A4,0)==0);
+    g_ram[0xF600]=16;s2_video_prepare_knuckles_items();
+    CHECK(gvdp_sprite_palette_line(0x80,0,0)==3 && gvdp_sprite_palette_line(0xC0,0x5A4,0)==0);
+    patterns=gvdp_sprite_patterns(0xC0,&bytes);
+    CHECK(patterns && !memcmp(patterns+0x5A4*32,art->pixels,art->bytes));
+#if OWN_BACKEND
+    CHECK(!shadow_sprite_tagged(v.vram,0xF800,0));
+    word(v.vram,0xF804,0x4DE);CHECK(shadow_sprite_tagged(v.vram,0xF800,0));
+    word(v.vram,0xF804,0x26F);CHECK(shadow_sprite_tagged(v.vram,0xF800,1));
+    word(v.vram,0xF804,0x25D8);
+#endif
+    memset(&s2_party,0,sizeof s2_party);hud_available=amy_items_available=amy_special_available=0;g_ram[0xF600]=0;
+    /* A failed decode retains the native tile for both render paths. */
+    art->ready=2;art->bytes=0;s2_video_prepare_knuckles_items();
+    CHECK(!gvdp_sprite_patterns(0xC0,&bytes));
+    CHECK(gvdp_render_scanline(&v,16,indices)==320 && indices[16]==17 && indices[64]==17);
+    CHECK(native_asset_pixel(&v,S2_NATIVE_EXPLOSION,0x5A4,0x5A4,0,0,796)==1);
+    s_native_sprite_art[S2_NATIVE_EXPLOSION]=saved;s2_party=party;
+    hud_available=hud;amy_items_available=amy;amy_special_available=special;
+    imported_hud_mock=imported;
+    s_build.count=0;CHECK(configure("off"));s2_video_prepare_knuckles_items();clear_guest();
+}
+static void ehz_animal_native_art_test(void)
+{
+    static GVDP v;static uint8_t before[65536];uint8_t indices[GVDP_MAX_WIDTH];
+    NativeSpriteArt saved[2];S2PartyConfig party=s2_party;
+    int hud=hud_available,amy=amy_items_available,special=amy_special_available,imported=imported_hud_mock;
+    memset(&s2_party,0,sizeof s2_party);hud_available=amy_items_available=amy_special_available=imported_hud_mock=0;
+    clear_guest();memset(&v,0,sizeof v);memset(&g_cpu,0,sizeof g_cpu);online=0;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0xB400]=0x28;
+    const unsigned assets[]={S2_NATIVE_FLICKY,S2_NATIVE_SQUIRREL};
+    for(unsigned n=0;n<2;++n) {
+        const NativeObjectArt *b=native_asset_binding(assets[n]);
+        NativeSpriteArt *art=&s_native_sprite_art[b->asset];saved[n]=*art;
+        art->ready=1;art->bytes=b->tiles*32;memset(art->pixels,n?0x44:0x33,art->bytes);
+    }
+    s2_video_prepare_knuckles_items();
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[12]=1;v.reg[16]=1;
+    for(unsigned n=0;n<2;++n) {
+        const NativeObjectArt *b=native_asset_binding(assets[n]);
+        word(g_ram,0xB402,b->base);glue_poke32(0xFFB404,b->map);
+        /* Exact native animal mapping frames, including the16x32 release pose. */
+        const unsigned offsets[]={16,26,6},tiles[]={8,n?14:12,0};
+        for(unsigned f=0;f<3;++f) {
+            word(g_rom,b->map+f*2,offsets[f]);unsigned p=b->map+offsets[f];
+            word(g_rom,p,1);g_rom[p+2]=(uint8_t)(f==2?-20:-8);
+            g_rom[p+3]=(uint8_t)(f==2?7:n?9:5);word(g_rom,p+4,tiles[f]);
+            word(g_rom,p+6,tiles[f]/2);word(g_rom,p+8,(n && f!=2)?-12:-8);
+            s_build.count=0;add_mapping(&s_build,NULL,0xB4000000u,b->map,f,b->base,0x100,0,20,0,0);
+            CHECK(s_build.count==1 && s_build.sprites[0].art==1+b->asset);
+            CHECK((s_build.sprites[0].size&0xC0)==0xC0);
+            CHECK(s_build.sprites[0].x==((n && f!=2)?-12:-8));
+            CHECK(s_build.sprites[0].y==(f==2?0:12));
+            CHECK(native_asset_pixel(&v,b->asset,b->base,b->base+tiles[f],0,0,320)==3+n);
+            CHECK(native_asset_pixel(&v,b->asset,b->base,b->base+tiles[f],0,0,796)==3+n);
+        }
+        g_cpu.A[0]=0xFFB400;g_cpu.A[2]=0xFFF808;word(g_ram,0xF804,b->base);g_ram[0xF802]=0;
+        memcpy(before,g_ram,sizeof before);s2_video_hook(0x1684E);before[0xF802]=0xC0;
+        CHECK(!memcmp(before,g_ram,sizeof before));
+        word(v.vram,0xF800,128);v.vram[0xF802]=0xC0;v.vram[0xF803]=1;
+        word(v.vram,0xF804,b->base);word(v.vram,0xF806,128);
+        word(v.vram,0xF808,128);word(v.vram,0xF80C,b->base);word(v.vram,0xF80E,168);
+        memset(v.vram+b->base*32,0x11,b->tiles*32);
+        CHECK(gvdp_render_scanline(&v,0,indices)==320 && indices[0]==3+n && indices[40]==1);
+#if OWN_BACKEND
+        CHECK(!shadow_sprite_tagged(v.vram,0xF800,0));
+#endif
+        word(g_ram,0xFE10,0x100);CHECK(!native_object_binding(0xB400,b->map,b->base));
+        g_ram[0xF802]=0;s2_video_hook(0x1684E);CHECK(!g_ram[0xF802]);
+        word(g_ram,0xFE10,0);g_ram[0xF600]=0x20;CHECK(!native_object_binding(0xB400,b->map,b->base));
+        g_ram[0xF600]=12;g_ram[0xB400]=0x29;CHECK(!native_object_binding(0xB400,b->map,b->base));
+        g_ram[0xB400]=0x28;CHECK(!native_object_binding(0xB400,b->map+2,b->base));
+        CHECK(!native_object_binding(0xB400,b->map,b->base+1));
+    }
+    g_ram[0xB400]=0x29;glue_poke32(0xFFB404,0x11ED0);word(g_ram,0xB402,0x84AC);
+    word(g_ram,0xF804,0x84AE);g_ram[0xF802]=0;
+    s2_video_hook(0x1684E);CHECK(!g_ram[0xF802]); /* Original points keep live VRAM. */
+    /* Native animal ink remains in live CRAM alongside cached donor/special art. */
+    for(unsigned theme=0;theme<2;++theme) {
+        hud_available=1;amy_items_available=amy_special_available=(int)theme;
+        strcpy(s2_party.roster.character[0],theme?"amy":"knuckles");s2_party.s3k_enabled=1;
+        s2_video_prepare_knuckles_items();unsigned bytes=0;
+        const uint8_t *patterns=gvdp_sprite_patterns(0xC0,&bytes);CHECK(patterns && bytes==65536);
+        CHECK(patterns[0x580*32]==0x44 && patterns[0x594*32]==0x33);
+        CHECK(!gvdp_sprite_palette_line(0xC0,0x580,0) && !gvdp_sprite_palette_line(0xC0,0x594,0));
+        CHECK(gvdp_sprite_palette_line(0x80,0x580,0)==2);
+    }
+    for(unsigned n=0;n<2;++n)s_native_sprite_art[assets[n]]=saved[n];
+    s2_party=party;hud_available=hud;amy_items_available=amy;amy_special_available=special;imported_hud_mock=imported;
+    s_build.count=0;CHECK(configure("off"));s2_video_prepare_knuckles_items();clear_guest();
+}
+static void ooz_static_fragment_art_test(void)
+{
+    static GVDP v;uint32_t out[796],palette[64]={0};static uint8_t before[65536];
+    NativeSpriteArt saved=s_native_sprite_art[S2_NATIVE_OOZ_COLLAPSE];
+    NativeSpriteArt *art=&s_native_sprite_art[S2_NATIVE_OOZ_COLLAPSE];
+    clear_guest();memset(&v,0,sizeof v);g_ram[0xF600]=12;g_ram[0xB000]=1;
+    word(g_ram,0xFE10,0xA01);g_ram[0xB400]=0x1F;
+    art->ready=1;art->bytes=40*32;memset(art->pixels,0x22,art->bytes);
+    memset(art->pixels+16*32,0x33,16*32);memset(art->pixels+32*32,0x44,8*32);
+    memset(v.vram+0x39D*32,0x11,40*32);v.reg[12]=1;
+    static const uint8_t pieces[7][8]={
+        {0xF0,0x0F,0x08,0x10,0x08,0x08,0xFF,0xC0},
+        {0xF0,0x0F,0x08,0x10,0x08,0x08,0xFF,0xE0},
+        {0xF0,0x0F,0x08,0x10,0x08,0x08,0x00,0x00},
+        {0xF0,0x0F,0x08,0x00,0x08,0x00,0x00,0x20},
+        {0x10,0x0D,0x08,0x20,0x08,0x10,0xFF,0xC0},
+        {0x10,0x0D,0x08,0x20,0x08,0x10,0xFF,0xE0},
+        {0x10,0x0D,0x08,0x20,0x08,0x10,0x00,0x00}};
+    memcpy(g_rom+0x110CE,pieces,sizeof pieces);word(g_rom,0x110C6,6);word(g_rom,0x110CC,7);
+    CHECK(configure("32:9"));CHECK(reserve_sprite_row(796));s_interpolating=0;
+    s_frame_level=1;s_frame_vs=0;s_camera=s_camera_y=0;
+    palette[49]=0xFFFF0000;palette[50]=0xFF223344;palette[51]=0xFF556677;palette[52]=0xFF8899AA;
+    memcpy(before,g_ram,sizeof before);
+    for(unsigned i=0;i<7;++i) {
+        unsigned map=0x110CE+i*8;s_build.count=0;s_build.scene=1;s_build.camera_x=s_build.camera_y=0;
+        add_mapping(&s_build,NULL,0xB4000000u,map,0,0x639D,0x24,100,80,0,1);
+        CHECK(s_build.count==1 && s_build.sprites[0].art==1+S2_NATIVE_OOZ_COLLAPSE);
+        SceneSprite *q=&s_build.sprites[0];CHECK(q->size==pieces[i][1]);
+        CHECK(q->x==100+(int16_t)((pieces[i][6]<<8)|pieces[i][7]));
+        CHECK(q->y==80+(int8_t)pieces[i][0]);
+        unsigned ink=i<3?51:i==3?50:52;
+        CHECK(native_asset_pixel(&v,S2_NATIVE_OOZ_COLLAPSE,0x39D,q->attr,0,0,796)==ink);
+        CHECK(native_asset_pixel(&v,S2_NATIVE_OOZ_COLLAPSE,0x39D,q->attr,0,0,320)==49);
+        s_display=&s_build;memset(s_priority,0,796);memset(out,0,sizeof out);
+        draw_scene_sprites(&v,q->y,out,796,0,palette);CHECK(out[q->x]==palette[ink]);
+    }
+    CHECK(!memcmp(before,g_ram,sizeof before));
+    s_build.count=0;add_mapping(&s_build,NULL,0xB4000000u,0x110C6,0,0x639D,4,100,80,0,0);
+    CHECK(s_build.count==7);for(unsigned i=0;i<7;++i)CHECK(s_build.sprites[i].art==1+S2_NATIVE_OOZ_COLLAPSE);
+    CHECK(!ooz_collapse_material(0x110CE,0x639D,0));
+    CHECK(!ooz_collapse_material(0x110CF,0x639D,1));
+    CHECK(!ooz_collapse_material(0x11106,0x639D,1));
+    CHECK(!ooz_collapse_material(0x110CE,0x639E,1));
+    word(g_ram,0xFE10,0xB00);CHECK(!ooz_collapse_material(0x110CE,0x639D,1));
+    *art=saved;s_display=NULL;s_build.count=0;CHECK(configure("off"));clear_guest();
+}
+static void wfz_finite_background_ownership_test(void)
+{
+    static GVDP v;static uint8_t before[65536];clear_guest();memset(&v,0,sizeof v);
+    /* Authored pre-Earth tails25/50 are clouds over transparent sky.
+     * Terminal55/51 repeat in the last two128px columns of the finite scene. */
+    for(unsigned row=0;row<2;++row) {
+        g_ram[0x8080+row*256+(0x2A80>>7)]=(uint8_t)(row?0x50:0x25);
+        g_ram[0x8080+row*256+(0x2B00>>7)]=(uint8_t)(row?0xAD:0x9D);
+        g_ram[0x8080+row*256+(0x3380>>7)]=(uint8_t)(row?0x51:0x55);
+        g_ram[0x8080+row*256+(0x3400>>7)]=(uint8_t)(row?0x51:0x55);
+    }
+    const unsigned chunks[]={0x25,0x50,0x9D,0xAD,0x55,0x51};
+    for(unsigned i=0;i<6;++i)for(unsigned b=0;b<64;++b)word(g_ram,chunks[i]*128+b*2,i/2+1);
+    for(unsigned b=1;b<=3;++b) {
+        for(unsigned cell=0;cell<4;++cell)word(g_ram,0x9000+b*8+cell*2,b);
+        memset(v.vram+b*32,(int)(b*17),32);
+    }
+    memcpy(before,g_ram,sizeof before);
+    for(unsigned row=0;row<2;++row) {
+        int early_y=-4067+(int)row*128,late_y=-6136+(int)row*128;
+        int sky=wfz_background_source(0x2B00,0x2B00,early_y,0x2950,320,1,6);
+        CHECK(sky==0x2A80 && pattern_pixel(&v,world_attr(g_ram,sky,early_y,1),sky,early_y)==1);
+        int space=wfz_background_source(0x3480,0,late_y,0x3330,320,1,6);
+        CHECK(space==0x3400 && pattern_pixel(&v,world_attr(g_ram,space,late_y,1),space,late_y)==3);
+        /* Actual clamped796px view: native origin276, early slab begins
+         * at added x708; the old terminal wrap cuts to blue at added x612. */
+        for(int x=0;x<796;++x) {
+            int nx=x-276,margin=nx<0 || nx>=320;
+            int raw=0x2950+nx,source=raw%0x3480;
+            int selected=wfz_background_source(raw,source,early_y,0x2950,320,margin,6);
+            if(!margin)CHECK(selected==source);
+            if(raw>=0x2B00)CHECK(selected==0x2A80+(raw&127));
+            raw=0x3330+nx;source=raw%0x3480;
+            selected=wfz_background_source(raw,source,late_y,0x3330,320,margin,6);
+            if(!margin)CHECK(selected==source);
+            if(raw>=0x3480)CHECK(selected==0x3400+(raw&127));
+        }
+    }
+    CHECK(wfz_background_source(0x2B10,0x2B10,29,0x29C0,320,1,6)==0x2A90); /* Right edge is exclusive. */
+    CHECK(wfz_background_source(0x2B10,0x2B10,29,0x29C1,320,1,6)==0x2B10); /* Native scene now owns Earth. */
+    CHECK(wfz_background_source(0x3488,8,8,0x3330,320,0,6)==8); /* Native320 untouched. */
+    CHECK(wfz_background_source(0x3488,8,8,0x3330,320,1,7)==8);
+    CHECK(wfz_background_source(0x3488,8,256,0x3330,320,1,6)==8);
+    CHECK(wfz_background_source(0x3488,8,0x580,0x3330,320,1,6)==8); /* Getaway-ship rows. */
+    CHECK(!memcmp(before,g_ram,sizeof before));clear_guest();
+}
+static void result_entry_travel_test(void)
+{
+    static SceneFrame scene;static uint8_t before[65536];S2PartyConfig party=s2_party;
+    clear_guest();memset(&s2_party,0,sizeof s2_party);strcpy(s2_party.roster.character[0],"sonic");
+    g_ram[0xF600]=12;g_ram[0xB400]=0x3A;glue_poke32(0xFFB404,0x14CBC);
+    word(g_ram,0xAC00,2);word(g_ram,0xAC02,0xB400);
+    word(g_ram,0xB40A,128);word(g_rom,0x14CBC,2);word(g_rom,0x14CBE,1);
+    memset(g_rom+0x14CC0,0,8);
+    const unsigned routines[]={2,4,6,8,0x16,0x12,0x14,0xA,0xC,0xE,0x10};
+    CHECK(configure("32:9"));
+    for(unsigned r=0;r<sizeof routines/sizeof *routines;++r)for(unsigned side=0;side<2;++side)for(unsigned settled=0;settled<2;++settled) {
+        unsigned target=side?0x100:0x120;int native=settled?(int)target-128:side?336:-48;
+        int wide=settled?native:side?645:-357;
+        word(g_ram,0xB430,target);g_ram[0xB424]=(uint8_t)routines[r];
+        word(g_ram,0xB408,settled?target:side?0x1D0:0x50);
+        memcpy(before,g_ram,sizeof before);capture_objects_into(&scene,320,1,NULL);
+        CHECK(scene.count==1 && scene.sprites[0].x==native);
+        capture_objects_into(&scene,796,1,NULL);
+        CHECK(scene.count==1 && scene.sprites[0].x==(r<5?wide:native));
+        CHECK(!memcmp(before,g_ram,sizeof before));
+    }
+    s2_party=party;CHECK(configure("off"));clear_guest();
 }
 static void demo_native_simulation_test(void)
 {
@@ -1499,6 +2129,27 @@ static void knuckles_special_ui_test(void)
     CHECK(out[32]==0x12345678);s2_video_hook(0x4F64);
 }
 
+static void scene_scroll_phase_test(void)
+{
+    static GVDP v;memset(&v,0,sizeof v);clear_guest();online=0;
+    memset(s_history,0,sizeof s_history);memset(&s_display_frame,0,sizeof s_display_frame);
+    memset(s_native_history,0,sizeof s_native_history);memset(&s_native_display,0,sizeof s_native_display);
+    CHECK(configure("32:9"));v.reg[13]=0x3F;v.vsram[0]=25;word(v.vram,0xFC00,-1500);
+    for(unsigned i=0;i<3;++i) {
+        SceneFrame *f=&s_history[i];f->serial=i+1;f->scene=1;
+        f->native_hscroll=i==1?-1508:-1500;f->native_vscroll=i==1?1057:1049;
+        f->camera_x=i==1?1500:9999; /* World cameras are deliberately misleading. */
+        f->actors.sprites[0].x=i==1?1608:1600;
+    }
+    select_scene(&v);CHECK(s_display && s_display->serial==3); /* Newest exact tie. */
+    s_history[2].serial=0;s_display_frame.serial=0;
+    select_scene(&v);CHECK(s_display && s_display->serial==1); /* Same SAT, displayed scroll. */
+    memcpy(s_native_history,s_history,sizeof s_history);CHECK(configure("off"));
+    const SceneFrame *f=native_select_scene(&v);CHECK(f && f->serial==1);
+    S2RuntimeSprite actors[S2_MAX_PLAYERS+1],dust[S2_PRESENTATION_DUST];
+    CHECK(s2_video_presented_actors(&v,actors,dust) && actors[0].x==1600);
+    interpolation_reset();
+}
 static void native_interpolation_test(void)
 {
     static GVDP v;
@@ -1542,6 +2193,22 @@ static void native_interpolation_test(void)
     CHECK(interpolate(1,fraction,320,224) && !memcmp(fraction,ordinary[1],sizeof fraction));
     CHECK(interpolate(.5,fraction,320,224));
     CHECK(fraction[40*320+22]==0xFFFF0000 && fraction[40*320+21]==0xFF000000);
+    /* The donor body uses the same immutable SAT publication as its shield,
+     * even after the next producer has moved the live player ahead. */
+    S2RuntimeSprite actors[S2_MAX_PLAYERS+1],dust[S2_PRESENTATION_DUST];
+    word(g_ram,0xB008,100);
+    CHECK(s2_video_presented_actors(&v,actors,dust) && actors[0].x==24);
+    word(g_ram,0xB008,24);
+    /* A changed native pose can insert a new body/shield mapping piece.
+     * Its new geometry follows the shared root without requiring an old
+     * matching piece or dropping the entire fractional picture. */
+    PresentationFrame *new_pose=&s_present[s_present_front];
+    unsigned pose_piece=new_pose->scene.count++;
+    new_pose->scene.sprites[pose_piece]=(SceneSprite){40,40,0x8004,0,0,0,1};
+    new_pose->keys[pose_piece]=0xD180001Fu;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+38]==0xFFFF0000 && fraction[40*320+37]==0xFF000000);
+    --new_pose->scene.count;
     CHECK(!memcmp(original_ram,g_ram,sizeof g_ram));
     state.pos=0;state.data=after;s2_video_rb_state(&state);
     CHECK(state.ok && !memcmp(before,after,size.pos));
@@ -1621,9 +2288,12 @@ static void native_interpolation_test(void)
     current->keys[0]=current->keys[added];
     --current->scene.count;
 
-    /* New source identities and teleports repeat an ordinary picture. */
-    s_present[s_present_front].keys[0]^=1;CHECK(!interpolate(.5,fraction,320,224));
+    /* Actor animation identities may change; replacing the actor or
+     * teleporting its camera still repeats an ordinary picture. */
+    s_present[s_present_front].keys[0]^=1;CHECK(interpolate(.5,fraction,320,224));
     s_present[s_present_front].keys[0]^=1;
+    s_present[s_present_front].scene.actors.object[0]^=64;CHECK(!interpolate(.5,fraction,320,224));
+    s_present[s_present_front].scene.actors.object[0]^=64;
     s_present[s_present_front].render.frame_fg_x+=512;CHECK(!interpolate(.5,fraction,320,224));
     presentation_configure(0);CHECK(!interpolate(.5,fraction,320,224));
     free(before);free(after);
@@ -1980,12 +2650,20 @@ int main(void)
     shadow_item_owner=1;g_ram[0xD200]=0x35;
     CHECK(shadow_palette_needed());
     shadow_item_owner=0;g_ram[0xD200]=0;
-    g_ram[0xF802]=0xC0;CHECK(shadow_palette_needed());g_ram[0xF802]=0;
+    g_ram[0xF802]=0xC0;word(g_ram,0xF804,0x5A4);
+    CHECK(!shadow_palette_needed()); /* Explosion shares the pattern bank only. */
+    word(g_ram,0xF804,0x4DE);CHECK(shadow_palette_needed());g_ram[0xF802]=0;
     word(g_ram,0xFFD8,1);g_ram[0xDD02]=0xC0;
+    word(g_ram,0xDD04,0x2D2);CHECK(!shadow_palette_needed());
+    word(g_ram,0xDD04,0x26F); /* Competition cells are16px tall. */
     CHECK(shadow_palette_needed());g_ram[0xDD02]=0;word(g_ram,0xFFD8,0);
-    g_machine.vdp.reg[5]=0x7C;g_machine.vdp.vram[0xF802]=0xC0;
+    g_machine.vdp.reg[5]=0x7C;g_machine.vdp.reg[12]=1;
+    g_machine.vdp.vram[0xF802]=0xC0;word(g_machine.vdp.vram,0xF804,0x5A4);
+    CHECK(!shadow_palette_needed());word(g_machine.vdp.vram,0xF804,0x4DE);
     CHECK(shadow_palette_needed());g_machine.vdp.vram[0xF802]=0;
     s_display_frame.count=1;s_display_frame.sprites[0].size=0xC0;s_display=&s_display_frame;
+    s_display_frame.sprites[0].attr=0x5A4;CHECK(!shadow_palette_needed());
+    s_display_frame.sprites[0].attr=0x4DE;
     CHECK(shadow_palette_needed());s_display=NULL;s_display_frame.count=0;
     CHECK(!shadow_palette_needed());g_ram[0xF600]=0;
 #endif
@@ -2269,6 +2947,9 @@ int main(void)
     for(unsigned at=0xC000;at<0xD000;at+=2)word(v.vram,at,0x85DA);
     publish_sprites();sonic2_video.scanline(&v,0,native320,320,out,796);
     CHECK(s_frame_card && out[0]==0xFF0000FF && out[795]==0xFF0000FF);
+    g_ram[0xF600]=0x88; /* Attract loading uses the same native Obj34 card. */
+    sonic2_video.scanline(&v,0,native320,320,out,796);
+    CHECK(s_frame_card && out[0]==0xFF0000FF && out[795]==0xFF0000FF);
     CHECK(card_fill(0xA5DC) && card_fill(0x85D8) && !card_fill(0xA5DA));
     sonic2_video.scanline(&v,0,native320,320,out,320);
     CHECK(!s_frame_card && !memcmp(out,native320,sizeof native320));
@@ -2337,6 +3018,7 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     native_interpolation_test();
+    scene_scroll_phase_test();
     half_pipe_width_test();
     outgoing_zone_test();
     donor_palette_fade_test();
@@ -2362,16 +3044,27 @@ int main(void)
     cloud_edge_test();
     behind_screen_lifetime_test();
     mapping_vertical_bounds_test();
+    mapping_horizontal_bounds_test();
     dormant_dez_margin_test();
     dez_window_preview_test();
+    dez_window_native_material_test();
     dormant_wfz_laser_test();
     dez_corpse_presentation_test();
     ending_plane_preview_test();
+    ending_scenery_retirement_test();
+    title_card_world_margin_test();
+    htz_background_domain_test();
     cnz_closure_margin_test();
     wfz_early_background_margin_test();
     wfz_robotnik_preview_test();
     slot_presentation_test();
     native_scene_art_test();
+    native_art_rom_readiness_test();
+    explosion_native_art_test();
+    ehz_animal_native_art_test();
+    ooz_static_fragment_art_test();
+    wfz_finite_background_ownership_test();
+    result_entry_travel_test();
     demo_native_simulation_test();
     demo_readonly_publication_test();
     native_demo_hud_test();

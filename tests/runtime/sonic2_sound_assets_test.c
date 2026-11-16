@@ -57,6 +57,15 @@ int main(int argc,char **argv)
         assert(p==S2_SOUND_SFX_BASE+i*S2_SOUND_SFX_STRIDE);
         assert(memory[p+3]>=1 && memory[p+3]<=6);
     }
+    /* Native E5 leaf collision uses PSG3/-8 and the zero-period sentinel.
+     * Expanded S3 period16 must not replace that noise clock. */
+    {
+        const uint8_t *leaf=memory+S2_SOUND_SFX_BASE+(0xE5-0xA0)*S2_SOUND_SFX_STRIDE;
+        assert(leaf[5]==0xC0 && leaf[8]==4);
+        unsigned stream=word(leaf+6);assert(leaf[stream]==0xFF && leaf[stream+1]==0x13);
+        assert(leaf[stream+3]==0xFF && leaf[stream+4]==0x11 && leaf[stream+5]==0xE7);
+        assert(leaf[stream+6]==0xCF && ((leaf[stream+6]-0x81+leaf[8])&127)==0x52);
+    }
     for(unsigned i=0;i<17;i++) {
         const uint8_t *p=memory+layout.sample_table+i*10;
         assert(p[0]==0x12 && p[1]);unsigned start=be(p+2),end=be(p+6);

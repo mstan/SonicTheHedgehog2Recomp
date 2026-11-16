@@ -58,6 +58,7 @@ int main(void)
         memset(assets->tiles+tile*32,0x11,32);
     S2SaveView empty={0},filled={0};
     filled.selection=1;
+    filled.cursor=144;
     for (unsigned stage=0;stage<S2_CAMPAIGN_STAGES;++stage) {
         filled.data.slots[0]=(S2CampaignSlot){S2_SAVE_ACTIVE,(uint8_t)stage,0,3,0};
         unsigned caption_pixels=0,counter_pixels=0;
@@ -178,6 +179,55 @@ int main(void)
         }
     }
     assert(!memcmp(&progress,&filled.data,sizeof progress));
+    /* A filled icon is static unless its selected card has settled. Small
+     * roster portraits, progress and counters are independent of that art. */
+    memset(assets,0,sizeof *assets);
+    assets->palette[1]=0x00E;
+    memset(assets->tiles+32,0x11,32);
+    for(unsigned f=0;f<4;f++)for(unsigned i=0;i<70;i++)assets->static_card[f][i]=1;
+    assets->stages_ready=1;
+    for(unsigned i=0;i<80*56;i++)assets->stages[0][i]=0xEEE;
+    S2SaveView card={0};card.selection=1;card.cursor=144;
+    card.data.slots[0]=(S2CampaignSlot){S2_SAVE_ACTIVE,0,0,3,0};
+    card.data.slots[1]=card.data.slots[0];
+    for(int width=320;width<=796;width+=476){
+        int left=(width-320)/2;uint32_t row[796];
+        card.selection=1;card.cursor=144;card.scroll=0;
+        s2_save_draw_line(assets,&card,16,row,width);
+        assert(row[left+144]==0xFFFFFFFF && row[left+248]==0xFFFF0000);
+        card.selection=2;card.cursor=248;card.scroll=88;
+        s2_save_draw_line(assets,&card,16,row,width);
+        assert(row[left+56]==0xFFFF0000 && row[left+160]==0xFFFFFFFF);
+        card.cursor=240;card.scroll=80;
+        s2_save_draw_line(assets,&card,16,row,width);
+        assert(row[left+64]==0xFFFF0000 && row[left+168]==0xFFFF0000);
+    }
+    /* Each original character has a normal and all-Chaos-Emerald finish
+     * image/palette. No portrait is revealed during the card camera move. */
+    card.selection=1;card.cursor=144;card.scroll=0;card.native_clear_portrait=1;
+    card.data.slots[0].state=S2_SAVE_COMPLETE;card.data.slots[1].state=S2_SAVE_EMPTY;
+    assets->finish_ready=1;
+    assets->frames[24].count=assets->frames[25].count=assets->frames[35].count=1;
+    assets->frames[24].pieces[0]=(S2MenuPiece){0,-120,2,1,1};
+    assets->frames[25].pieces[0]=assets->frames[24].pieces[0];
+    assets->frames[35].pieces[0]=(S2MenuPiece){0,-120,0x51C,1,1};
+    memset(assets->tiles+64,0x22,32);
+    assets->finish_palette[0][2]=0xE00;assets->finish_palette[1][2]=0x0E0;
+    for(unsigned n=0;n<4;n++)memset(assets->finish_tiles[n],(int)((n+1)*0x11),sizeof assets->finish_tiles[n]);
+    assets->finish_palette[2][3]=assets->finish_palette[3][1]=0xE00;
+    assets->finish_palette[4][4]=assets->finish_palette[5][2]=0x0E0;
+    for(unsigned character=0;character<3;character++){
+        uint32_t row[320];card.counter_character=character;
+        card.data.slots[0].emeralds=0;card.cursor=144;
+        S2CampaignData unchanged=card.data;
+        s2_save_draw_line(assets,&card,16,row,320);assert(row[144]==0xFF0000FF);
+        assert(!memcmp(&unchanged,&card.data,sizeof unchanged));
+        card.data.slots[0].emeralds=0x7E;
+        s2_save_draw_line(assets,&card,16,row,320);assert(row[144]==0xFF0000FF);
+        card.data.slots[0].emeralds=0x7F;
+        s2_save_draw_line(assets,&card,16,row,320);assert(row[144]==0xFF00FF00);
+        card.cursor=136;s2_save_draw_line(assets,&card,16,row,320);assert(row[144]==0xFFFF0000);
+    }
     free(assets);
     puts("PASS numbered zone cards, CLEAR/static, counters, seven emeralds and no character arrows");
     return 0;

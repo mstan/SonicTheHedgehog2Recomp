@@ -344,9 +344,9 @@ unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset
                                     uint8_t *out,size_t capacity)
 {
     static const unsigned addresses[]={0x79BDE,0x7BA32,0x8507C,0x83BF6,0x84332,0x84F18,
-        0x8030A,0x81048,0x81C96,0x81AB0,0x809D0,0x8E886,0x8EE52};
-    static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660,468,323},
-        tiles[]={78,49,128,96,111,8,4,4,18,32,40,24,28};
+        0x8030A,0x81048,0x81C96,0x81AB0,0x809D0,0x8E886,0x8EE52,0x7B592,0x7EF60,0x7F0A2,0x8EF96};
+    static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660,468,323,948,322,356,141},
+        tiles[]={78,49,128,96,111,8,4,4,18,32,40,24,28,68,16,20,8};
     if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
        capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
@@ -494,11 +494,15 @@ int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *
     /* Native Load_Icon_Art: Sonic uses static frames24/25. Tails and
      * Knuckles use DMA portraits with their corresponding zone-card
      * palettes; the static frame27 is the later all-character emblem. */
-    uint8_t finish[0x1DC0];
-    if(!kosinski(r+0x15EDB2,3680,finish,sizeof finish))goto failure;
+    /* Load_Icon_Art selects DMA blocks $E/$F for Knuckles and $10/$11
+     * for Tails. loc_C7CC completes the fourth block by repeating the
+     * last $540 bytes of the preceding portrait. */
+    uint8_t finish[4*0x8C0];
+    if(kosinski_size(r+0x15EDB2,3680,finish,sizeof finish)!=0x1DC0)goto failure;
+    memcpy(finish+0x1DC0,finish+0x1500,0x540);
     memcpy(a->finish_tiles,finish,sizeof a->finish_tiles);
-    const unsigned finish_palettes[]={0xCAB8,0xCAD8,0xCD18,0xCCD8};
-    for(unsigned p=0;p<4;p++)for(unsigned i=0;i<16;i++)
+    const unsigned finish_palettes[]={0xCAB8,0xCAD8,0xCD18,0xCCD8,0xCD38,0xCCF8};
+    for(unsigned p=0;p<6;p++)for(unsigned i=0;i<16;i++)
         a->finish_palette[p][i]=(uint16_t)be16(r+finish_palettes[p]+i*2);
     a->finish_ready=1;
     /* Map_DataSelect_Player_LivesContinues has three 32-byte blocks. Keep

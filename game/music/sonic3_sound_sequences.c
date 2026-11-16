@@ -130,7 +130,8 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
             if(op==0xE7)encoded=1;
             else if(op==0xE9)encoded=0; /* Clone queues own spindash pitch */
             else if(op==0xE2)encoded=rb(c,pc+1)==0xFF?2:0;
-            else if(op==0xE5)encoded=n->kind==2?0:3;
+            else if(op==0xE5)encoded=3;
+            else if(op==0xE6&&n->kind==2)encoded=3;
             else if(op==0xFF){
                 unsigned sub=rb(c,pc+1);
                 if(sub==0){length=3;encoded=3;}
@@ -166,16 +167,25 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
             continue;
         }
         if(op==0xE7){c->bank[out]=0xFE;continue;}
+        if(n->kind==2&&(op==0xE5||op==0xE6)){
+            /* Ignored FM volume commands still separate an implicit-duration
+             * PSG note from the following duration-only event. Preserve that
+             * boundary with a panning command, which is inert on PSG. */
+            c->bank[out]=0xFF;c->bank[out+1]=0;c->bank[out+2]=0;continue;
+        }
         c->bank[out]=0xFF;c->bank[out+1]=commands[op-0xE0];
         if(op==0xF2 && n->kind==3)c->bank[out+1]=4;
         if(op==0xE2)continue;
         if(op==0xFF){c->bank[out+1]=0x0A;c->bank[out+2]=(uint8_t)rb(c,pc+2);continue;}
         if(op==0xE5){
             /* Retail discards the first parameter, then changes FM volume
-             * using the second. PSG ignores both parameters entirely. */
+             * using the second. The PSG form was handled above. */
             c->bank[out+1]=6;c->bank[out+2]=(uint8_t)rb(c,pc+2);continue;
         }
         for(unsigned j=1;j<n->length;j++)c->bank[out+j+1]=(uint8_t)rb(c,pc+j);
+        /* Retail Set Key encodes its transpose with a $40 bias; Clone
+         * takes the decoded byte. Preserve the original key on all tracks. */
+        if(op==0xED)c->bank[out+2]=(uint8_t)(rb(c,pc+1)-0x40u);
         if(op==0xF5)c->bank[out+2]=(uint8_t)psg_id(c,rb(c,pc+1));
         if(op==0xF4)c->bank[out+2]=(uint8_t)mod_id(c,rb(c,pc+1));
         if(op==0xEC){unsigned v=rb(c,pc+1);c->bank[out+2]=(uint8_t)(((v<<3)&0x7F)|(v&0x80));}
@@ -224,7 +234,17 @@ static int envelopes(Convert *c,const S3SoundLayout *l)
             unsigned value=zb(c,src+j);
             if(value==0x83){out[n++]=0x81;complete=1;break;}
             out[n++]=(uint8_t)value;
-            if(value==0x82){unsigned target=zb(c,src+(++j));if(target>=j)return 0;out[n++]=(uint8_t)(target+2);complete=1;break;}
+            if(value==0x82){
+                unsigned target=zb(c,src+(++j));
+                /* The qualified retail/SK/May17 envelope4 loop reads Z80
+                 * code byte $0D, not its nominal zero operand. Preserve
+                 * that audible 9..11 cycle; other definitions stay as-is. */
+                if(!c->source.prototype &&
+                   (c->source.standalone_sonic3 || c->source.rom_size==0x200000u) &&
+                   i==3 && src==0x1338 && j==13 && target==0 && zb(c,13)==9)
+                    target=zb(c,13);
+                if(target>=j)return 0;out[n++]=(uint8_t)(target+2);complete=1;break;
+            }
         }
         if(!complete || n>c->capacity-c->cursor)return 0;
         memcpy(c->bank+c->cursor,out,n);wl(c,l->modulation_index-BASE+(i+c->mod_base)*4,BASE+(uint32_t)c->cursor);c->cursor+=n;
@@ -348,7 +368,9 @@ int s3_sound_build_track(const uint8_t *rom,size_t size,unsigned donor,unsigned 
      * tables separate when several events use different cartridges. */
     /* Slots13..25 are unused by native S2 music/SFX. Imported families keep
      * independent envelope banks, including the September prototype. */
-    static const unsigned bases[]={103,112,125,138,64,151,202,13};
+    /* May 17's complete PSG/modulation table bytes ($130E..$1619 in its
+     * driver) equal retail S3, so these two donors may share envelope slots. */
+    static const unsigned bases[]={103,112,125,138,64,151,202,13,151};
     unsigned psg_base=bases[donor];uint8_t drums[128]={0},map[128]={0};int bytes=0,ok=0;
     Convert *c=NULL;S3LegacySource *legacy=NULL;
     const char *stage="source";unsigned item=song;

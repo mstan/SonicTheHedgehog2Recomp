@@ -34,6 +34,9 @@ enum { SOUND_ROW=S2_MAX_PLAYERS+1,
 static unsigned s_notice;
 #ifdef SONIC2_MUSIC_DRIVER
 static unsigned s_player_open,s_player_track,s_player_solo,s_player_stopped,s_player_pending,s_player_delay;
+static unsigned s_player_playing_track=S2_MUSIC_COUNT;
+static unsigned player_audible_track(void)
+{return !s_player_stopped&&s_player_playing_track<S2_MUSIC_COUNT?s_player_playing_track:s_player_track;}
 static void player_mask(void)
 {
  unsigned fm=0x7f,psg=15;
@@ -42,7 +45,7 @@ static void player_mask(void)
   else if(s_player_solo){fm=s_player_solo<=7?1u<<(s_player_solo-1):0;psg=s_player_solo>=8?(s_player_solo==10?12u:1u<<(s_player_solo-8)):0;}
  }
  ym2612_set_output_mask(fm);psg_set_output_mask(psg);
- s2_cd_theme_audition(s_player_open?s_player_track:S2_MUSIC_COUNT,s_player_open?s_player_solo:0,s_player_open&&s_player_stopped);
+ s2_cd_theme_audition(s_player_open?player_audible_track():S2_MUSIC_COUNT,s_player_open?s_player_solo:0,s_player_open&&s_player_stopped);
 }
 static int player_used(unsigned t)
 {return strcmp(s2_theme_ids[t],"ending")&&strcmp(s2_theme_ids[t],"hidden-palace");}
@@ -52,8 +55,9 @@ static void player_change(int direction)
 }
 static void player_channel(int direction)
 {
- unsigned count=s2_cd_theme_channel_count(s_player_track);
- unsigned available=s2_cd_theme_native_channels(s_player_track)?s2_sound_music_channels(s2_music_target(s_player_track)):~0u;
+ unsigned track=player_audible_track();
+ unsigned count=s2_cd_theme_channel_count(track);
+ unsigned available=s2_cd_theme_native_channels(track)?s2_sound_music_channels(s2_music_target(track)):~0u;
  do{s_player_solo=(s_player_solo+count+direction)%count;}while(!(available&(1u<<s_player_solo)));
 }
 static void player_queue(unsigned native)
@@ -63,15 +67,17 @@ static void player_queue(unsigned native)
 }
 static void player_play(void)
 {
- s_player_stopped=0;s_player_solo%=s2_cd_theme_channel_count(s_player_track);player_mask();player_queue(s2_music_target(s_player_track)+0x80);
+ s_player_stopped=0;s_player_playing_track=s_player_track;
+ s_player_solo%=s2_cd_theme_channel_count(s_player_track);player_mask();player_queue(s2_music_target(s_player_track)+0x80);
 }
 static void player_select(void)
 {
  s_player_stopped=1;s_player_solo=s_player_pending=s_player_delay=0;
+ s_player_playing_track=S2_MUSIC_COUNT;
  g_ram[0xFFE0]=0xFD;player_mask();
 }
 static void player_close(void)
-{s_player_open=s_player_stopped=s_player_solo=0;player_mask();player_queue(0x91);}
+{s_player_open=s_player_stopped=s_player_solo=0;s_player_playing_track=S2_MUSIC_COUNT;player_mask();player_queue(0x91);}
 #endif
 void s2_options_gameplay_restored(void)
 {
@@ -80,6 +86,7 @@ void s2_options_gameplay_restored(void)
     s_ready=s_panel_age=s_departing=0;
 #ifdef SONIC2_MUSIC_DRIVER
     s_player_open=s_player_stopped=s_player_solo=s_player_pending=s_player_delay=0;
+    s_player_playing_track=S2_MUSIC_COUNT;
     player_mask();
 #endif
 }
@@ -268,7 +275,7 @@ int s2_options_hook(uint32_t pc)
         s_ready = 0;
         s_panel_age=s_departing=0;s_bg_frame=~0u;
 #ifdef SONIC2_MUSIC_DRIVER
-        s_player_open=s_player_stopped=s_player_solo=s_player_pending=s_player_delay=0;player_mask();
+        s_player_open=s_player_stopped=s_player_solo=s_player_pending=s_player_delay=0;s_player_playing_track=S2_MUSIC_COUNT;player_mask();
 #endif
         s2_roster_validate(&s2_party.roster);
         return 0;
@@ -284,10 +291,13 @@ int s2_options_hook(uint32_t pc)
 #ifdef SONIC2_MUSIC_DRIVER
         if(s_player_open) {
             if(online() || (press&16)){player_close();return 1;}
-            if(press&3){player_change((press&1)?-1:1);player_select();}
+            if(press&3){
+                player_change((press&1)?-1:1);
+                if(s_player_stopped){s_player_solo=0;player_mask();}
+            }
             if(press&12){player_channel((press&4)?-1:1);player_mask();}
             if(press&(0x40|0x80))player_play();
-            if(press&0x20){s_player_stopped=1;s_player_pending=s_player_delay=0;g_ram[0xFFE0]=0xFD;player_mask();}
+            if(press&0x20){s_player_stopped=1;s_player_playing_track=S2_MUSIC_COUNT;s_player_pending=s_player_delay=0;g_ram[0xFFE0]=0xFD;player_mask();}
             g_ram[0xF605]&=0x7f;return 1;
         }
         if(s_cursor==PLAYER_ROW && (press&0xE0) && !online()) {
@@ -356,7 +366,7 @@ void s2_options_rb_state(S2StateIO *io)
 {
     if(io->mode){
 #ifdef SONIC2_MUSIC_DRIVER
-        unsigned incoming[12];
+        unsigned incoming[13];
 #else
         unsigned incoming[6];
 #endif
@@ -364,9 +374,10 @@ void s2_options_rb_state(S2StateIO *io)
         memcpy(incoming,io->data+io->pos,sizeof incoming);
         if(incoming[0]>=OPTIONS_ROWS||incoming[1]>1||incoming[2]>NOTICE_KIS2){io->ok=0;return;}
 #ifdef SONIC2_MUSIC_DRIVER
-        if(incoming[3]>1||incoming[4]>=S2_MUSIC_COUNT||incoming[5]>10||incoming[6]>1||
+        if(incoming[3]>1||incoming[4]>=S2_MUSIC_COUNT||incoming[5]>11||incoming[6]>1||
            incoming[8]>2||(incoming[7]&&(incoming[7]<0x81||incoming[7]>0x9f))||
-           !!incoming[7]!=!!incoming[8]||incoming[9]>12||incoming[10]>1){io->ok=0;return;}
+           !!incoming[7]!=!!incoming[8]||incoming[9]>S2_MUSIC_COUNT||incoming[10]>12||incoming[11]>1||
+           (incoming[3]&&!incoming[6]&&incoming[9]>=S2_MUSIC_COUNT)){io->ok=0;return;}
 #else
         if(incoming[3]>12||incoming[4]>1){io->ok=0;return;}
 #endif
@@ -377,6 +388,7 @@ void s2_options_rb_state(S2StateIO *io)
     #ifdef SONIC2_MUSIC_DRIVER
     S2_STATE(io,s_player_open);S2_STATE(io,s_player_track);S2_STATE(io,s_player_solo);S2_STATE(io,s_player_stopped);
     S2_STATE(io,s_player_pending);S2_STATE(io,s_player_delay);
+    S2_STATE(io,s_player_playing_track);
     if(io->mode==2&&io->ok)player_mask();
 #endif
     S2_STATE(io,s_panel_age);S2_STATE(io,s_departing);S2_STATE(io,s_bg_frame);
@@ -445,6 +457,26 @@ static void text_row(const GVDP *v, int line, uint32_t *out, int width,
         }
     }
 }
+#ifdef SONIC2_MUSIC_DRIVER
+static void player_text_rows(const GVDP *v,int line,uint32_t *out,int width,
+                             int x,int y,const char *text,uint32_t color,unsigned rows)
+{
+    /* Native eight-pixel glyphs: wrap at words inside the panel rather than
+     * truncating a source name or painting over its right border. */
+    for(unsigned row=0;row<rows && *text;row++){
+        while(*text==' ')text++;
+        size_t count=strlen(text);
+        if(count>33){
+            count=33;
+            while(count && text[count]!=' ')count--;
+            if(!count)count=33;
+        }
+        char part[34];memcpy(part,text,count);part[count]=0;
+        text_row(v,line,out,width,x,y+(int)row*12,part,color);
+        text+=count;
+    }
+}
+#endif
 void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
 {
     /* The party and Options overlays present synchronized simulation state.
@@ -464,21 +496,22 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
     #ifdef SONIC2_MUSIC_DRIVER
     if(s_player_open) {
         text_row(v,line,out,width,left+88,28,"MUSIC PLAYER",0xFFFFD85Cu);
-        char name[36];snprintf(name,sizeof name,"%.35s",s2_theme_names[s_player_track]);
-        for(char *p=name;*p;++p)if(*p>='a'&&*p<='z')*p-=32;
-        text_row(v,line,out,width,left+12,56,name,0xFFF4F5FFu);
+        player_text_rows(v,line,out,width,left+12,52,s2_theme_names[s_player_track],0xFFF4F5FFu,2);
         const S2MusicChoice *choice=s2_music_active(s_player_track)?s2_theme_choice(s_player_track,(unsigned)s2_themes[s_player_track].choice):NULL;
-        snprintf(name,sizeof name,"%.35s",choice?choice->label:"SONIC 2 ORIGINAL");
-        for(char *p=name;*p;++p)if(*p>='a'&&*p<='z')*p-=32;
-        text_row(v,line,out,width,left+12,76,name,0xFFB5C5F5u);
-        const char *channel=s2_cd_theme_channel_count(s_player_track)==1?"STEREO RECORDING":s2_cd_theme_channel_name(s_player_track,s_player_solo);
+        player_text_rows(v,line,out,width,left+12,80,choice?choice->label:"SONIC 2 ORIGINAL",0xFFB5C5F5u,3);
+        unsigned audible=player_audible_track();char name[96];
+        const char *channel=s2_cd_theme_channel_count(audible)==1?"STEREO RECORDING":s2_cd_theme_channel_name(audible,s_player_solo);
         snprintf(name,sizeof name,"%.35s",*channel?channel:s2_sound_music_channel_name(s_player_solo,!s_player_stopped&&!s_player_pending));
         for(char *p=name;*p;++p)if(*p>='a'&&*p<='z')*p-=32;
-        text_row(v,line,out,width,left+12,104,name,0xFFFFD85Cu);
+        text_row(v,line,out,width,left+12,124,name,0xFFFFD85Cu);
         int playing=s2_sound_music_playing();
-        text_row(v,line,out,width,left+12,128,s_player_stopped?"STOPPED":s_player_pending?"STARTING":playing==0?"FINISHED":playing>0?"PLAYING":"PREVIEW",0xFFF4F5FFu);
-        text_row(v,line,out,width,left+12,154,"UP DOWN TRACK   LEFT RIGHT CHANNEL",0xFFB5C5F5u);
-        text_row(v,line,out,width,left+12,174,"A START PLAY   C STOP   B BACK",0xFFB5C5F5u);
+        const char *state=s_player_stopped?"STOPPED":s_player_pending?"STARTING":playing==0?"FINISHED":playing>0?"PLAYING":"PREVIEW";
+        if(!s_player_stopped && s_player_playing_track<S2_MUSIC_COUNT)
+            snprintf(name,sizeof name,"%s: %s",state,s2_theme_names[s_player_playing_track]);
+        else snprintf(name,sizeof name,"%s",state);
+        player_text_rows(v,line,out,width,left+12,148,name,0xFFF4F5FFu,2);
+        text_row(v,line,out,width,left+12,180,"UP DOWN TRACK   LEFT RIGHT CHANNEL",0xFFB5C5F5u);
+        text_row(v,line,out,width,left+12,196,"A START PLAY   C STOP   B BACK",0xFFB5C5F5u);
         return;
     }
 #endif
@@ -511,10 +544,7 @@ void s2_options_overlay(const GVDP *v, int line, uint32_t *out, int width)
                      : s_notice == NOTICE_KIS2 ? "KNUCKLES CAMPAIGN NEEDS KIS2"
                      : s_cursor==LEVEL_ROW && missing_knuckles_campaign() ? "KNUCKLES CAMPAIGN NEEDS KIS2"
                      : s_cursor==1 && s2_party.s3k_enabled && !s2_resource_knuckles_stages() ? "KNUCKLES LEAD NEEDS KIS2 ROM"
-                     : s_cursor==SOUND_ROW ? "LEFT RIGHT CHANGE A TEN B C PLAY"
-                     : s_cursor==PLAYER_ROW ? online()?"MUSIC PLAYER IS LOCAL ONLY":"A START OPEN   B BACK"
-                     : s_cursor==LEVEL_ROW ? "A C OPEN   B BACK   START OPEN"
-                     : online() ? "D PAD SELECT    START APPLY"
-                     : "D PAD SELECT    START SAVE";
-    text_row(v,line,out,width,(width-(int)strlen(hint)*8)/2,198,hint,0xFFB5C5F5u);
+                     : s_cursor==PLAYER_ROW && online() ? "MUSIC PLAYER IS LOCAL ONLY"
+                     : NULL;
+    if(hint)text_row(v,line,out,width,(width-(int)strlen(hint)*8)/2,198,hint,0xFFB5C5F5u);
 }

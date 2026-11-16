@@ -22,7 +22,8 @@ void recomp_tail_call(uint32_t pc) { (void)pc; assert(0); }
 void recomp_call_addr(uint32_t pc)
 {
     assert(pc==0x246A && menu==3);
-    if ((g_ram[0xF600]&0x7F)==12) assert(g_ram[0xFFE4]==departure_sound);
+    if ((g_ram[0xF600]&0x7F)==12 || exit_action==1)
+        assert(g_ram[0xFFE4]==departure_sound);
     assert(!s2_save_menu_hook(pc)); /* native fade entry must not recurse */
     uint32_t line[398];
     assert(s2_save_menu_overlay(0,line,398));
@@ -171,6 +172,24 @@ int main(void)
     menu=2;menu_ready=1;g_ram[0xF600]=12;assert(s2_save_menu_hook(0x246A));
     s2_party.presentation_enabled=0;departure_sound=0xEC;
     menu=2;menu_ready=1;g_ram[0xF600]=12;assert(s2_save_menu_hook(0x246A));
+    /* Back uses the same saved cue choice, after TitleScreen's music stop.
+     * It neither writes campaign data nor repeats on later title fades. */
+    for (unsigned choice=0;choice<3;++choice) {
+        reset(1,S2_SAVE_ACTIVE);menu=1;menu_ready=1;g_ram[0xF600]=0x24;
+        s2_party.presentation_enabled=choice!=0;
+        s2_party.save_entry_warp=choice==2;
+        departure_sound=choice==2?0xC3:0xEC;
+        S2CampaignData campaign_before=fixture.data;
+        input(16,0);
+        assert(exit_action==1 && !commits);
+        assert(s2_save_menu_hook(0x909A) && menu==2 && g_ram[0xF600]==4);
+        assert(!s2_save_menu_hook(0x3998) && menu==2);
+        g_ram[0xFFE4]=0xE4; /* incoming native music stop */
+        assert(s2_save_menu_hook(0x246A) && !menu && !exit_action);
+        assert(g_ram[0xFFE4]==departure_sound && sound_writes==1);
+        assert(!s2_save_menu_hook(0x246A) && sound_writes==1);
+        assert(!commits && !memcmp(&fixture.data,&campaign_before,sizeof campaign_before));
+    }
     reset(1,S2_SAVE_EMPTY); menu=1; menu_ready=1;
     input(0x80,0);
     assert(commits==1 && fixture.data.slots[0].state==S2_SAVE_ACTIVE);
