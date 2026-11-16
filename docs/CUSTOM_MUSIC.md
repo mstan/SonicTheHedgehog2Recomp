@@ -30,10 +30,11 @@ Supported inputs:
   zero-time cycles are rejected.
 
 Open **Options → Music Player** to hear the configured soundtrack. Up/Down
-changes tracks, Left/Right selects a channel, A or Start plays from the start,
-C stops, and B returns to Options. Stock and SMPS tracks offer FM1–6, DAC,
-PSG1–2 and PSG3/noise isolation. VGM offers its synthesizer's named voices
-(Genesis VGM groups PSG voices). Stereo WAV/CD recordings offer All Channels.
+changes the selection while the current song continues. Left/Right selects a
+channel, A or Start plays the selected song from the start, C stops, and B
+returns to Options. Stock and SMPS tracks offer FM1–6, DAC, PSG1–2 and
+PSG3/noise isolation. VGM offers the channels used by the imported song,
+including individual PSG tones and noise. Stereo WAV/CD recordings offer All Channels.
 Music Player is local-only. Closing it restores all channels and Options music.
 
 VGM playback uses Game_Music_Emu 0.6.5, LGPL 2.1 or later, with its GENS YM2612

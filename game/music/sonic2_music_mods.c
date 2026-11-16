@@ -44,7 +44,7 @@ static int package_get(void *c,int i,RecompLauncherCModPackage *o)
     if(i<0||!o)return 0;memset(o,0,sizeof *o);
     COPY(o->id,package);COPY(o->name,"Music Customization");COPY(o->version,"0.2.0");
     COPY(o->author,"SonicTheHedgehog2Recomp contributors");
-    COPY(o->description,"Choose individual tracks in three music sections. Import your own music or matching donor ROMs. Donors are shared across compatible choices and games. All tracks default to Stock.");
+    COPY(o->description,"Choose tracks or import your music in three sections. All tracks default to Stock. Options > Music Player: Up/Down browse, A/Start Play, C Stop, B Back, Left/Right channels. Donors are shared across compatible choices and games.");
     o->enabled=s2_themes_enabled();return 1;
 }
 static int features(void *c){(void)c;return group_count()+(base&&base->feature_count?base->feature_count(base->ctx):0);}
@@ -112,9 +112,12 @@ static int resource_get(void *c,const char *p,const char *f,int i,RecompLauncher
     COPY(o->description,!strcmp(choice->id,"s1-s2")?"Sonic 1 (JUE rev 0) or Sonic 2 (World rev 1). ZIP or raw ROM; one import covers every compatible choice.":"Provide this unmodified cartridge as a ZIP or raw ROM. Import once; every matching track and game shares it.");
     COPY(o->file_patterns,d>=S2_DONOR_CD_US?"*.cue,*.bin,*.sgcd,*.zip":"*.zip,*.bin,*.md,*.gen,*.68k,*");
     COPY(o->file_description,d>=S2_DONOR_CD_US?"Sonic CD disc or ZIP":"Genesis ROM or ZIP");
-    if(d>=S2_DONOR_CD_US)COPY(o->description,"Choose your US disc as a CUE/BIN set, SGCD or ZIP with audio tracks. One import covers Game Over, Act Clear and Invincibility.");
+    if(d>=S2_DONOR_CD_US)COPY(o->description,"Choose your US disc as a CUE/BIN set, SGCD or ZIP with audio tracks. One import covers Game Over, Act Clear, Invincibility and Boss.");
     COPY(o->path,s2_donor_verified((unsigned)d)?s2_donor_path((unsigned)d):"");
     o->required=1;o->verified=s2_donor_verified((unsigned)d);o->import_on_select=1;
+    if(d==S2_DONOR_CD_US)for(unsigned j=0;j<S2_MUSIC_COUNT;j++)
+        if(s2_music_group(j)==(unsigned)group_id(f)&&s2_themes[j].enabled&&s2_theme_donor(j)==d&&!s2_theme_ready(j))o->verified=0;
+    if(d==S2_DONOR_CD_US&&!o->verified){COPY(o->status,"Import the disc to add the selected recordings");return 1;}
     COPY(o->status,o->verified?"Verified; shared with all matching tracks":"No matching ROM provided");return 1;
 }
 static int resource_import(void *c,const char *p,const char *f,const char *r,const char *path,const char *image,

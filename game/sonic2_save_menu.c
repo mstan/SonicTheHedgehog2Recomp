@@ -353,8 +353,10 @@ int s2_save_menu_hook(uint32_t pc)
         /* Queue after the incoming mode's sound reset, before its fade's
          * first V-int. Native teleport monitors dispatch EC via PlayMusic's
          * priority queue ($FFFFE4 at REV01 $136A); queuing during selection
-         * is discarded on departure. */
-        if ((g_ram[0xF600]&0x7F)==12)
+         * is discarded on departure. Returning to TitleScreen uses the same
+         * cue after its stop command, without changing ordinary title entry. */
+        if ((g_ram[0xF600]&0x7F)==12 ||
+            ((g_ram[0xF600]&0x7F)==4 && exit_action==1))
             glue_poke8(0xFFFFE4,s2_party.presentation_enabled&&s2_party.save_entry_warp?0xC3:0xEC);
         recomp_call_addr(pc);
         menu=menu_ready=exit_action=0;

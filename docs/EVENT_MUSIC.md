@@ -5,7 +5,9 @@ Mods > Sound contains **Shared Themes**, **Sonic 2 Campaign**, and
 
 Choose songs independently in their dropdowns. Stage rows offer matching
 Simon Wai prototype arrangements. Oil Ocean also offers the slow Simon Wai
-Casino Night 2P composition and its August 21 version. Prototype playlist
+Casino Night 2P composition and its August 21 version. The August 21 Oil Ocean
+choice uses the retail Casino Night 2P arrangement without requiring that
+prototype ROM. Prototype playlist
 numbers differ from retail; each choice uses the selected composition.
 Zones that share one song also share one selector. The special stage, Options
 menu and competition menu/results have their own applicable rows.
@@ -14,13 +16,16 @@ Shared Themes separates 1-UP, Game Over, Continue, Act Clear, Invincibility,
 Drowning, bosses, title, credits, Super Sonic, and the Chaos Emerald
 jingle. Applicable rows also offer Sonic 1, Sonic 3, Sonic & Knuckles, and
 November 1993 Sonic 3 prototype arrangements. Sonic CD's US soundtrack is
-available for Game Over, Act Clear, and Invincibility. Super Sonic and
+available for Game Over, Act Clear, Invincibility, and Boss. Re-import an older
+CD library to add Boss; the existing recordings are retained. Super Sonic and
 Invincibility remain separate choices.
 
 September 14, 1992 prototype choices are available for Credits and Emerald
-Hill 2-Player. Options also offers Data Select and Competition Menu music.
+Hill 2-Player. Credits also offers the Sonic 3C May 17, 1994 prototype
+arrangement, using that exact donor revision. Options also offers Data Select
+and Competition Menu music.
 Unused campaign selectors are omitted in fresh settings. Explicitly saved
-older choices retain their original donor and song.
+older selections remain usable.
 
 Every used track also offers **Custom music**. Import WAV, Genesis VGM or
 Sonic 1 68K SMPS BIN/ASM, and audition the configured soundtrack in

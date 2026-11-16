@@ -147,6 +147,16 @@ Clone_NativeSpeedupTick:
             marker = '.bgm_psgloadloop:\n'
             assert text.count(marker) == 1, 'Upstream PSG loader changed'
             text = text.replace(marker, marker + '\tmove.b 5(a3),SMPS_Track.VoicePtr+1(a1)\n', 1)
+            # S3 initializes its tempo accumulator from the song tempo. Keep
+            # that first delay phase without changing S1/S2's zero start.
+            marker = '\tmove.b\td1,SMPS_RAM.variables.v_main_tempo_timeout(a6)\t; Clownacy | Cleared to avoid unintended overflow on first frame of playback'
+            assert text.count(marker) == 1, 'Upstream tempo initialization changed'
+            text = text.replace(marker, marker + '''
+\tbtst #0,5(a4)
+\tbeq.s .nativeTempoReady
+\tmove.b d0,SMPS_RAM.variables.v_main_tempo_timeout(a6)
+.nativeTempoReady:
+''', 1)
             start = text.index('PSGDoNext:\n')
             end = text.index('; End of function PSGDoNext', start)
             segment = text[start:end]
@@ -188,6 +198,16 @@ Clone_NativeSpeedupTick:
 \taddq.b #1,d5
 .legacyPeriodReady:
 ''' + segment[at:]
+            # S3's PSG rest silences the channel without discarding its
+            # previous period. A later tied/duration-only note can reuse it.
+            # Keep the separate S1/S2 sentinel contract unchanged.
+            marker = '\tmove.w\t#-1,SMPS_Track.Freq(a5)'
+            assert segment.count(marker) == 1, 'Upstream PSG rest changed'
+            segment = segment.replace(marker, '\tbtst #0,SMPS_Track.VoicePtr+1(a5)\n'
+                '\tbne.s .nativeRestFrequency\n'+marker, 1)
+            marker = '\tbra.w\tPSGNoteOff'
+            assert segment.count(marker) == 1, 'Upstream PSG rest return changed'
+            segment = segment.replace(marker, '.nativeRestFrequency:\n'+marker, 1)
             text = text[:start] + segment + text[end:]
             text = text.replace('\tbra.s\tPSGDoVolFX_Loop', '\tbra.w\tPSGDoVolFX_Loop')
             # A new song resets its DAC track pan to stereo. MegaPCM keeps a

@@ -20,7 +20,7 @@
 static const RecompLauncherCModProvider *base;
 static char error[256];
 static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation" };
-static const char *names[] = { "Amy Rose", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences" };
+static const char *names[] = { "Amy Rose (Experimental)", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences" };
 static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow" };
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
@@ -72,7 +72,7 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
     memset(out, 0, sizeof *out); COPY(out->id, ids[i]); COPY(out->name, names[i]); COPY(out->version, "0.1.0");
     COPY(out->author, i==2?"Team Megamix; SEGA / Sonic Team; host adapter contributors":i ? "SEGA / Sonic Team; host adapter contributors" : "E-122-Psi and Amy hack contributors; host adapter contributors");
     COPY(out->description, i==2?"Mighty and Shadow from the verified Megamix v3 donor. Shadow includes double jump, homing, ring boosts and Chaos Control. Both character options are experimental.":i ? "Owner-ROM-gated Knuckles and Sonic 3-style campaign saves. Enable each feature independently."
-        : "Additive Amy Rev 1.7.1 gameplay import. Leaves the Sonic 2 title and default Sonic/Tails roster unchanged.");
+        : "Experimental Amy Rev 1.7.1 gameplay import. Select your party in the title OPTIONS menu; Start applies it. Leaves the Sonic 2 title and default Sonic/Tails roster unchanged.");
     COPY(out->license, "Owner-supplied assets; not redistributed"); COPY(out->status, status(i==2?3:i));
     if (i==1 && s2_party.save_menu_enabled) COPY(out->status,status(2));
     out->enabled = *flag(i==2?3:i) || (i==1 && s2_party.save_menu_enabled) || (i==2 && s2_party.shadow_enabled); return 1;
@@ -99,7 +99,7 @@ static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
     if (!out || i<0 || !package_get(ctx, i>=3?2:i?1:0, &p)) return 0;
     memset(out, 0, sizeof *out); COPY(out->id, features[i]); COPY(out->package_id, p.id);
     COPY(out->package_name, p.name); COPY(out->package_version, p.version);
-    COPY(out->name, i==4?"Shadow (Experimental)":i==3?"Mighty (Experimental)":i==2 ? "Sonic 3-style Save Menu" : i ? "Knuckles" : "Amy Rose"); COPY(out->author, p.author);
+    COPY(out->name, i==4?"Shadow (Experimental)":i==3?"Mighty (Experimental)":i==2 ? "Sonic 3-style Save Menu" : i ? "Knuckles" : "Amy Rose (Experimental)"); COPY(out->author, p.author);
     COPY(out->description, i==2 ? "Eight campaign files plus No Save. Resume zone/act and Chaos Emeralds with current Options characters. Clear a file to select zones. Saves use a separate file; your ROM stays unchanged. Local play only." : p.description);
     COPY(out->group, i==2 ? "Campaign" : "Characters"); COPY(out->status, status(i));
     out->enabled = *flag(i); return 1;
@@ -141,7 +141,7 @@ static int set_enabled(void *ctx, const char *p, int on)
     return base && base->set_enabled && base->set_enabled(base->ctx, p, on);
 }
 static const char *const presentation_ids[]={"save-entry","save-act","title-colours","panel-transition","backdrop-speed"};
-static const char *const presentation_labels[]={"Save-menu entry sound","Act number on save cards","Title-card colours","Options panel transition","Options lettering transition"};
+static const char *const presentation_labels[]={"Save-menu departure sound","Act number on save cards","Title-card colours","Options panel transition","Options lettering transition"};
 static const char *const presentation_values[]={"special-stage","show","character","fade","slow"};
 static const char *const presentation_choices[]={"Special Stage warp","Show act number","Character colours","Fade","Slow"};
 static int *presentation_flag(int n)
@@ -153,7 +153,7 @@ static int option(void *ctx, const char *p, const char *f, int n, RecompLauncher
     if(owner(p,f)!=8)return owner(p,NULL)<0 && base && base->feature_option_get && base->feature_option_get(base->ctx,p,f,n,out);
     if(n<0 || n>=5 || !out)return 0;memset(out,0,sizeof *out);
     COPY(out->id,presentation_ids[n]);COPY(out->label,presentation_labels[n]);
-    COPY(out->description,n==4?"Slow doubles the short transitions between the Options background lettering patterns. The long hold keeps its original duration. Changes apply after restart.":"Original preserves the existing presentation. Changes apply after restart.");
+    COPY(out->description,n==0?"Choose the sound when entering a stage or returning to the title from the save menu. Original uses the teleport sound. Changes apply after restart.":n==4?"Slow doubles the short transitions between the Options background lettering patterns. The long hold keeps its original duration. Changes apply after restart.":"Original preserves the existing presentation. Changes apply after restart.");
     COPY(out->value,*presentation_flag(n)?presentation_values[n]:"original");COPY(out->default_value,"original");
     out->type=RECOMP_MOD_OPTION_CHOICE;out->choice_count=2;return 1;
 }

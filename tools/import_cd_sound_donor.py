@@ -14,7 +14,7 @@ def source_identity(disc):
     for lba in range(0,disc._sectors,128):digest.update(disc.sector(lba,min(128,disc._sectors-lba)))
     return digest.hexdigest()
 
-TRACKS={'game-over':31,'act-clear':28,'invincibility':30}
+TRACKS={'game-over':31,'act-clear':28,'invincibility':30,'boss':24}
 
 def import_cd_donor(source, output, receipt, expected):
     from trilogy.scd_media import open_disc
@@ -48,8 +48,14 @@ def import_cd_donor(source, output, receipt, expected):
                 lines.extend((event+'.path='+bundle.name+'/'+target.name,event+'.sha256='+digest))
             if bundle.exists():
                 for event in TRACKS:
-                    if (bundle/(event+'.wav')).read_bytes()!=(stage/(event+'.wav')).read_bytes():
+                    existing=bundle/(event+'.wav')
+                    if existing.exists() and existing.read_bytes()!=(stage/(event+'.wav')).read_bytes():
                         raise ValueError('Cached CD audio changed; existing installation retained')
+                # Validate all existing recordings before adding a new event.
+                # Publish the expanded manifest only after every file is ready.
+                for event in TRACKS:
+                    existing=bundle/(event+'.wav')
+                    if not existing.exists():os.rename(stage/(event+'.wav'),existing)
             else:
                 os.rename(stage,bundle)
             manifest=output/(donor+'.ini')

@@ -53,7 +53,7 @@ static int wav_loop(const uint8_t *p,size_t n,unsigned rate,unsigned *frames,uns
 }
 /* Genesis VGM commands only. Verify every boundary, DAC read and loop before
  * asking a synthesizer to run untrusted data. A loop must advance audio time. */
-static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop)
+static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop,uint32_t *voices,uint8_t *psg_copy)
 {
  if(size<=0x40||memcmp(data,"Vgm ",4))return 0;
  unsigned version=le32(data+8);if(version<0x100||version>0x171)return 0;
@@ -61,7 +61,9 @@ static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
  size_t pc=version>=0x150&&le32(data+0x34)?(size_t)le32(data+0x34)+0x34:0x40;
  size_t repeat=le32(data+0x1c)?(size_t)le32(data+0x1c)+0x1c:0;
  if(pc<0x40||pc>=end||(repeat&&(repeat<pc||repeat>=end)))return 0;
- uint64_t samples=0,loop_time=0;unsigned bank=0,at=0;int loop_seen=0;
+ uint64_t samples=0,loop_time=0;unsigned bank=0,at=0,latch=0,dac=0;int loop_seen=0;
+ uint32_t active=0;
+ if(psg_copy){memcpy(psg_copy,data,size);memset(psg_copy+0x10,0,4);memset(psg_copy+0x2c,0,8);if(version<0x110)put32(psg_copy+8,0x110);}
  while(pc<end){
   if(pc==repeat){loop_seen=1;loop_time=samples;}
   unsigned op=data[pc++],bytes=0,wait=0;
@@ -71,7 +73,7 @@ static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
   else if(op==0x62)wait=735;
   else if(op==0x63)wait=882;
   else if(op>=0x70&&op<=0x7f)wait=(op&15)+1;
-  else if(op>=0x80&&op<=0x8f){if(at>=bank)return 0;++at;wait=op&15;}
+  else if(op>=0x80&&op<=0x8f){if(at>=bank)return 0;++at;wait=op&15;if(dac)active|=1u<<6;}
   else if(op==0xe0){if(end-pc<4)return 0;at=le32(data+pc);if(at>bank)return 0;bytes=4;}
   else if(op==0x67){
    if(end-pc<6||data[pc]!=0x66||data[pc+1]!=0)return 0;
@@ -79,13 +81,28 @@ static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
    bank+=count;pc+=count;
   }else if(op==0x66){
    if(!samples||(repeat&&(!loop_seen||samples==loop_time)))return 0;
-   *frames=(unsigned)samples;*loop=repeat?(unsigned)loop_time+1:0;return 1;
+   *frames=(unsigned)samples;*loop=repeat?(unsigned)loop_time+1:0;if(voices)*voices=active;return 1;
   }else return 0;
-  if(bytes>end-pc)return 0;pc+=bytes;samples+=wait;
+  if(bytes>end-pc)return 0;
+  if(op==0x50){unsigned value=data[pc];if(value&0x80)latch=(value>>4)&7;if((latch&1)&&(value&15)<15)active|=1u<<(7+(latch>>1));}
+  if(op==0x52||op==0x53){
+   unsigned reg=data[pc],value=data[pc+1];
+   if(op==0x52&&reg==0x2b)dac=value&0x80;
+   if(op==0x52&&reg==0x2a&&dac)active|=1u<<6;
+   if(op==0x52&&reg==0x28&&(value&0xf0)){
+    unsigned ch=value&7;if(ch<3)active|=1u<<ch;else if(ch>=4&&ch<=6&&!(ch==6&&dac))active|=1u<<(ch-1);
+   }
+   if(psg_copy){psg_copy[pc-1]=0x61;psg_copy[pc]=psg_copy[pc+1]=0;}
+  }
+  pc+=bytes;samples+=wait;
   if(samples>44100u*1800u)return 0;
  }
  return 0;
 }
+static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop)
+{return vgm_scan(data,size,frames,loop,NULL,NULL);}
+uint32_t s2_custom_vgm_channels(const uint8_t *data,size_t size,uint8_t *psg_copy)
+{unsigned frames,loop;uint32_t voices=0;return vgm_scan(data,size,&frames,&loop,&voices,psg_copy)?voices:0;}
 static uint8_t *read_file(const char *path,size_t *size)
 {
  FILE *f=fopen(path,"rb");if(!f)return NULL;

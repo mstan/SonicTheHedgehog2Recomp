@@ -32,7 +32,12 @@ int s2_music_prepare(uint8_t *rom,size_t size,uint32_t music,uint32_t sfx,uint32
  for(unsigned t=0;t<S2_MUSIC_COUNT&&ok;t++)if(s2_music_active(t)){
   const S2MusicChoice *choice=s2_theme_choice(t,(unsigned)s2_themes[t].choice);
   unsigned d=choice->donor,target=s2_music_target(t);
-  if(d==S2_DONOR_CUSTOM)ok=s2_custom_build(t,&l,bank,CAPACITY,&used,error,error_size);
+  if(s2_music_native_choice(t)){
+   /* Retail CNZ 2P is the retained August Oil Ocean arrangement. Reuse the
+    * native converted entry without requiring an external prototype ROM. */
+   memcpy(rom+l.music_index+(target-1)*4,rom+music+choice->song*4,4);
+  }
+  else if(d==S2_DONOR_CUSTOM)ok=s2_custom_build(t,&l,bank,CAPACITY,&used,error,error_size);
   else if(d==S2_DONOR_CD_US)ok=s2_cd_theme_build(t,d,s2_donor_path(d),&l,bank,CAPACITY,&used,error,error_size);
   else{
    if(!inputs[d])inputs[d]=s2_donor_read(d,&sizes[d]);

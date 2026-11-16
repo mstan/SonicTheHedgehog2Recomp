@@ -139,6 +139,12 @@ kind = "game_hook"
 addr = 0x4F64 # SpecialStage: always native Sonic + Tails, independent of roster
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x1F384 # starpost load: scoped Knuckles Special Stage ring/extra-life pool
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1FCEA # Obj03: extend native per-character plane switching to P3..P6
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x771C # SSStartNewAct: verified campaign solo ring requirement
 kind = "game_hook"
 [[widescreen_site]]

@@ -16,6 +16,7 @@ DONORS = {
     's3-proto': (0x200000, 'ace6af3187c1c2da4e71a1c24fb81f2529cb25057f093f5cb5389842a90d4abf'),
     's3': (0x200000, 'd6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c'),
     'sk': (0x200000, '6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1'),
+    's3c-may17': (0x400000, 'ce7b4d8807512aab4b9aa771654c66a019d1f17b0c9dc96a5ee7ca7fba0c2019'),
 }
 
 def identify(data):
@@ -29,7 +30,7 @@ def read_donor(source):
     source = Path(source)
     if source.suffix.lower() != '.zip':
         with source.open('rb') as stream:
-            return identify(stream.read(0x200000 + 513))
+            return identify(stream.read(0x400000 + 513))
     if source.stat().st_size > 64*1024*1024:
         raise ValueError('ROM ZIP exceeds the 64 MiB limit')
     with source.open('rb') as stream:
@@ -47,11 +48,11 @@ def read_donor(source):
         if len(entries) > 256:
             raise ValueError('ROM ZIP contains too many entries')
         for entry in entries:
-            if entry.is_dir() or entry.file_size not in (0x80000,0x80200,0x100000,0x100200,0x200000,0x200200):
+            if entry.is_dir() or entry.file_size not in (0x80000,0x80200,0x100000,0x100200,0x200000,0x200200,0x400000,0x400200):
                 continue
             # Member names never become filesystem paths.
             with archive.open(entry) as stream:
-                data = stream.read(0x200000 + 513)
+                data = stream.read(0x400000 + 513)
             try:
                 candidate = identify(data)
             except ValueError:

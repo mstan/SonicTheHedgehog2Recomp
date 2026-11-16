@@ -114,10 +114,25 @@ static void knuckles_ledge_step(S2CharacterState *s, S2Motion *m)
 }
 static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *c)
 {
-    if(m->fluid_movement && !m->hurt && !m->control_locked && !(m->status&AIR) &&
-       m->animation==0x22 && (s->held&DOWN) && (s->pressed&JUMP)) {
-        /* Hand the new press to the native duck/spindash controller. */
-        s->special=S2_SK_NORMAL;m->animation=8;m->move_lock=0;
+    int recovery=!(m->status&AIR) && (m->animation==0x22 || m->animation==0x23);
+    int landing=s->special==S2_SK_SLIDE || recovery;
+    int eligible=landing || s->special==S2_SK_GLIDE || s->special==S2_SK_FALL;
+    if(!m->fluid_movement || !(s->held&DOWN) || !eligible) {
+        s->landing_buffer=s->landing_jump=0;
+    } else {
+        if(s->landing_buffer)--s->landing_buffer;
+        if(s->pressed&JUMP) {s->landing_buffer=6;s->landing_jump=s->pressed&JUMP;}
+        if(landing && s->landing_buffer) {
+            /* Queue only a new glide-landing press, then let the original
+             * duck/spindash controller consume it at real ground contact. */
+            s->native_pressed|=s->landing_jump;
+            s->native_held|=DOWN|s->landing_jump;
+            s->landing_buffer=s->landing_jump=0;
+            s->special=S2_SK_NORMAL;m->animation=8;m->move_lock=0;
+            m->vx=m->vy=m->inertia=0;m->jumping=0;
+            m->status&=~(AIR|ROLL|ROLLJUMP|PUSH);
+            m->y+=(m->radius_y-19)*65536;m->radius_x=9;m->radius_y=19;
+        }
     }
     /* CPZ's tube spring has its own native launch routine. Its Spring
      * animation transfers movement back to the original controller before
@@ -230,7 +245,7 @@ void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t
     if (s->kind==S2_CHAR_SHADOW) { s2_shadow_before(s,m,c); ++s->age; return; }
     if (m->hurt || m->control_locked) {
         if(s->kind==S2_CHAR_KNUCKLES && s->special) {m->radius_x=9;m->radius_y=19;}
-        s->special=0; return;
+        s->special=0;s->landing_buffer=s->landing_jump=0; return;
     }
     if (s->kind==S2_CHAR_AMY) amy_before(s,m);
     if (s->kind==S2_CHAR_KNUCKLES) knuckles_before(s,m,c);

@@ -58,6 +58,29 @@ int main(void)
     m.animation=0x22;m.move_lock=14;m.hurt=1;
     s2_character_before(&s,&m,0x22,0x20,&c);
     assert(m.animation==0x22&&m.move_lock==14);
+    /* A fresh physical press shortly before glide contact is queued, while
+     * the original held jump and expired presses cannot start a spindash. */
+    for(unsigned mode=0;mode<7;++mode) {
+        S2CharacterState flow;s2_character_reset(&flow,S2_CHAR_KNUCKLES);
+        S2Motion f=standing();f.fluid_movement=mode!=1;f.status=2;
+        f.jumping=1;f.animation=0x20;f.vy=0x80;flow.special=S2_SK_GLIDE;
+        s2_character_before(&flow,&f,0x22,mode==2?0:0x20,&c);
+        assert(f.animation!=8);
+        unsigned ticks=mode==3?6:3;
+        for(unsigned n=0;n<ticks;++n)s2_character_before(&flow,&f,0x22,0,&c);
+        flow.special=S2_SK_SLIDE;f.animation=0x20;f.vx=0x400;
+        if(mode==4)f.hurt=1;
+        if(mode==5)f.control_locked=1;
+        s2_character_before(&flow,&f,mode==6?0x20:0x22,0,&c);
+        if(mode==0) {
+            assert(f.animation==8 && !flow.special && !(f.status&2));
+            assert(!f.vx&&!f.vy&&!f.inertia&&!f.move_lock);
+            assert(flow.native_pressed&0x20);
+        } else assert(f.animation!=8 && !(flow.native_pressed&0x70));
+    }
+    s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();m.fluid_movement=1;
+    s2_character_before(&s,&m,0x22,0x20,&c);
+    assert(m.animation==5&&!s.landing_buffer); /* ordinary landings are native */
     s2_character_reset(&s,S2_CHAR_KNUCKLES);m=standing();
     s2_character_before(&s,&m,0x20,0x20,&c);
     m.status=6; m.jumping=1; m.vy=-0x680;

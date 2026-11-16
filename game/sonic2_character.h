@@ -39,6 +39,7 @@ typedef struct S2CharacterState {
     unsigned shadow_monitor_ticks; /* S-monitor prerequisite, independent of Super invincibility */
     int8_t climb_delta;
     uint8_t glide_collision; /* valid bit 7, KiS2 airborne/pushing contact bits */
+    uint8_t landing_buffer,landing_jump; /* fresh glide-landing input, six ticks */
 } S2CharacterState;
 void s2_character_reset(S2CharacterState *s, unsigned kind);
 /* KiS2 air steering, including the 68000 extend bit after its arithmetic. */

@@ -267,6 +267,8 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x157C4:
     case 0x1DE4A: case 0x1DE88:
     case 0x4F64:
+    case 0x1F384: /* scoped Knuckles Special Stage checkpoint ring return */
+    case 0x1FCEA: /* native per-character path/priority triggers for extras */
     case 0x771C: /* original Knuckles solo Special Stage goals */
     case 0x1A92E: /* original Knuckles airborne overspeed steering */
     case 0x189CA: case 0x18AEE: case 0x18CC6: case 0x18DB4: case 0x18EE6:

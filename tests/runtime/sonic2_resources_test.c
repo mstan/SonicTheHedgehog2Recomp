@@ -52,6 +52,32 @@ static void slot_window_test(void)
     for(unsigned i=0;i<sizeof atlas;++i)assert(atlas[i]==0xA5);
     free(ambiguous);free(rom);
 }
+static void native_dez_window_decode_test(void)
+{
+    /* REV01 DEZWindow's complete bounded eight-tile stream. The output hash
+     * is the original NemDec/VDP result, before another boss reclaims it. */
+    static const uint8_t stream[]={
+        0x00,0x08,0x80,0x43,0x03,0x74,0x08,0x85,0x03,0x00,0x86,0x05,0x18,0x87,0x24,0x0B,
+        0x35,0x1B,0x88,0x03,0x01,0x74,0x0A,0x89,0x03,0x02,0x25,0x19,0x35,0x1C,0x8A,0x75,
+        0x1D,0x8C,0x25,0x1A,0x8F,0x04,0x09,0x26,0x3E,0x75,0x1E,0xFF,0xFF,0xA8,0xBC,0x7E,
+        0xA0,0x7E,0x1F,0xFB,0x20,0xA6,0x0A,0x60,0xA6,0x0A,0x60,0xA6,0x0A,0x60,0xA6,0x0A,
+        0x60,0xA6,0x0A,0x60,0xA6,0x0A,0x63,0xFD,0x03,0xF3,0xB3,0xF8,0xA9,0xFC,0xE0,0xFC,
+        0x6F,0xE7,0xFF,0x15,0xA1,0xF6,0x3F,0x39,0xEF,0xCF,0xFF,0x27,0x0A,0x7F,0x91,0x83,
+        0x3F,0xC8,0xFC,0x39,0xF7,0xFD,0x6B,0xFF,0x31,0x11,0x11,0x11,0x11,0x11,0x15,0xF8,
+        0xCF,0xB5,0xFB,0xFD,0x7E,0xFF,0x5E,0xFB,0xFF,0x35,0x5E,0xED,0x58,0xDE,0x67,0x9D,
+        0xAB,0x1B,0xCC,0xF3,0xB5,0xB1,0x7C,0x9C,0xF6,0xB6,0x2F,0x93,0x90};
+    uint8_t *rom=calloc(1,0x100000),out[258];assert(rom && sizeof stream==141);
+    memcpy(rom+0x8EF96,stream,sizeof stream);memset(out,0xA5,sizeof out);
+    assert(s2_native_sprite_art_decode(rom,0x100000,S2_NATIVE_DEZ_WINDOW,out,256)==256);
+    uint32_t hash=2166136261u;for(unsigned i=0;i<256;++i)hash=(hash^out[i])*16777619u;
+    assert(hash==0xE5E0F689u && out[256]==0xA5 && out[257]==0xA5);
+    memset(out,0xA5,sizeof out);
+    assert(!s2_native_sprite_art_decode(rom,0x100000,S2_NATIVE_DEZ_WINDOW,out,255));
+    rom[0x8EF97]=9;
+    assert(!s2_native_sprite_art_decode(rom,0x100000,S2_NATIVE_DEZ_WINDOW,out,256));
+    for(unsigned i=0;i<sizeof out;++i)assert(out[i]==0xA5);
+    free(rom);
+}
 static void amy_item_art_bounds_test(void)
 {
     uint8_t *rom=calloc(1,0x200000);assert(rom);
@@ -81,6 +107,7 @@ static void amy_item_art_bounds_test(void)
 }
 int main(int argc, char **argv)
 {
+    native_dez_window_decode_test();
     slot_window_test();
     amy_item_art_bounds_test();
     assert(argc == 2 || argc == 3 || argc == 4);
@@ -221,6 +248,15 @@ int main(int argc, char **argv)
         assert(s2_resource_bank(S2_RESOURCE_SK)->animation_count==37);
         assert(s2_resource_owner_verified(S2_RESOURCE_SK) && s2_resource_save_assets());
         const S2SaveAssets *menu=s2_resource_save_assets();
+        assert(menu->finish_ready);
+        /* The stream contains three full DMA blocks and $380 bytes of the
+         * fourth; native loc_C7CC copies the preceding portrait's tail. */
+        unsigned super_tails_ink=0;
+        for(unsigned i=0;i<0x380;++i)super_tails_ink+=menu->finish_tiles[3][i]!=0;
+        assert(super_tails_ink>0);
+        assert(!memcmp(menu->finish_tiles[3]+0x380,menu->finish_tiles[2]+0x380,0x540));
+        assert(memcmp(menu->finish_palette[2],menu->finish_palette[4],sizeof menu->finish_palette[2]));
+        assert(memcmp(menu->finish_palette[3],menu->finish_palette[5],sizeof menu->finish_palette[3]));
         assert(!s2_resource_set(S2_RESOURCE_SK,argv[2]));
         assert(s2_resource_save_assets()==menu && s2_resource_owner_verified(S2_RESOURCE_SK));
         const S2DonorBank *before=s2_resource_bank(S2_RESOURCE_AMY);
