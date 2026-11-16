@@ -40,6 +40,35 @@ static void envset(const char *name,const char *value)
 static unsigned track(const char *id)
 {for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(!strcmp(id,s2_theme_ids[t]))return t;assert(0);return 0;}
 static uint32_t read32(const uint8_t *p){return ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];}
+#ifdef SONIC2_MUSIC_DRIVER
+static void competition_loops(const uint8_t *rom,unsigned song,unsigned channel)
+{
+ /* Follow the converted stream through an actual backward jump. Both the
+  * main voice and its delayed echo must begin each pass with the same setup. */
+ unsigned pc=song+(((unsigned)rom[song+8+4*channel]<<8)|rom[song+9+4*channel]);
+ unsigned pass=0,heard=0,voice=255,detune=255;uint8_t modulation[4]={0};
+ static const uint8_t expected[]={15,1,6,6};
+ for(unsigned guard=0;guard<4096;guard++){
+  assert(pc>=song&&pc<0x400000-6);unsigned op=rom[pc++];
+  if(op==0xFF){
+   unsigned command=rom[pc++];
+   if(command==0x0D)voice=rom[pc++];
+   else if(command==1)detune=rom[pc++];
+   else if(command==0x21){memcpy(modulation,rom+pc,4);pc+=4;}
+   else if(command==0x14){
+    unsigned target=(unsigned)((int)pc+1+(int16_t)(((unsigned)rom[pc]<<8)|rom[pc+1]));
+    if(target<pc){assert(heard);pass++;heard=0;}
+    pc=target;
+   }else assert(!"Unexpected Competition Menu coordination command");
+  }else if(op>=0x81&&!heard){
+   assert(op==0xBB&&voice==0x0D&&detune==3&&!memcmp(modulation,expected,4));
+   if(pass==1)return;
+   heard=1;
+  }
+ }
+ assert(!"Competition Menu did not complete a loop");
+}
+#endif
 int s2_custom_assemble(const char *source,const char *track,const char *settings,char output[1024],char *error,size_t capacity,void (*progress)(void *,float,const char *),void *user)
 {(void)source;(void)track;(void)settings;(void)output;(void)error;(void)capacity;(void)progress;(void)user;return 0;}
 int main(int argc,char **argv)
@@ -245,6 +274,7 @@ int main(int argc,char **argv)
     ++selected;break;
    }
   if(d==S2_DONOR_S3)assert(s2_music_pick(boss,"s3-miniboss"));
+  if(d==S2_DONOR_PROTO)assert(s2_music_pick(track("options"),"s3-proto-competition"));
   if(!selected)continue;
   uint8_t before[32],after[32];s2_music_config_identity(before);
   if(!s2_music_prepare(rom,0x400000,l.music_index,l.sfx_index,l.psg_index,l.sample_table,error,sizeof error)){
@@ -253,6 +283,11 @@ int main(int argc,char **argv)
   s2_music_config_identity(after);assert(!memcmp(before,after,32));
   assert(!memcmp(baseline,rom,0x2A0000));
   assert(!memcmp(rom+S2_MUSIC_CLONE_SOUND_INDEX,rom+l.sfx_index,81*4));
+  if(d==S2_DONOR_PROTO){
+   unsigned target=s2_music_target(track("options"));
+   unsigned song=read32(rom+S2_MUSIC_CLONE_MUSIC_INDEX+(target-1)*4)&0xFFFFFF;
+   competition_loops(rom,song,2);competition_loops(rom,song,5);
+  }
   if(d==S2_DONOR_S3||d==S2_DONOR_SK||d==S2_DONOR_MAY17){
    /* Mini-Boss uses retail modulation envelope4. Its actual Z80 loop
     * returns to source index9, which is11 after the two-byte prefix. */
