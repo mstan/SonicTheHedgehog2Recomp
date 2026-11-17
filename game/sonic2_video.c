@@ -134,6 +134,7 @@ void s2_video_donor_rgb_row(uint32_t *pixels,int width)
 }
 static int s_interpolation_enabled,s_interpolating;
 static double s_interpolation_phase;
+static int interpolation_background_base(int line);
 static void interpolation_reset(void);
 static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_width (s_render->width)
@@ -2884,8 +2885,10 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * only its camera-dependent term to this viewport's foreground origin.
      * A clamped wide camera then keeps its own parallax instead of inheriting
      * the moving native viewport's foreground-speed translation. */
-    if(bg_world && width>nw)
+    if(bg_world && width>nw) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
+        if(s_interpolating)bg_base=interpolation_background_base(line);
+    }
     int background_x=bg_base;
     if(bg_width>0) {
         background_x%=bg_width;
@@ -3197,6 +3200,27 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
 }
 static int lerp_position(int a,int b)
 { return a+(int)((b-a)*s_interpolation_phase+((b>=a)?0.5:-0.5)); }
+static int captured_background_base(const PresentationFrame *f,int line)
+{
+    const S2RenderContext *r=&f->render;
+    int row=r->frame_zone==0 && line>=222?221:line;
+    int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
+    int by=unwrap(f->vscroll[line][1],r->frame_bg_y)+line;
+    if(r->frame_campaign_view)
+        by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
+    if(r->frame_zone==7 && !r->frame_htz_shake)by=(int)((unsigned)by&255u);
+    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]);
+}
+static int interpolation_background_base(int line)
+{
+    /* Remove native camera motion at each completed endpoint before
+     * interpolating. Re-evaluating quantized parallax at a fractional camera
+     * can disagree by a pixel with interpolated native scroll words, making
+     * a clamped, stationary wide background shake between identical frames.
+     * Endpoint rebasing also retains native animation and event offsets. */
+    return lerp_position(captured_background_base(s_lerp_old,line),
+                         captured_background_base(s_lerp_new,line));
+}
 static void interpolation_sprite(unsigned index,int *x,int *y)
 {
     const SceneFrame *a=&s_lerp_old->scene,*b=&s_lerp_new->scene;
