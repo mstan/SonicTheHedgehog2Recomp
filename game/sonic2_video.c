@@ -72,6 +72,7 @@ typedef struct S2RenderContext {
     int frame_fg_y;
     int frame_bg_y;
     int32_t frame_bg_x[2];
+    int32_t frame_arz_bg_x;
     unsigned frame_cloud,frame_htz_shake;
     unsigned frame_zone,frame_act,frame_resize;
     int frame_campaign_view;
@@ -485,12 +486,26 @@ static int source_background_scroll(const S2RenderContext *r,int camera,int line
 }
 static int background_view_base(const S2RenderContext *r,int native_camera,int view_left,int line,int by,int hs)
 {
+    if(r->frame_zone==15) {
+        static const uint8_t heights[]={176,112,48,96,21,12,14,6,12,31,48,192,240,240,240,240};
+        unsigned row=scroll_segment(by,heights,sizeof heights);
+        if(row<3 || row>=11) {
+            /* ARZ limits its streamed BG camera to16px/tick, independently
+             * of the logical target. A first spindash can temporarily leave
+             * that streamer behind. Full-map drawing uses the uncapped native
+             * target at this view's origin; retain other live scroll offsets. */
+            int target=scroll_floor((int64_t)r->frame_arz_bg_x+
+                                   (int64_t)(view_left-r->frame_fg_x)*281*256,65536);
+            return -hs-scroll_background_x(r,native_camera,0,281*256)+target;
+        }
+    }
     return -hs+source_background_scroll(r,native_camera,line,by)-source_background_scroll(r,view_left,line,by);
 }
 static void capture_background_scroll(S2RenderContext *r)
 {
     r->frame_bg_x[0]=(int32_t)(((uint32_t)ram16(0xEE68)<<16)|ram16(0xEE6A));
     r->frame_bg_x[1]=(int32_t)(((uint32_t)ram16(0xEE70)<<16)|ram16(0xEE72));
+    r->frame_arz_bg_x=(int32_t)(((uint32_t)ram16(0xF672)<<16)|ram16(0xF674));
     r->frame_cloud=ram16(0xA822);r->frame_htz_shake=g_ram[0xEEBC];
 }
 /* The native 2P loader halves pattern indices. An interlace block has
@@ -3380,6 +3395,8 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     fractional.frame_bg_y=lerp_position(a->render.frame_bg_y,b->render.frame_bg_y);
     for(unsigned i=0;i<2;++i)
         fractional.frame_bg_x[i]=a->render.frame_bg_x[i]+(int32_t)((b->render.frame_bg_x[i]-(int64_t)a->render.frame_bg_x[i])*phase);
+    fractional.frame_arz_bg_x=a->render.frame_arz_bg_x+
+        (int32_t)((b->render.frame_arz_bg_x-(int64_t)a->render.frame_arz_bg_x)*phase);
     S2RenderContext *saved_render=s_render;
     const SceneFrame *saved_display=s_display;
     s_render=&fractional;s_display=&b->scene;s_interpolating=1;

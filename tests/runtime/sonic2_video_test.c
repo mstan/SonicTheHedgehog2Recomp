@@ -104,6 +104,7 @@ static void clamped_background_alignment_test(void)
             unsigned camera=cameras[c];word(g_ram,0xEE00,camera);word(g_ram,0xEE60,camera);
             uint32_t bg=camera*(zones[z]==15?281u*256u:8192u);
             word(g_ram,0xEE68,bg>>16);word(g_ram,0xEE6A,bg);
+            write32(0xF672,bg);
             v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
             v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;v.cram[1]=0xE;v.cram[2]=0xE00;
             memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
@@ -2242,6 +2243,17 @@ static void scene_scroll_phase_test(void)
     CHECK(s2_video_presented_actors(&v,actors,dust) && actors[0].x==1600);
     interpolation_reset();
 }
+static void arz_background_stream_limit_test(void)
+{
+    S2RenderContext r={0};r.frame_zone=15;r.frame_fg_x=174;
+    r.frame_bg_x[0]=182*65536;r.frame_arz_bg_x=174*281*256;
+    /* Native spindash camera catch-up: streamed BG is nine pixels behind
+     * its logical target. A stationary wide origin has no such stream limit. */
+    CHECK(background_view_base(&r,174,0,190,602,-182)==0);
+    CHECK(background_view_base(&r,174,32,190,602,-182)==35);
+    CHECK(background_view_base(&r,174,0,190,602,-185)==3); /* Independent native offset. */
+    CHECK(background_view_base(&r,174,0,130,542,-156)==0); /* Absolute row unaffected. */
+}
 static void clamped_background_interpolation_test(void)
 {
     static uint32_t pixels[796*224],completed[2][796*224];
@@ -2250,6 +2262,7 @@ static void clamped_background_interpolation_test(void)
     /* Two adjacent ARZ camera samples inside the stationary wide viewport.
      * At source Y412 the native top row scrolls from -1 to -3. Quantizing
      * its fractional camera again must not move the stationary background. */
+    for(unsigned limited=0;limited<2;++limited) {
     for(unsigned f=0;f<2;++f) {
         PresentationFrame *p=&s_present[f];memset(&p->render,0,sizeof p->render);
         memset(&p->scene,0,sizeof p->scene);memset(&p->party,0,sizeof p->party);
@@ -2258,8 +2271,10 @@ static void clamped_background_interpolation_test(void)
         p->image=completed[f];p->capacity=796*224;
         S2RenderContext *r=&p->render;GVDP *v=&r->video_frame;
         r->frame_level=1;r->frame_zone=15;r->width=796;r->stage_width=2048;
-        r->frame_fg_x=r->camera=f?31:19;r->frame_bg_y=412;r->left=0;
-        r->frame_bg_x[0]=r->frame_fg_x*281*256;
+        r->frame_fg_x=r->camera=limited?(f?182:174):(f?31:19);
+        r->frame_bg_y=limited?600:412;r->left=0;
+        r->frame_arz_bg_x=r->frame_fg_x*281*256;
+        r->frame_bg_x[0]=limited?(f?198:182)*65536:r->frame_arz_bg_x;
         v->reg[1]=64;v->reg[2]=0x30;v->reg[4]=7;v->reg[5]=0x7C;
         v->reg[12]=1;v->reg[13]=0x3F;v->reg[16]=1;
         v->cram[1]=0xE;v->cram[2]=0xE00;
@@ -2269,14 +2284,16 @@ static void clamped_background_interpolation_test(void)
         for(unsigned n=0;n<4;++n){word(r->world_frame,0x9008+n*2,1);word(r->world_frame,0x9010+n*2,2);}
         for(unsigned y=0;y<224;++y){
             memcpy(p->cram[y],v->cram,sizeof v->cram);
-            p->hscroll[y][0]=(uint16_t)-r->camera;p->hscroll[y][1]=(uint16_t)(f?-3:-1);
-            p->vscroll[y][0]=0;p->vscroll[y][1]=412;
+            p->hscroll[y][0]=(uint16_t)-r->camera;
+            p->hscroll[y][1]=(uint16_t)(limited?(f?-198:-182):(f?-3:-1));
+            p->vscroll[y][0]=0;p->vscroll[y][1]=(uint16_t)r->frame_bg_y;
         }
     }
     s_present_front=1;
     for(unsigned n=1;n<8;++n) {
         CHECK(interpolate(n/8.0,pixels,796,224));
         CHECK(pixels[127]==0xFFFF0000 && pixels[128]==0xFF0000FF);
+    }
     }
     /* The fixture buffers are static; ordinary capture owns heap buffers. */
     for(unsigned f=0;f<2;++f){s_present[f].image=NULL;s_present[f].capacity=0;}
@@ -3150,6 +3167,7 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     clamped_background_interpolation_test();
+    arz_background_stream_limit_test();
     native_interpolation_test();
     scene_scroll_phase_test();
     half_pipe_width_test();
