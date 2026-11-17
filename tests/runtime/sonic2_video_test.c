@@ -580,6 +580,13 @@ static void ending_plane_preview_test(void)
 static void ending_scenery_birth_test(void)
 {
     clear_guest();g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;
+    word(g_ram,0xB008,512);g_ram[0xB2C0]=0xCC;g_ram[0xB2E4]=2;
+    g_ram[0xB2E5]=2;CHECK(!ending_parked_player(0xB000));
+    g_ram[0xB2E5]=4;CHECK(ending_parked_player(0xB000));
+    CHECK(!ending_parked_player(0xB040));
+    word(g_ram,0xB00C,1);CHECK(!ending_parked_player(0xB000));
+    word(g_ram,0xB00C,0);word(g_ram,0xF750,2);CHECK(!ending_parked_player(0xB000));
+    clear_guest();g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;
     g_ram[0xB124]=14;g_ram[0xB134]=255;word(g_ram,0xB130,4);
     word(g_ram,0xB132,2857);word(g_ram,0xB13C,0xFF4F);
     write32(0xF636,0x09E3488Eu);

@@ -2056,6 +2056,17 @@ static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
         add_mapping(dst,keys,0xFFF40000u,0x2FA58,6,0x2400,4,x-44,y+13,0,0);
     }
 }
+static int ending_parked_player(unsigned o)
+{
+    if(o!=0xB000 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
+       ram16(0xF750)==2 || ram16(o+8)!=512 || ram16(o+12)!=0)return 0;
+    /* sub_A58C parks the ordinary player outside H40 while the native
+     * ending picture owns Sonic/Tails. That staging pose is not scenery. */
+    for(unsigned p=0xB140;p<0xD000;p+=64)
+        if(g_ram[p]==0xCC && g_ram[p+0x24]==2 &&
+           g_ram[p+0x25]>=4 && g_ram[p+0x25]<=10)return 1;
+    return 0;
+}
 static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,uint32_t *keys)
 {
     dst->count=0;if(!read_only){s_visible_count=0;++s_scene_tick;}
@@ -2142,6 +2153,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
             unsigned o=ram16(queue+k);if(o<0xB000 || o>=0xD400 || !g_ram[o])continue;
             if(pylon && o==0xB340)continue;
             unsigned flags=g_ram[o+1],multi=flags&64,space=flags&12;
+            if(ending_parked_player(o))flags|=0x8000;
             if(g_ram[o]==0x3A && g_ram[o+0x1A]<=2 && custom_result_name())continue;
             if (s2_runtime_knuckles_item(o)) flags|=0x100;
             if (s2_runtime_amy_item(o)) flags|=0x2000;
