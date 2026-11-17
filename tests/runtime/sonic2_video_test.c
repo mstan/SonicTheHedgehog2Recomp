@@ -2295,6 +2295,24 @@ static void clamped_background_interpolation_test(void)
         CHECK(pixels[127]==0xFFFF0000 && pixels[128]==0xFF0000FF);
     }
     }
+    /* A vertical camera tick moves an authored parallax boundary through
+     * screen row15. Interpolating that screen row's two different bands
+     * invents an intermediate horizontal offset (a one-row seam). Follow
+     * the same background world row at both endpoints instead. */
+    for(unsigned f=0;f<2;++f) {
+        PresentationFrame *p=&s_present[f];S2RenderContext *r=&p->render;
+        r->frame_fg_x=r->camera=500;r->left=262;r->frame_bg_y=416+(int)f;
+        r->frame_arz_bg_x=500*281*256;r->frame_bg_x[0]=r->frame_arz_bg_x;
+        for(unsigned y=0;y<224;++y) {
+            p->hscroll[y][0]=(uint16_t)-500;
+            p->hscroll[y][1]=(uint16_t)source_background_scroll(r,500,(int)y,r->frame_bg_y+(int)y);
+            p->vscroll[y][1]=(uint16_t)r->frame_bg_y;
+        }
+    }
+    CHECK(interpolate(.25,pixels,796,224));
+    CHECK(pixels[15*796+100]==0xFFFF0000);
+    CHECK(interpolate(.75,pixels,796,224));
+    CHECK(pixels[15*796+100]==0xFF0000FF);
     /* The fixture buffers are static; ordinary capture owns heap buffers. */
     for(unsigned f=0;f<2;++f){s_present[f].image=NULL;s_present[f].capacity=0;}
     presentation_configure(0);CHECK(configure("off"));
