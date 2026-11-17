@@ -265,6 +265,7 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x1B248: case 0x1CCA6: case 0x1DAAC:
     case 0x40DEA: case 0x40F22: case 0x40F62: case 0x40F9A:
     case 0x157C4:
+    case 0x41C3A: /* debug-spawned objects have not initialized their mappings */
     case 0x1DE4A: case 0x1DE88:
     case 0x4F64:
     case 0x1F384: /* scoped Knuckles Special Stage checkpoint ring return */

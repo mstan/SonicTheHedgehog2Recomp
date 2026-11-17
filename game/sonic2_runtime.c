@@ -1121,6 +1121,18 @@ int s2_runtime_hook(uint32_t pc)
         if(address) g_cpu.A[0]=address;
         return 0;
     }
+    if (pc==0x41C3A) {
+        /* Debug_SpawnObject copies the cursor's on-screen flag before the
+         * new object has mappings. While the player is dead, RunObjects
+         * dispatches display-only objects and would interpret a null mapping
+         * as sprite data, overflowing the sprite table into global RAM.
+         * Match the disassembly's fixBugs guard: initialization must publish
+         * the first visible sprite. Preserve the cursor and copied status. */
+        unsigned spawned=g_cpu.A[1]&65535u;
+        if(spawned>=0xB000 && spawned<0xD400 && !(spawned&0x3Fu))
+            g_ram[spawned+1]&=0x7F;
+        return 0;
+    }
     if (pc==0x111C) {
         ++input_poll_serial;
         if(s2_party.easy_debug) g_ram[0xFFFA]=1;
