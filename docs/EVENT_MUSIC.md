@@ -55,6 +55,10 @@ Music customization is for local play; disable these sections and Clone
 Driver, then restart before netplay. Cartridge sound effects remain in use.
 Native campaign SRAM and progress are independent of music choices.
 
+Imported Sonic 3 music resumes its current FM notes when sound effects release
+borrowed channels. Sonic 1 and Sonic 2 arrangements retain their own driver
+behavior.
+
 Normal Windows releases include the sound importer. Source builds can run the
 same tools with Python 3, or build the sonic_sound_importer target with
 PyInstaller. ROMs, source audio, samples, private imports and settings are not
