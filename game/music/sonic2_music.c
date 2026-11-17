@@ -59,7 +59,11 @@ static void catalog(void)
  memset(counts,0,sizeof counts);
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++){
   unsigned cue=rows[t].native;
-  if(cue==0x95 || cue==0x90)continue; /* Not used by this campaign. */
+  if(cue==0x90)continue; /* Hidden Palace is not used by this campaign. */
+  if(cue==0x9D){
+   named(t,S2_DONOR_SK,0x2B,"sk","Sonic 3 & Knuckles");
+   continue; /* This jingle offers only Stock and S3&K. */
+  }
   if(rows[t].wai && cue!=0x98 && cue!=0x9B && cue!=0x9C && cue!=0x99){
    if(cue==0x84)named(t,S2_DONOR_WAI,rows[t].wai-0x81,"s2-wai","Simon Wai prototype: Oil Ocean composition");
    else add(t,S2_DONOR_WAI,rows[t].wai-0x81);
@@ -78,11 +82,16 @@ static void catalog(void)
    named(t,S2_DONOR_S3,0x2D,"s3-competition","Sonic 3 & Knuckles: Competition Menu");
    named(t,S2_DONOR_PROTO,0x2D,"s3-proto-competition","Sonic 3 prototype: Competition Menu");
   }
+  if(cue==0x81){
+   named(t,S2_DONOR_PROTO,0x28,"s3-proto-continue","Sonic 3 prototype: Continue");
+   named(t,S2_DONOR_S3,0x28,"s3-continue","Sonic 3: Continue");
+   named(t,S2_DONOR_SK,0x28,"sk-continue","Sonic & Knuckles: Continue");
+  }
   if(rows[t].group!=S2_MUSIC_SHARED && cue!=0x92)continue;
   switch(rows[t].native){
    case 0x98:for(unsigned d=4;d<=6;d++)add(t,d,0x2A);break;
-   case 0x9B:named(t,S2_DONOR_SK,0x27,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
-   case 0x9C:add(t,S2_DONOR_S3,0x28);add(t,S2_DONOR_SK,0x28);break;
+   case 0x9B:add(t,S2_DONOR_PROTO,0x27);named(t,S2_DONOR_SK,0x27,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
+   case 0x9C:add(t,S2_DONOR_PROTO,0x28);add(t,S2_DONOR_S3,0x28);add(t,S2_DONOR_SK,0x28);break;
    case 0x9A:add(t,S2_DONOR_PROTO,0x29);named(t,S2_DONOR_SK,0x29,"sk","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
    case 0x97:
     add(t,S2_DONOR_S1,6);add(t,S2_DONOR_S3,0x2C);add(t,S2_DONOR_SK,0x2C);add(t,S2_DONOR_CD_US,0);
@@ -96,7 +105,13 @@ static void catalog(void)
     named(t,S2_DONOR_S3,0x2E,"s3-miniboss","Sonic 3: Mini-Boss");
     named(t,S2_DONOR_PROTO,0x18,"s3-proto-miniboss","Sonic 3 prototype: Mini-Boss");
     named(t,S2_DONOR_SK,0x18,"sk-miniboss","Sonic & Knuckles: Mini-Boss");add(t,S2_DONOR_CD_US,0);break;
-   case 0x94:add(t,S2_DONOR_S1,12);add(t,S2_DONOR_PROTO,0x30);named(t,S2_DONOR_S3,0x30,"s3","Sonic 3 & Knuckles");break;
+   case 0x94:add(t,S2_DONOR_S1,12);add(t,S2_DONOR_PROTO,0x30);named(t,S2_DONOR_S3,0x30,"s3","Sonic 3 & Knuckles");add(t,S2_DONOR_CD_US,0);break;
+   case 0x95:
+    named(t,S2_DONOR_PROTO,0x15,"s3-proto-sky-sanctuary","Sonic 3 prototype: Sky Sanctuary");
+    named(t,S2_DONOR_S3,0x15,"s3-sky-sanctuary","Sonic 3: Sky Sanctuary");
+    named(t,S2_DONOR_SK,0x15,"sk-sky-sanctuary","Sonic & Knuckles: Sky Sanctuary");
+    named(t,S2_DONOR_PROTO,0x26,"s3-proto-credits","Sonic 3 prototype: Ending / Credits");
+    named(t,S2_DONOR_S3,0x26,"s3-credits","Sonic 3: Credits");break;
    case 0x99:add(t,S2_DONOR_S1,9);for(unsigned d=4;d<=6;d++)add(t,d,0x25);break;
    case 0x9E:add(t,S2_DONOR_S3,0x26);add(t,S2_DONOR_SK,0x33);add(t,S2_DONOR_PROTO,0x26);add(t,S2_DONOR_MAY17,0x26);break;
    case 0x96:
@@ -106,7 +121,7 @@ static void catalog(void)
    case 0x92:add(t,S2_DONOR_PROTO,0x1C);add(t,S2_DONOR_S1,8);named(t,S2_DONOR_SK,0x1C,"sk","Sonic 3 & Knuckles");break;
   }
  }
- for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native!=0x95&&rows[t].native!=0x90)named(t,S2_DONOR_CUSTOM,0,"custom","Custom music");
+ for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native!=0x9D&&rows[t].native!=0x90)named(t,S2_DONOR_CUSTOM,0,"custom","Custom music");
 }
 unsigned s2_music_group(unsigned t){return t<S2_MUSIC_COUNT?rows[t].group:S2_MUSIC_GROUPS;}
 const char *s2_music_section(unsigned t){return t<S2_MUSIC_COUNT?rows[t].section:"";}

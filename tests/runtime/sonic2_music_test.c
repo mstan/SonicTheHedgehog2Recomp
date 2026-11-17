@@ -184,7 +184,21 @@ int main(int argc,char **argv)
    for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)assert(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||s2_theme_choice(t,c)->donor==S2_DONOR_WAI||s2_theme_choice(t,c)->donor==S2_DONOR_AUG||(!strcmp(s2_theme_ids[t],"ehz-2p")&&s2_theme_choice(t,c)->donor==S2_DONOR_SEP14)||(!strcmp(s2_theme_ids[t],"ooz")&&!strcmp(s2_theme_choice(t,c)->id,"s2-aug-oil-ocean")));
  }
  assert(s2_theme_choices(inv)==9);
- assert(!s2_music_available(track("ending"))&&!s2_music_available(track("hidden-palace")));
+ assert(s2_music_available(track("ending"))&&!s2_music_available(track("hidden-palace")));
+ unsigned emerald=track("emerald");
+ assert(s2_theme_choices(emerald)==1);
+ assert(!strcmp(s2_theme_choice(emerald,0)->id,"sk")&&s2_theme_choice(emerald,0)->song==0x2B);
+ assert(!s2_music_pick(emerald,"custom")&&!s2_music_pick(emerald,"s2-aug"));
+ const char *new_tracks[]={"game-over","continue","competition-menu","ending"};
+ const char *new_choices[]={"s3-proto","s3-proto","s3-proto-continue","s3-proto-sky-sanctuary"};
+ const unsigned new_songs[]={0x27,0x28,0x28,0x15};
+ for(unsigned i=0;i<4;i++){
+  unsigned t=track(new_tracks[i]);assert(s2_music_pick(t,new_choices[i]));
+  assert(s2_theme_choice(t,(unsigned)s2_themes[t].choice)->song==new_songs[i]);
+  assert(s2_themes_save());s2_music_load(settings);
+  assert(s2_themes[t].enabled&&!strcmp(s2_theme_choice(t,(unsigned)s2_themes[t].choice)->id,new_choices[i]));
+  assert(s2_music_pick(t,"base"));
+ }
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++){
   const S2MusicChoice *choice=s2_theme_choice(t,c);
   for(unsigned j=0;j<c;j++){
@@ -197,7 +211,7 @@ int main(int argc,char **argv)
  unsigned covered=0;
  for(int g=0;g<3;g++){
   RecompLauncherCModFeature feature;assert(provider->feature_get(provider->ctx,g,&feature));
-  assert(feature.option_count==(g==0?11:g==1?13:4));
+  assert(feature.option_count==(g==0?13:g==1?13:4));
   for(int i=0;i<feature.option_count;i++){
    RecompLauncherCModOption option;assert(provider->feature_option_get(provider->ctx,feature.package_id,feature.id,i,&option));
    unsigned t=track(option.id);assert(s2_music_group(t)==(unsigned)g&&!(covered&(1u<<t)));covered|=1u<<t;
@@ -208,7 +222,7 @@ int main(int argc,char **argv)
    }
   }
  }
- assert(covered==(0x7FFFFFFFu&~((1u<<track("ending"))|(1u<<track("hidden-palace"))|(1u<<track("emerald")))));
+ assert(covered==(0x7FFFFFFFu&~(1u<<track("hidden-palace"))));
  assert(s2_music_pick(inv,"s3-proto-unused"));
  assert(s2_theme_choice(inv,(unsigned)s2_themes[inv].choice)->song==0x2E);
  assert(s2_themes_save());s2_music_load(settings);
@@ -270,7 +284,7 @@ int main(int argc,char **argv)
   for(unsigned t=0;t<S2_MUSIC_COUNT;t++)
    for(unsigned c=0;c<(unsigned)s2_theme_choices(t);c++)if(s2_theme_choice(t,c)->donor==d){
     assert(s2_music_pick(t,s2_theme_choice(t,c)->id));
-    if(d==S2_DONOR_CD_US&&t==S2_MUSIC_BOSS&&!s2_theme_ready(t)){assert(s2_music_pick(t,"base"));break;}
+    if(d==S2_DONOR_CD_US&&(t==S2_MUSIC_BOSS||t==S2_MUSIC_FINAL_BOSS)&&!s2_theme_ready(t)){assert(s2_music_pick(t,"base"));break;}
     ++selected;break;
    }
   if(d==S2_DONOR_S3)assert(s2_music_pick(boss,"s3-miniboss"));
@@ -317,6 +331,14 @@ int main(int argc,char **argv)
    assert(voice==60&&rom[song+54]==0x80);
    for(unsigned i=0;i<4;i++)assert(rom[song+voice+5+i]==0x7F&&rom[song+voice+21+i]==0x0F);
    assert(extra);int16_t pcm[512]={0};s2_cd_theme_request(0x17);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(pcm,256,44100);
+   if(s2_music_active(S2_MUSIC_FINAL_BOSS)){
+    int16_t boss_pcm[512]={0},final_pcm[512]={0};unsigned theme=0;
+    s2_cd_theme_request(0x13);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(boss_pcm,256,44100);
+    s2_cd_theme_request(0x14);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(final_pcm,256,44100);
+    s2_cd_theme_debug(NULL,&theme,NULL);assert(theme==S2_MUSIC_FINAL_BOSS);
+    assert(!memcmp(boss_pcm,final_pcm,sizeof boss_pcm));
+    s2_cd_theme_request(0x17);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);
+   }
    unsigned active=0;s2_cd_theme_debug(&active,NULL,NULL);assert(active);
    uint8_t state[128];S2StateIO save={state,sizeof state,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
    uint64_t position=0;s2_cd_theme_debug(NULL,NULL,&position);
@@ -341,11 +363,15 @@ int main(int argc,char **argv)
   for(unsigned t=0;t<S2_MUSIC_COUNT;t++){
    if(!s2_theme_choices(t))continue;
    unsigned c=(t*5+mix)%(unsigned)s2_theme_choices(t);
-   while(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||(t==S2_MUSIC_BOSS&&s2_theme_choice(t,c)->donor==S2_DONOR_CD_US&&!(s2_cd_donor_available(s2_donor_path(S2_DONOR_CD_US),S2_DONOR_CD_US)&(1u<<t))))c=(c+1)%(unsigned)s2_theme_choices(t);
+   while(s2_theme_choice(t,c)->donor==S2_DONOR_CUSTOM||((t==S2_MUSIC_BOSS||t==S2_MUSIC_FINAL_BOSS)&&s2_theme_choice(t,c)->donor==S2_DONOR_CD_US&&!(s2_cd_donor_available(s2_donor_path(S2_DONOR_CD_US),S2_DONOR_CD_US)&(1u<<t))))c=(c+1)%(unsigned)s2_theme_choices(t);
    assert(s2_music_pick(t,s2_theme_choice(t,c)->id));
    assert(s2_music_active(t));
   }
-  assert(s2_music_prepare(rom,0x400000,l.music_index,l.sfx_index,l.psg_index,l.sample_table,error,sizeof error));
+  if(!s2_music_prepare(rom,0x400000,l.music_index,l.sfx_index,l.psg_index,l.sample_table,error,sizeof error)){
+   fprintf(stderr,"FAIL mixed bank %u: %s\n",mix,error);return 1;
+  }
+  assert(!memcmp(rom+S2_MUSIC_CLONE_SAMPLE_TABLE+(S2_MUSIC_CLONE_SEGA_ID-0x81)*10,
+                 rom+l.sample_table+17*10,10));
   assert(!memcmp(baseline,rom,0x2A0000));
  }
  puts("PASS eight mixed-source banks; native assets preserved");

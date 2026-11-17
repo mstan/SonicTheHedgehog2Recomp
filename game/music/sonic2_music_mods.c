@@ -19,7 +19,7 @@ static int track_at(int group,int index)
     static const char *const campaign[]={"Zones","Menus","Bonus stages","Other music"};
     const char *const *sections=group==S2_MUSIC_SHARED?common:campaign;
     for(unsigned s=0;s<4;s++)for(unsigned t=0;t<S2_MUSIC_COUNT;t++)
-        if(strcmp(s2_theme_ids[t],"emerald")&&s2_music_group(t)==(unsigned)group&&s2_music_available(t)&&!strcmp(sections[s],s2_music_section(t))&&index--==0)return (int)t;
+        if(s2_music_group(t)==(unsigned)group&&s2_music_available(t)&&!strcmp(sections[s],s2_music_section(t))&&index--==0)return (int)t;
     return -1;
 }
 static int group_at(int index)

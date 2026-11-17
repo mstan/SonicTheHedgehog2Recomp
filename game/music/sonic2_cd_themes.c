@@ -24,7 +24,7 @@ static CDClock clock_state;
 static CDClock render_clock,backup_clock;
 static unsigned custom_oneup;
 static const unsigned events[S2_MUSIC_COUNT]={[S2_THEME_LIFE]=0x18,[S2_THEME_OVER]=0x1B,
- [S2_THEME_CONTINUE]=0x1C,[S2_THEME_CLEAR]=0x1A,[S2_THEME_INVINCIBLE]=0x17,[S2_MUSIC_BOSS]=0x13};
+ [S2_THEME_CONTINUE]=0x1C,[S2_THEME_CLEAR]=0x1A,[S2_THEME_INVINCIBLE]=0x17,[S2_MUSIC_BOSS]=0x13,[S2_MUSIC_FINAL_BOSS]=0x14};
 static unsigned le16(const uint8_t *p){return p[0]|((unsigned)p[1]<<8);}
 static uint32_t le32(const uint8_t *p){return le16(p)|((uint32_t)le16(p+2)<<16);}
 static void be32(uint8_t *p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
@@ -86,6 +86,7 @@ static int manifest_read(const char *path,unsigned donor,int wanted,Song *out,ui
         if(!wav(root,hashes[t],wanted==(int)t?out:NULL))return 0;
         found|=1u<<t;
     }
+    if(found&(1u<<S2_MUSIC_BOSS))found|=1u<<S2_MUSIC_FINAL_BOSS;
     if(available)*available=found;
     return 1;
 }
@@ -164,7 +165,10 @@ int s2_cd_theme_build(unsigned t,unsigned donor,const char *manifest,const S3Sou
                       uint8_t *bank,size_t cap,uint32_t *used,char *error,size_t error_size)
 {
     uint32_t dest=used&&*used<=cap?(*used+1)&~1u:0;
-    if(!cd_event(t)||!l||!bank||!used||cap>0x400000u||*used>cap||dest>cap||cap-dest<86||!manifest_read(manifest,donor,(int)t,&songs[t],NULL)){
+    /* Both cartridge boss queues use the same verified CD boss recording.
+     * Reuse existing libraries without a duplicate file or another import. */
+    unsigned source=t==S2_MUSIC_FINAL_BOSS?S2_MUSIC_BOSS:t;
+    if(!cd_event(source)||!l||!bank||!used||cap>0x400000u||*used>cap||dest>cap||cap-dest<86||!manifest_read(manifest,donor,(int)source,&songs[t],NULL)){
         if(error&&error_size)snprintf(error,error_size,"Provide the matching Sonic CD disc with audio tracks");return 0;
     }
     uint8_t *p=bank+dest;memset(p,0,86);p[1]=60;p[2]=7;p[3]=3;p[6]=p[7]=1;
@@ -178,8 +182,8 @@ int s2_cd_theme_build(unsigned t,unsigned donor,const char *manifest,const S3Sou
     /* Fixed Q16 mixer levels, calibrated from the supported US recordings
      * against the existing CD campaign's -24.2 LUFS music reference. No cold
      * analysis or floating-point gain enters playback or snapshots. */
-    songs[t].loop=t==S2_THEME_INVINCIBLE||t==S2_MUSIC_BOSS?0:~0u;
-    songs[t].gain=t==S2_THEME_OVER?23795u:t==S2_THEME_CLEAR?15541u:t==S2_MUSIC_BOSS?19565u:17437u;
+    songs[t].loop=t==S2_THEME_INVINCIBLE||source==S2_MUSIC_BOSS?0:~0u;
+    songs[t].gain=t==S2_THEME_OVER?23795u:t==S2_THEME_CLEAR?15541u:source==S2_MUSIC_BOSS?19565u:17437u;
     be32(bank+l->music_index-0x2A0000+(events[t]-1)*4,0x01000000u|(0x2A0000u+dest));*used=dest+86;
     audio_set_extra_source(mix);return 1;
 }
