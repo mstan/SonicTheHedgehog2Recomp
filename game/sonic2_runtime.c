@@ -232,6 +232,25 @@ static M68KState native_helper(uint32_t pc)
     M68KState result=g_cpu; g_cpu=before; return result;
 }
 static int16_t host_call(uint32_t pc) { return (int16_t)native_helper(pc).D[1]; }
+static int normal_super_edge(unsigned o)
+{
+    return kind(0)!=S2_CHAR_KNUCKLES && kind(0)!=S2_CHAR_SHADOW &&
+        g_ram[o+0x24]==2 && !word(0xFFF0) && !word(0xFFD8) &&
+        (g_ram[o+0x22]&2) && g_ram[o+0x3C] &&
+        !(g_ram[o+0x2A]&1) && !g_ram[0xF7CC] &&
+        (g_ram[0xF605]&0x70) && !(word(0xFFFA) && (g_ram[0xF605]&0x10)) &&
+        !g_ram[0xFE19] && g_ram[0xFFB1]==7 && word(0xFE20)>=50 && g_ram[0xFE1E];
+}
+static void normal_super_transform(void)
+{
+    putword(0xF65C,0);s_transforming=1;native_helper(0x1AB38);s_transforming=0;
+    if(g_ram[0xFE19]) {
+        characters[0].special=0;
+        if(kind(0)==S2_CHAR_TAILS) {
+            g_ram[0xB01C]=2;memcpy(g_ram+0xFEC0,g_ram+0xF760,6);
+        }
+    }
+}
 static uint8_t shadow_angle(int dx,int dy)
 {
     M68KState saved=g_cpu;
@@ -862,9 +881,23 @@ static int update_player(unsigned p, uint32_t entry)
 {
     unsigned object=g_cpu.A[0]&0xFFFF;
     if (inside_player) return 0;
+    if(!p && !word(0xFE08) && word(0xFFFA) &&
+       (g_ram[0xF605]&0x10) && (g_ram[object+0x24]==2 || g_ram[object+0x24]==4)) {
+        /* Apply Obj01_Control/Hurt's entry before an imported controller can
+         * consume B, including Obj02 which has no original cursor entry. */
+        putword(0xFE08,1);g_ram[0xF7CC]=0;return 1;
+    }
     if(!p && word(0xFE08)) {
-        /* The original Debug Mode owns its item mappings and movement. */
-        displayed[p]=0;s2_character_reset(&characters[p],kind(p));return 0;
+        /* The cursor belongs to the leader, independently of its native
+         * character controller. In particular Obj02 has no DebugMode entry.
+         * Run the original cursor once; companions must never advance it. */
+        displayed[p]=0;s2_character_reset(&characters[p],kind(p));
+        native_helper(0x41A78);
+        if(!word(0xFE08) && native_id(0)==2) {
+            putfixed(object+4,0x739E2);putword(object+2,0x7A0);
+            g_ram[object+0x16]=15;g_ram[object+0x17]=9;
+        }
+        return 1;
     }
     int companion=p && !word(0xFFD8);
     int initializing=!g_ram[object+0x24];
@@ -945,6 +978,11 @@ static int update_player(unsigned p, uint32_t entry)
         putword(0xF65C,0); s_transforming=1; native_helper(0x1AB38); s_transforming=0;
         if(g_ram[0xFE19])characters[p].special=0;
     }
+    if(!p && normal_super_edge(object)) {
+        /* A fresh airborne edge owns transformation, never the original
+         * unconditional apex check reached after the first jump. */
+        normal_super_transform();
+    }
     if (imported() && g_ram[object+0x24]==2) {
         S2Motion m=motion(object);
         int moved_early=0;
@@ -980,6 +1018,15 @@ static int update_player(unsigned p, uint32_t entry)
             g_ram[object+0x2A]|=1;
             injected_control=!(object_control&1);
         }
+    }
+    if(p && entry==0x19F50) {
+        /* Obj01's debug entry and B shortcut belong to the leader. Enter
+         * its ordinary state dispatcher directly for a Sonic-based follower
+         * and express B as the equivalent native C jump. Keep the shared
+         * debug globals intact, including across a mid-update frame yield. */
+        entry=0x19F5C;
+        for(unsigned a=0xF602;a<=0xF605;++a)
+            if(g_ram[a]&0x10)g_ram[a]=(g_ram[a]&~0x10)|0x20;
     }
     recomp_call_addr(entry);
     if (p==1 && native_id(p)!=2) {
@@ -1262,6 +1309,13 @@ int s2_runtime_hook(uint32_t pc)
         }
         return 0;
     }
+    if(!active && g_ram[0xF600]==12 && (g_cpu.A[0]&65535)==0xB000) {
+        /* The original Sonic+Tails party keeps its native controller/AI.
+         * The input correctness fix applies there too, without enabling the
+         * expanded-party adapter or changing ordinary world execution. */
+        if(pc==0x1AB38)return !s_transforming;
+        if(pc==0x19F50 && normal_super_edge(0xB000))normal_super_transform();
+    }
     if (!level()) return 0;
     if(pc==0x1FCEA) {switch_extra_planes();return 0;}
     if(pc==0x3AB46 && kind(0)==S2_CHAR_KNUCKLES && knuckles_available()) {
@@ -1434,30 +1488,17 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x1ABA6 || pc==0x1AB38) {
         if (!inside_player) return 0;
         if (actor>0 || word(0xFFD8)) return 1; /* never companions or VS */
-        if (pc==0x1AB38 && kind(0)==S2_CHAR_SHADOW && !s_transforming) return 1;
-        if (pc==0x1AB38 && kind(0)==S2_CHAR_KNUCKLES && !s_transforming) return 1;
-        if (pc==0x1AB38 && kind(0)!=S2_CHAR_SONIC) {
-            if (s_transforming) return 0;
-            if (g_ram[0xFE19] || g_ram[0xFFB1]!=7 || word(0xFE20)<50 || !g_ram[0xFE1E]) return 1;
-            putword(0xF65C,0); /* source cycle starts at the first fade frame */
-            s_transforming=1; recomp_call_addr(pc); s_transforming=0;
-            if (g_ram[0xFE19]) {
-                characters[0].special=0;
-                /* Imported donors have their own $1F transformation script.
-                 * S2 Tails does not: retain his rolling pose, never index it
-                 * as Super Sonic art or his unrelated $1F run animation. */
-                if (kind(0)==S2_CHAR_TAILS) {
-                    g_ram[0xB01C]=2; memcpy(g_ram+0xFEC0,g_ram+0xF760,6);
-                }
-            }
-            return 1;
-        }
+        if (pc==0x1AB38) return !s_transforming;
         return 0; /* native eligibility, power-up, countdown and ring drain */
     }
     if (pc==0x164F4 && !inside_player && kind(0)==S2_CHAR_TAILS && custom_super_palette() &&
         (g_cpu.A[0]&65535)==0xD000 && g_ram[0xD000]==5 && word(0xD03E)==0xB000) {
         displayed_tails=1; return 1;
     }
+    if(pc==0x164F4 && word(0xFE08) && (g_cpu.A[0]&65535)==0xD000 &&
+       g_ram[0xD000]==5 && word(0xD03E)==0xB000)return 1;
+    if (pc==0x164F4 && (g_cpu.A[0]&65535)==0xB000 &&
+        (word(0xFE08)>>8)==2) return 0; /* native debug-object cursor */
     if (pc==0x164F4 && !inside_player) {
         unsigned o=g_cpu.A[0]&65535;
         if (g_ram[o]==8 && g_ram[o+0x2E]==0x47) return 1;
