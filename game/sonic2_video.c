@@ -8,6 +8,7 @@
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_shadow.h"
+#include "sonic2_ending_scenery.h"
 #if GENESIS_HAS_RECOMP_NET
 #include "netplay/genesis_netplay.h"
 #endif
@@ -71,6 +72,7 @@ typedef struct S2RenderContext {
     int frame_fg_y;
     int frame_bg_y;
     int32_t frame_bg_x[2];
+    int32_t frame_arz_bg_x;
     unsigned frame_cloud,frame_htz_shake;
     unsigned frame_zone,frame_act,frame_resize;
     int frame_campaign_view;
@@ -134,6 +136,7 @@ void s2_video_donor_rgb_row(uint32_t *pixels,int width)
 }
 static int s_interpolation_enabled,s_interpolating;
 static double s_interpolation_phase;
+static int interpolation_background_base(int line);
 static void interpolation_reset(void);
 static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_width (s_render->width)
@@ -483,12 +486,26 @@ static int source_background_scroll(const S2RenderContext *r,int camera,int line
 }
 static int background_view_base(const S2RenderContext *r,int native_camera,int view_left,int line,int by,int hs)
 {
+    if(r->frame_zone==15) {
+        static const uint8_t heights[]={176,112,48,96,21,12,14,6,12,31,48,192,240,240,240,240};
+        unsigned row=scroll_segment(by,heights,sizeof heights);
+        if(row<3 || row>=11) {
+            /* ARZ limits its streamed BG camera to16px/tick, independently
+             * of the logical target. A first spindash can temporarily leave
+             * that streamer behind. Full-map drawing uses the uncapped native
+             * target at this view's origin; retain other live scroll offsets. */
+            int target=scroll_floor((int64_t)r->frame_arz_bg_x+
+                                   (int64_t)(view_left-r->frame_fg_x)*281*256,65536);
+            return -hs-scroll_background_x(r,native_camera,0,281*256)+target;
+        }
+    }
     return -hs+source_background_scroll(r,native_camera,line,by)-source_background_scroll(r,view_left,line,by);
 }
 static void capture_background_scroll(S2RenderContext *r)
 {
     r->frame_bg_x[0]=(int32_t)(((uint32_t)ram16(0xEE68)<<16)|ram16(0xEE6A));
     r->frame_bg_x[1]=(int32_t)(((uint32_t)ram16(0xEE70)<<16)|ram16(0xEE72));
+    r->frame_arz_bg_x=(int32_t)(((uint32_t)ram16(0xF672)<<16)|ram16(0xF674));
     r->frame_cloud=ram16(0xA822);r->frame_htz_shake=g_ram[0xEEBC];
 }
 /* The native 2P loader halves pattern indices. An interlace block has
@@ -619,7 +636,8 @@ typedef struct { unsigned asset,id,map,base,tiles;int zone; } NativeObjectArt;
 static const NativeObjectArt s_native_object_art[]={
     {S2_NATIVE_EXPLOSION,0x27,0x21120,0x5A4,68,-1},
     {S2_NATIVE_FLICKY,0x28,0x11E1C,0x594,16,0},
-    {S2_NATIVE_SQUIRREL,0x28,0x11E40,0x580,20,0}
+    {S2_NATIVE_SQUIRREL,0x28,0x11E40,0x580,20,0},
+    {S2_NATIVE_WFZ_CATAPULT,0xC0,0x3C098,0x45C,5,6}
 };
 static const NativeObjectArt *native_asset_binding(unsigned asset)
 {
@@ -1872,6 +1890,27 @@ static void draw_ending_scenery(SceneFrame *dst,uint32_t *keys,unsigned priority
             (p[1]&3)|0x10004,x,(int16_t)ending_word(p,12),0,0);
     }
 }
+static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priority,
+                                 const S2EndingBirth *births,unsigned count,int width)
+{
+    int left=-(width-320)/2,right=left+width;
+    for(unsigned i=0;i<count;++i) {
+        const S2EndingBirth *p=births+i;
+        if(priority!=(p->id==0xCB?6u:2u))continue;
+        int x=p->x-scroll_floor((int64_t)p->vx*p->tick,256);
+        int y=scroll_floor((int64_t)p->y*256-(int64_t)p->vy*p->tick,256);
+        if(x+64<=left || x-64>=right)continue;
+        unsigned frame=p->frame;
+        if(p->id==0xCD)frame=(unsigned)scroll_floor(-(int64_t)p->tick-1,6)&1u;
+        /* Presentation-only scenery is clipped to the added margins. Native
+         * positions, animation, allocation and random sequence stay untouched.
+         * A birth-clock key remains stable as the lookahead distance shrinks. */
+        uint32_t key=0xE0000000u|(((ram16(0xB132)+p->tick)&4095u)<<16)|
+                     (p->id==0xCD?0x8000u:0);
+        add_mapping(dst,keys,key,p->id==0xCB?0x3B32C:0x11E1C,frame,
+                    p->id==0xCB?0x654F:0x594,0x10004,x,y,0,0);
+    }
+}
 static void ending_plane_preview(SceneFrame *dst,uint32_t *keys,int width)
 {
     if(width<=320 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
@@ -1975,12 +2014,30 @@ static void dez_window_preview(SceneFrame *dst,uint32_t *keys,int render_width,i
      * that same frame only in margins until the real child is submitted;
      * allocation alone precedes DisplaySprite by one native frame. */
     if(render_width<=320 || (g_ram[0xF600]&127)!=12 || !gameplay() || native_demo() || presented_competition() ||
-       !g_ram[0xF711] || !g_ram[0xB000] || g_ram[0xB024]>=6 ||
+       (!g_ram[0xF711] && !(g_ram[0xF600]==0x8C && ram16(0xB0BE))) ||
+       !g_ram[0xB000] || g_ram[0xB024]>=6 ||
        s2_video_level_zone()!=0xE00 || g_ram[0xEEDF]>2 || cam>0x224)return;
     for(unsigned o=0xB400;o<0xD000;o+=64)
         if(g_ram[o]==0xAF && scene_read32(0xFF0000u+o+4)==0x3A08C && object_queued(o))return;
     add_mapping(dst,keys,0xFFF60000u,0x3A08C,4,0x378,0x10004,
         0x2C0-cam,0x139-cy,0,0);
+}
+static void dez_eggman_preview(SceneFrame *dst,uint32_t *keys,int width,int cam,int cy)
+{
+    if(width<=320 || (g_ram[0xF600]&127)!=12 || !gameplay() || native_demo() ||
+       presented_competition() || !g_ram[0xF711] || g_ram[0xB024]>=6 ||
+       s2_video_level_zone()!=0xE00 || g_ram[0xEEDF]<2 || g_ram[0xEEDF]>6 ||
+       cam<0x224 || cam>0x440)return;
+    for(unsigned o=0xB400;o<0xD000;o+=64) {
+        if(g_ram[o]!=0xC6 || g_ram[o+0x24]!=2 || scene_read32(0xFF0000u+o+4)!=0x3D0EE)continue;
+        if(g_ram[o+0x25]>2 || g_ram[o+0x1A] || ram16(o+8)!=0x440 || ram16(o+12)!=0x168)return;
+    }
+    /* The original camera hides this waiting pose until the running actor
+     * starts. A wide margin already sees the next room, including before
+     * allocation/PLC. Extend the exact pose there; native pixels and the
+     * proximity/animation/door handlers keep their original ownership. */
+    if(!native_art_ready(S2_NATIVE_ROBOTNIK_UPPER) || !native_art_ready(S2_NATIVE_ROBOTNIK_LOWER))return;
+    add_mapping(dst,keys,0xFFFB0000u,0x3D0EE,0,0,0x30004,0x440-cam,0x168-cy,0,0);
 }
 static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
                         int render_width,int cam,int cy,int read_only)
@@ -2033,6 +2090,17 @@ static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
         add_mapping(dst,keys,0xFFF40000u,0x2FA58,6,0x2400,4,x-44,y+13,0,0);
     }
 }
+static int ending_parked_player(unsigned o)
+{
+    if(o!=0xB000 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
+       ram16(0xF750)==2 || ram16(o+8)!=512 || ram16(o+12)!=0)return 0;
+    /* sub_A58C parks the ordinary player outside H40 while the native
+     * ending picture owns Sonic/Tails. That staging pose is not scenery. */
+    for(unsigned p=0xB140;p<0xD000;p+=64)
+        if(g_ram[p]==0xCC && g_ram[p+0x24]==2 &&
+           g_ram[p+0x25]>=4 && g_ram[p+0x25]<=10)return 1;
+    return 0;
+}
 static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,uint32_t *keys)
 {
     dst->count=0;if(!read_only){s_visible_count=0;++s_scene_tick;}
@@ -2083,11 +2151,31 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     }
     prepare_dez_corpse(dst,keys,render_width,cam,cy,read_only);
     prepare_ending_scenery(render_width,read_only);
+    S2EndingBirth births[256];unsigned birth_count=0;
+    if(render_width>320 && g_ram[0xF600]==0x20 && g_ram[0xB100]==0xCA &&
+       ram16(0xF750)<=4 && !(ram16(0xF750)&1)) {
+        birth_count=s2_ending_births(g_ram,(unsigned)(render_width-320)/2+64,births,256);
+        /* CB/CD initialization intentionally does not submit DisplaySprite.
+         * Bridge that one tick until their native first visible update. */
+        if(g_ram[0xB134])for(unsigned o=0xB140;o<0xD000 && birth_count<256;o+=64) {
+            const uint8_t *p=g_ram+o;
+            if(object_queued(o) || p[0x24]!=2)continue;
+            int cloud=p[0]==0xCB && ram16(o+8)==336 && !ram16(o+0x10);
+            int bird=p[0]==0xCD && !p[0x25] && ram16(o+0x3C)==192;
+            if(!cloud && !bird)continue;
+            births[birth_count++]=(S2EndingBirth){0,o,p[0],p[0x1A],
+                (int16_t)ram16(o+8),(int16_t)ram16(o+12),
+                cloud?(int16_t)ram16(o+0x12):(int16_t)ram16(o+0x10),
+                cloud?0:(int16_t)ram16(o+0x12)};
+        }
+    }
     for(unsigned pri=0;pri<8;++pri) {
         if(pri==3 && !vs)ending_plane_preview(dst,keys,render_width);
         if(pri==5 && !vs)wfz_robotnik_preview(dst,keys,render_width,cam,cy,read_only);
+        if(pri==5 && !vs)dez_eggman_preview(dst,keys,render_width,cam,cy);
         draw_dez_corpse(dst,keys,pri,render_width,cam,cy,read_only);
         draw_ending_scenery(dst,keys,pri,render_width,read_only);
+        ending_birth_preview(dst,keys,pri,births,birth_count,render_width);
         if(!vs)parked_boss(dst,keys,pri,render_width,cam,cy,read_only);
         if(pri==6 && !vs)dez_window_preview(dst,keys,render_width,cam,cy);
         /* Obj7C is a screen-space foreground strip, not a centered menu.
@@ -2100,6 +2188,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
             unsigned o=ram16(queue+k);if(o<0xB000 || o>=0xD400 || !g_ram[o])continue;
             if(pylon && o==0xB340)continue;
             unsigned flags=g_ram[o+1],multi=flags&64,space=flags&12;
+            if(ending_parked_player(o))flags|=0x8000;
             if(g_ram[o]==0x3A && g_ram[o+0x1A]<=2 && custom_result_name())continue;
             if (s2_runtime_knuckles_item(o)) flags|=0x100;
             if (s2_runtime_amy_item(o)) flags|=0x2000;
@@ -2353,7 +2442,10 @@ int s2_video_hook(uint32_t pc)
             const NativeObjectArt *binding=NULL;
             if(o>=0xB000 && o<0xD800 && !(o&63))
                 binding=native_object_binding(o,scene_read32(0xFF0000u+o+4),ram16(o+2));
-            if(binding && tile>=binding->base && tile<binding->base+binding->tiles)
+            /* The catapult's early visibility belongs only to wide host
+             * scenery. Keep native SAT/VRAM and the H40 load timing intact. */
+            if(binding && binding->asset!=S2_NATIVE_WFZ_CATAPULT &&
+               tile>=binding->base && tile<binding->base+binding->tiles)
                 g_ram[next-6]|=0xC0;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
             if (amy_item_tile(tile) && s2_runtime_amy_item(o)) g_ram[next-6]|=0x80;
@@ -2884,8 +2976,10 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * only its camera-dependent term to this viewport's foreground origin.
      * A clamped wide camera then keeps its own parallax instead of inheriting
      * the moving native viewport's foreground-speed translation. */
-    if(bg_world && width>nw)
+    if(bg_world && width>nw) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
+        if(s_interpolating)bg_base=interpolation_background_base(line);
+    }
     int background_x=bg_base;
     if(bg_width>0) {
         background_x%=bg_width;
@@ -3197,6 +3291,27 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
 }
 static int lerp_position(int a,int b)
 { return a+(int)((b-a)*s_interpolation_phase+((b>=a)?0.5:-0.5)); }
+static int captured_background_base(const PresentationFrame *f,int line)
+{
+    const S2RenderContext *r=&f->render;
+    int row=r->frame_zone==0 && line>=222?221:line;
+    int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
+    int by=unwrap(f->vscroll[line][1],r->frame_bg_y)+line;
+    if(r->frame_campaign_view)
+        by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
+    if(r->frame_zone==7 && !r->frame_htz_shake)by=(int)((unsigned)by&255u);
+    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]);
+}
+static int interpolation_background_base(int line)
+{
+    /* Remove native camera motion at each completed endpoint before
+     * interpolating. Re-evaluating quantized parallax at a fractional camera
+     * can disagree by a pixel with interpolated native scroll words, making
+     * a clamped, stationary wide background shake between identical frames.
+     * Endpoint rebasing also retains native animation and event offsets. */
+    return lerp_position(captured_background_base(s_lerp_old,line),
+                         captured_background_base(s_lerp_new,line));
+}
 static void interpolation_sprite(unsigned index,int *x,int *y)
 {
     const SceneFrame *a=&s_lerp_old->scene,*b=&s_lerp_new->scene;
@@ -3280,6 +3395,8 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     fractional.frame_bg_y=lerp_position(a->render.frame_bg_y,b->render.frame_bg_y);
     for(unsigned i=0;i<2;++i)
         fractional.frame_bg_x[i]=a->render.frame_bg_x[i]+(int32_t)((b->render.frame_bg_x[i]-(int64_t)a->render.frame_bg_x[i])*phase);
+    fractional.frame_arz_bg_x=a->render.frame_arz_bg_x+
+        (int32_t)((b->render.frame_arz_bg_x-(int64_t)a->render.frame_arz_bg_x)*phase);
     S2RenderContext *saved_render=s_render;
     const SceneFrame *saved_display=s_display;
     s_render=&fractional;s_display=&b->scene;s_interpolating=1;

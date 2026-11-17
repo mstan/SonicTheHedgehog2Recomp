@@ -56,6 +56,28 @@ def assemble(source, assembler, p2bin, out):
             assert text.count(marker) == 1, 'Upstream song variables changed'
             text = text.replace(marker, '\tv_native_speedup: ds.b 1\n\tv_native_speedup_timeout: ds.b 1\n\tv_foreign_s3: ds.b 1\n\n' + marker, 1)
         if name == 'Sound/Engine/Sonic 2 Clone Driver v2.asm':
+            # Imported S3 music keeps advancing while an SFX borrows FM.
+            # Returning that channel must restore its current pitch/key,
+            # rather than force a rest until the next sequence note. The
+            # immutable song header already selects the S3 driver contract;
+            # retain the legacy return behavior for S1/S2 arrangements.
+            marker = ("\tbclr\t#2,SMPS_Track.PlaybackControl(a5)\t; Clear 'SFX overriding' bit\n"
+                      "\tbset\t#1,SMPS_Track.PlaybackControl(a5)\t; Set 'track at rest' bit\n"
+                      '\tbsr.w\tSetVoice\n')
+            assert text.count(marker) == 1, 'Upstream FM SFX return changed'
+            text = text.replace(marker, '''\tbclr #2,SMPS_Track.PlaybackControl(a5)
+\ttst.b SMPS_RAM.variables.v_foreign_s3(a6)
+\tbeq.s .legacyFMReturn
+\tbsr.w SetVoice
+\tbtst #1,SMPS_Track.PlaybackControl(a5)
+\tbne.s .novoiceupd
+\tbsr.w FMPrepareNote
+\tbsr.w FMNoteOn
+\tbra.s .novoiceupd
+.legacyFMReturn:
+\tbset #1,SMPS_Track.PlaybackControl(a5)
+\tbsr.w SetVoice
+''', 1)
             # S3 accelerates music with extra music updates, preserving its
             # ordinary tempo accumulator. An alternate tempo of 1 is much
             # too fast for slower songs. The original countdown runs after
@@ -299,7 +321,7 @@ Clone_NativeSpeedupTick:
     wrapper = Path(__file__).with_name('driver.asm')
     for command, log in [([str(assembler), '-xx', '-n', '-q', '-A', '-L', '-U', '-i', str(inputs), '-o', str(out/'driver.p'), '-olist', str(out/'driver.lst'), '-E', str(out/'driver-errors.log'), str(wrapper)], 'assembler.log'), ([str(p2bin), '-p=FF', str(out/'driver.p'), str(out/'image.bin')], 'p2bin.log')]:
         with (out/log).open('w') as stream:
-            subprocess.run(command, cwd=out, stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=120)
+            subprocess.run(command, cwd=out, stdout=stream, stderr=subprocess.STDOUT, check=True)
     raw = (out/'image.bin').read_bytes()
     assert LOAD_ADDRESS + HEADER.size <= len(raw) < LOAD_ADDRESS + 0x20000
     assert raw[:LOAD_ADDRESS] == b'\xff' * LOAD_ADDRESS

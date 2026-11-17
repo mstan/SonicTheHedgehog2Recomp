@@ -16,18 +16,25 @@ Shared Themes separates 1-UP, Game Over, Continue, Act Clear, Invincibility,
 Drowning, bosses, title, credits, Super Sonic, and the Chaos Emerald
 jingle. Applicable rows also offer Sonic 1, Sonic 3, Sonic & Knuckles, and
 November 1993 Sonic 3 prototype arrangements. Sonic CD's US soundtrack is
-available for Game Over, Act Clear, Invincibility, and Boss. Re-import an older
-CD library to add Boss; the existing recordings are retained. Super Sonic and
+available for Game Over, Act Clear, Invincibility, Boss and Final Boss. Both boss
+selectors share the same recording. Re-import an older three-event CD library
+to add Boss; the existing recordings are retained. Super Sonic and
 Invincibility remain separate choices.
 
 September 14, 1992 prototype choices are available for Credits and Emerald
 Hill 2-Player. Credits also offers the Sonic 3C May 17, 1994 prototype
 arrangement, using that exact donor revision. Options also offers Data Select
 and Competition Menu music.
+Ending offers Sky Sanctuary from Sonic 3's prototype, Sonic 3 and Sonic &
+Knuckles, plus prototype Ending / Credits and Sonic 3 Credits. The competition
+menu/results also offers all three Sonic 3 Continue arrangements. Game Over
+and Continue include their Sonic 3 prototype versions. Chaos Emerald offers
+exactly Stock and Sonic 3 & Knuckles.
+
 Unused campaign selectors are omitted in fresh settings. Explicitly saved
 older selections remain usable.
 
-Every used track also offers **Custom music**. Import WAV, Genesis VGM or
+Every used track except Chaos Emerald also offers **Custom music**. Import WAV, Genesis VGM or
 Sonic 1 68K SMPS BIN/ASM, and audition the configured soundtrack in
 **Options > Music Player**. See [Custom music and Music Player](CUSTOM_MUSIC.md)
 for formats, channel isolation and playback controls.
@@ -47,6 +54,10 @@ Replacements enable Clone Driver automatically. Restart to apply changes.
 Music customization is for local play; disable these sections and Clone
 Driver, then restart before netplay. Cartridge sound effects remain in use.
 Native campaign SRAM and progress are independent of music choices.
+
+Imported Sonic 3 music resumes its current FM notes when sound effects release
+borrowed channels. Sonic 1 and Sonic 2 arrangements retain their own driver
+behavior.
 
 Normal Windows releases include the sound importer. Source builds can run the
 same tools with Python 3, or build the sonic_sound_importer target with

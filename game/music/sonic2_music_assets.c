@@ -28,7 +28,10 @@ int s2_music_prepare(uint8_t *rom,size_t size,uint32_t music,uint32_t sfx,uint32
  memcpy(rom+pcm.sample_table+(pcm.sega_id-0x81)*10,rom+samples+17*10,10);
  s2_cd_themes_reset();
  S3SoundMusicCache cache={0};uint8_t *inputs[S2_ROM_DONOR_COUNT]={0};
- size_t sizes[S2_ROM_DONOR_COUNT]={0};uint32_t used=sizeof s2_music_clone_program;unsigned next=70;int ok=1;
+ /* Only the seventeen native drum notes and the separate SEGA slot are
+  * occupied. Converted donors remap every drum, so the intervening template
+  * slots need not be reserved and can hold independently selected tracks. */
+ size_t sizes[S2_ROM_DONOR_COUNT]={0};uint32_t used=sizeof s2_music_clone_program;unsigned next=17;int ok=1;
  for(unsigned t=0;t<S2_MUSIC_COUNT&&ok;t++)if(s2_music_active(t)){
   const S2MusicChoice *choice=s2_theme_choice(t,(unsigned)s2_themes[t].choice);
   unsigned d=choice->donor,target=s2_music_target(t);

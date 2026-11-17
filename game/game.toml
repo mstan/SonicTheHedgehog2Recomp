@@ -231,6 +231,9 @@ kind = "game_hook"
 addr = 0x15F9C # RunObjects: track native solid slot generations
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x41C3A # Debug_SpawnObject: defer display until the new object initializes
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x18888 # Obj41: native spring once, collision/launch for extra players
 kind = "game_hook"
 [[widescreen_site]]

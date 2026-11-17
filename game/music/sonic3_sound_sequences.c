@@ -352,6 +352,9 @@ static unsigned append_sample(uint8_t *bank,size_t cap,uint32_t *used,
         if(d[0]!=flags||d[1]!=rate||start<BASE||end<start||end-BASE>*used||end-start!=length)continue;
         if(!memcmp(bank+start-BASE,bytes,length))return i+0x81;
     }
+    /* The original logo sample keeps its fixed command ID even when callers
+     * allocate donor notes into the unused slots below it. */
+    if(*next==l->sega_id-0x81u)++*next;
     if(*next>=l->sample_count||*next>=126||*used>cap||length>cap-*used)return 0;
     uint8_t *d=bank+l->sample_table-BASE+(*next)*10;memset(d,0,10);d[0]=(uint8_t)flags;d[1]=(uint8_t)rate;
     write32(d+2,BASE+*used);memcpy(bank+*used,bytes,length);*used+=(uint32_t)length;write32(d+6,BASE+*used);
