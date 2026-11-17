@@ -8,6 +8,7 @@
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_shadow.h"
+#include "sonic2_ending_scenery.h"
 #if GENESIS_HAS_RECOMP_NET
 #include "netplay/genesis_netplay.h"
 #endif
@@ -1873,6 +1874,27 @@ static void draw_ending_scenery(SceneFrame *dst,uint32_t *keys,unsigned priority
             (p[1]&3)|0x10004,x,(int16_t)ending_word(p,12),0,0);
     }
 }
+static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priority,
+                                 const S2EndingBirth *births,unsigned count,int width)
+{
+    int left=-(width-320)/2,right=left+width;
+    for(unsigned i=0;i<count;++i) {
+        const S2EndingBirth *p=births+i;
+        if(priority!=(p->id==0xCB?6u:2u))continue;
+        int x=p->x-scroll_floor((int64_t)p->vx*p->tick,256);
+        int y=scroll_floor((int64_t)p->y*256-(int64_t)p->vy*p->tick,256);
+        if(x+64<=left || x-64>=right)continue;
+        unsigned frame=p->frame;
+        if(p->id==0xCD)frame=(unsigned)scroll_floor(-(int64_t)p->tick-1,6)&1u;
+        /* Presentation-only scenery is clipped to the added margins. Native
+         * positions, animation, allocation and random sequence stay untouched.
+         * A birth-clock key remains stable as the lookahead distance shrinks. */
+        uint32_t key=0xE0000000u|(((ram16(0xB132)+p->tick)&4095u)<<16)|
+                     (p->id==0xCD?0x8000u:0);
+        add_mapping(dst,keys,key,p->id==0xCB?0x3B32C:0x11E1C,frame,
+                    p->id==0xCB?0x654F:0x594,0x10004,x,y,0,0);
+    }
+}
 static void ending_plane_preview(SceneFrame *dst,uint32_t *keys,int width)
 {
     if(width<=320 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
@@ -2084,11 +2106,30 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     }
     prepare_dez_corpse(dst,keys,render_width,cam,cy,read_only);
     prepare_ending_scenery(render_width,read_only);
+    S2EndingBirth births[256];unsigned birth_count=0;
+    if(render_width>320 && g_ram[0xF600]==0x20 && g_ram[0xB100]==0xCA &&
+       ram16(0xF750)<=4 && !(ram16(0xF750)&1)) {
+        birth_count=s2_ending_births(g_ram,(unsigned)(render_width-320)/2+64,births,256);
+        /* CB/CD initialization intentionally does not submit DisplaySprite.
+         * Bridge that one tick until their native first visible update. */
+        if(g_ram[0xB134])for(unsigned o=0xB140;o<0xD000 && birth_count<256;o+=64) {
+            const uint8_t *p=g_ram+o;
+            if(object_queued(o) || p[0x24]!=2)continue;
+            int cloud=p[0]==0xCB && ram16(o+8)==336 && !ram16(o+0x10);
+            int bird=p[0]==0xCD && !p[0x25] && ram16(o+0x3C)==192;
+            if(!cloud && !bird)continue;
+            births[birth_count++]=(S2EndingBirth){0,o,p[0],p[0x1A],
+                (int16_t)ram16(o+8),(int16_t)ram16(o+12),
+                cloud?(int16_t)ram16(o+0x12):(int16_t)ram16(o+0x10),
+                cloud?0:(int16_t)ram16(o+0x12)};
+        }
+    }
     for(unsigned pri=0;pri<8;++pri) {
         if(pri==3 && !vs)ending_plane_preview(dst,keys,render_width);
         if(pri==5 && !vs)wfz_robotnik_preview(dst,keys,render_width,cam,cy,read_only);
         draw_dez_corpse(dst,keys,pri,render_width,cam,cy,read_only);
         draw_ending_scenery(dst,keys,pri,render_width,read_only);
+        ending_birth_preview(dst,keys,pri,births,birth_count,render_width);
         if(!vs)parked_boss(dst,keys,pri,render_width,cam,cy,read_only);
         if(pri==6 && !vs)dez_window_preview(dst,keys,render_width,cam,cy);
         /* Obj7C is a screen-space foreground strip, not a centered menu.

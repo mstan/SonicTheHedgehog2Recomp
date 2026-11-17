@@ -577,6 +577,45 @@ static void ending_plane_preview_test(void)
     word(g_ram,0xB13C,8);g_ram[0xB124]=12;capture_objects_into(&scene,796,0,NULL);CHECK(!scene.count);
     memcpy(g_rom+0x3AFF2,map,sizeof map);s_display=NULL;CHECK(configure("off"));clear_guest();
 }
+static void ending_scenery_birth_test(void)
+{
+    clear_guest();g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;
+    g_ram[0xB124]=14;g_ram[0xB134]=255;word(g_ram,0xB130,4);
+    word(g_ram,0xB132,2857);word(g_ram,0xB13C,0xFF4F);
+    write32(0xF636,0x09E3488Eu);
+    const unsigned clouds[]={0xB140,0xB180,0xB200,0xB240,0xB280,0xB300,0xB340,0xB380,0xB3C0};
+    for(unsigned i=0;i<sizeof clouds/sizeof *clouds;++i) {
+        g_ram[clouds[i]]=0xCB;g_ram[clouds[i]+0x24]=4;
+    }
+    g_ram[0xB2C0]=0xCC;g_ram[0xB2E4]=2;g_ram[0xB2E5]=2;
+    g_ram[0xB2F5]=20;word(g_ram,0xB2FC,1152);
+    static uint8_t before[65536];memcpy(before,g_ram,sizeof before);
+    S2EndingBirth births[16],again[16];
+    unsigned n=s2_ending_births(g_ram,5,births,16);
+    /* Native ending observations: the bird initializes on the next tick,
+     * then a cloud uses an earlier free slot four ticks later. */
+    CHECK(n==2 && births[0].tick==1 && births[0].slot==0xB400);
+    CHECK(births[0].id==0xCD && births[0].x==-73 && births[0].y==130);
+    CHECK(births[1].tick==5 && births[1].slot==0xB1C0 && births[1].id==0xCB);
+    CHECK(births[1].x==336 && births[1].y==91 && births[1].frame==0);
+    CHECK(!memcmp(before,g_ram,sizeof before));
+    CHECK(s2_ending_births(g_ram,5,again,16)==n);
+    CHECK(!memcmp(births,again,n*sizeof *births));
+    CHECK(s2_ending_births(g_ram,5,again,1)==1);
+    /* Both bird frames and the cloud use a one-piece map in this fixture. */
+    word(g_rom,0x11E1C,4);word(g_rom,0x11E1E,4);word(g_rom,0x11E20,1);
+    memset(g_rom+0x11E22,0,8);
+    word(g_rom,0x3B32C,6);word(g_rom,0x3B332,1);memset(g_rom+0x3B334,0,8);
+    static SceneFrame scene;scene.count=0;
+    ending_birth_preview(&scene,NULL,2,births,n,796);
+    CHECK(scene.count==1 && scene.sprites[0].x==-74 && scene.sprites[0].y==130);
+    CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
+    scene.count=0;ending_birth_preview(&scene,NULL,6,births,n,796);
+    CHECK(scene.count==1 && scene.sprites[0].x==351 && scene.sprites[0].y==91);
+    CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
+    g_ram[0xB124]=16;CHECK(!s2_ending_births(g_ram,5,again,16));
+    g_ram[0xB124]=14;g_ram[0xF600]=12;CHECK(!s2_ending_births(g_ram,5,again,16));
+}
 static void ending_scenery_retirement_test(void)
 {
     /* Exact REV01 cloud and Animal2 mapping bytes, including both bird poses. */
@@ -3092,6 +3131,7 @@ int main(void)
     dormant_wfz_laser_test();
     dez_corpse_presentation_test();
     ending_plane_preview_test();
+    ending_scenery_birth_test();
     ending_scenery_retirement_test();
     title_card_world_margin_test();
     htz_background_domain_test();
