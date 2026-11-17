@@ -399,6 +399,34 @@ static void dormant_dez_margin_test(void)
     memcpy(g_rom+0x40A9A,hud,sizeof hud);s_display=NULL;
     CHECK(configure("off"));clear_guest();
 }
+static void dez_eggman_preview_test(void)
+{
+    clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    word(g_ram,0xFE10,0xE00);g_ram[0xEEDF]=2;
+    NativeSpriteArt upper=s_native_sprite_art[S2_NATIVE_ROBOTNIK_UPPER];
+    NativeSpriteArt lower=s_native_sprite_art[S2_NATIVE_ROBOTNIK_LOWER];
+    s_native_sprite_art[S2_NATIVE_ROBOTNIK_UPPER].ready=1;
+    s_native_sprite_art[S2_NATIVE_ROBOTNIK_LOWER].ready=1;
+    uint8_t map[12];memcpy(map,g_rom+0x3D0EE,12);
+    word(g_rom,0x3D0EE,2);word(g_rom,0x3D0F0,1);
+    memset(g_rom+0x3D0F2,0,8);word(g_rom,0x3D0F4,0x500);
+    static uint8_t before[65536];memcpy(before,g_ram,sizeof before);
+    static SceneFrame scene;scene.count=0;dez_eggman_preview(&scene,NULL,796,548,224);
+    CHECK(scene.count==1 && (scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
+    CHECK(scene.sprites[0].x==540 && scene.sprites[0].y==136);
+    CHECK(!memcmp(before,g_ram,sizeof before));
+    /* Allocation is not a handoff; the native waiting actor still clips to
+     * H40. The margin pose retires when its native proximity routine starts. */
+    g_ram[0xB400]=0xC6;g_ram[0xB424]=2;g_ram[0xB425]=2;
+    glue_poke32(0xFFB404,0x3D0EE);word(g_ram,0xB408,0x440);word(g_ram,0xB40C,0x168);
+    scene.count=0;dez_eggman_preview(&scene,NULL,796,548,224);CHECK(scene.count==1);
+    g_ram[0xB425]=4;scene.count=0;dez_eggman_preview(&scene,NULL,796,548,224);CHECK(!scene.count);
+    g_ram[0xB425]=2;dez_eggman_preview(&scene,NULL,320,548,224);CHECK(!scene.count);
+    g_ram[0xEEDF]=0;dez_eggman_preview(&scene,NULL,796,548,224);CHECK(!scene.count);
+    memcpy(g_rom+0x3D0EE,map,12);
+    s_native_sprite_art[S2_NATIVE_ROBOTNIK_UPPER]=upper;
+    s_native_sprite_art[S2_NATIVE_ROBOTNIK_LOWER]=lower;clear_guest();
+}
 static void dez_window_preview_test(void)
 {
     static SceneFrame scene;static uint8_t before[65536];
@@ -3151,6 +3179,7 @@ int main(void)
     mapping_vertical_bounds_test();
     mapping_horizontal_bounds_test();
     dormant_dez_margin_test();
+    dez_eggman_preview_test();
     dez_window_preview_test();
     dez_window_native_material_test();
     dormant_wfz_laser_test();

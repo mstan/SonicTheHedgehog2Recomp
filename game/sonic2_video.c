@@ -2007,6 +2007,23 @@ static void dez_window_preview(SceneFrame *dst,uint32_t *keys,int render_width,i
     add_mapping(dst,keys,0xFFF60000u,0x3A08C,4,0x378,0x10004,
         0x2C0-cam,0x139-cy,0,0);
 }
+static void dez_eggman_preview(SceneFrame *dst,uint32_t *keys,int width,int cam,int cy)
+{
+    if(width<=320 || (g_ram[0xF600]&127)!=12 || !gameplay() || native_demo() ||
+       presented_competition() || !g_ram[0xF711] || g_ram[0xB024]>=6 ||
+       s2_video_level_zone()!=0xE00 || g_ram[0xEEDF]<2 || g_ram[0xEEDF]>6 ||
+       cam<0x224 || cam>0x440)return;
+    for(unsigned o=0xB400;o<0xD000;o+=64) {
+        if(g_ram[o]!=0xC6 || g_ram[o+0x24]!=2 || scene_read32(0xFF0000u+o+4)!=0x3D0EE)continue;
+        if(g_ram[o+0x25]>2 || g_ram[o+0x1A] || ram16(o+8)!=0x440 || ram16(o+12)!=0x168)return;
+    }
+    /* The original camera hides this waiting pose until the running actor
+     * starts. A wide margin already sees the next room, including before
+     * allocation/PLC. Extend the exact pose there; native pixels and the
+     * proximity/animation/door handlers keep their original ownership. */
+    if(!native_art_ready(S2_NATIVE_ROBOTNIK_UPPER) || !native_art_ready(S2_NATIVE_ROBOTNIK_LOWER))return;
+    add_mapping(dst,keys,0xFFFB0000u,0x3D0EE,0,0,0x30004,0x440-cam,0x168-cy,0,0);
+}
 static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
                         int render_width,int cam,int cy,int read_only)
 {
@@ -2140,6 +2157,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     for(unsigned pri=0;pri<8;++pri) {
         if(pri==3 && !vs)ending_plane_preview(dst,keys,render_width);
         if(pri==5 && !vs)wfz_robotnik_preview(dst,keys,render_width,cam,cy,read_only);
+        if(pri==5 && !vs)dez_eggman_preview(dst,keys,render_width,cam,cy);
         draw_dez_corpse(dst,keys,pri,render_width,cam,cy,read_only);
         draw_ending_scenery(dst,keys,pri,render_width,read_only);
         ending_birth_preview(dst,keys,pri,births,birth_count,render_width);
