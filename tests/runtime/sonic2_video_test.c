@@ -437,6 +437,10 @@ static void dez_window_preview_test(void)
     capture_objects_into(&scene,796,0,NULL);
     CHECK(scene.count==1 && scene.sprites[0].art==1+S2_NATIVE_DEZ_WINDOW);
     word(g_ram,0xAF00,0);
+    g_ram[0xF600]=0x8C;g_ram[0xF711]=0;word(g_ram,0xB0BE,0xFFFF);
+    capture_objects_into(&scene,796,0,NULL);CHECK(scene.count==1);
+    word(g_ram,0xB0BE,0);capture_objects_into(&scene,796,0,NULL);CHECK(!scene.count);
+    g_ram[0xF600]=12;
     for(unsigned kind=0;kind<5;++kind) {
         g_ram[0xEEDF]=0;g_ram[0xF711]=1;g_ram[0xB024]=2;word(g_ram,0xFE10,0xE00);
         if(kind==0)g_ram[0xEEDF]=4;
@@ -1170,6 +1174,20 @@ static void native_art_rom_readiness_test(void)
     }
     memcpy(g_rom+0x100,header,4);
     native_decode_calls=calls;native_decode_bytes=bytes;native_decode_asset=asset;
+}
+static void wfz_catapult_native_art_test(void)
+{
+    clear_guest();memset(&g_cpu,0,sizeof g_cpu);
+    g_ram[0xF600]=0x8C;g_ram[0xB000]=1;word(g_ram,0xFE10,0x600);
+    g_ram[0xB400]=0xC0;glue_poke32(0xFFB404,0x3C098);word(g_ram,0xB402,0x245C);
+    const NativeObjectArt *binding=native_object_binding(0xB400,0x3C098,0x245C);
+    CHECK(binding && binding->asset==S2_NATIVE_WFZ_CATAPULT && binding->tiles==5);
+    /* Wide host art does not mark or change the original native SAT. */
+    g_cpu.A[0]=0xFFB400;g_cpu.A[1]=0x3C0A2;g_cpu.A[2]=0xFFF808;
+    word(g_ram,0xF804,0x245C);static uint8_t before[65536];memcpy(before,g_ram,sizeof before);
+    CHECK(!s2_video_hook(0x1684E));CHECK(!memcmp(before,g_ram,sizeof before));
+    word(g_ram,0xFE10,0x700);CHECK(!native_object_binding(0xB400,0x3C098,0x245C));
+    clear_guest();
 }
 static void explosion_native_art_test(void)
 {
@@ -3148,6 +3166,7 @@ int main(void)
     slot_presentation_test();
     native_scene_art_test();
     native_art_rom_readiness_test();
+    wfz_catapult_native_art_test();
     explosion_native_art_test();
     ehz_animal_native_art_test();
     ooz_static_fragment_art_test();

@@ -621,7 +621,8 @@ typedef struct { unsigned asset,id,map,base,tiles;int zone; } NativeObjectArt;
 static const NativeObjectArt s_native_object_art[]={
     {S2_NATIVE_EXPLOSION,0x27,0x21120,0x5A4,68,-1},
     {S2_NATIVE_FLICKY,0x28,0x11E1C,0x594,16,0},
-    {S2_NATIVE_SQUIRREL,0x28,0x11E40,0x580,20,0}
+    {S2_NATIVE_SQUIRREL,0x28,0x11E40,0x580,20,0},
+    {S2_NATIVE_WFZ_CATAPULT,0xC0,0x3C098,0x45C,5,6}
 };
 static const NativeObjectArt *native_asset_binding(unsigned asset)
 {
@@ -1998,7 +1999,8 @@ static void dez_window_preview(SceneFrame *dst,uint32_t *keys,int render_width,i
      * that same frame only in margins until the real child is submitted;
      * allocation alone precedes DisplaySprite by one native frame. */
     if(render_width<=320 || (g_ram[0xF600]&127)!=12 || !gameplay() || native_demo() || presented_competition() ||
-       !g_ram[0xF711] || !g_ram[0xB000] || g_ram[0xB024]>=6 ||
+       (!g_ram[0xF711] && !(g_ram[0xF600]==0x8C && ram16(0xB0BE))) ||
+       !g_ram[0xB000] || g_ram[0xB024]>=6 ||
        s2_video_level_zone()!=0xE00 || g_ram[0xEEDF]>2 || cam>0x224)return;
     for(unsigned o=0xB400;o<0xD000;o+=64)
         if(g_ram[o]==0xAF && scene_read32(0xFF0000u+o+4)==0x3A08C && object_queued(o))return;
@@ -2407,7 +2409,10 @@ int s2_video_hook(uint32_t pc)
             const NativeObjectArt *binding=NULL;
             if(o>=0xB000 && o<0xD800 && !(o&63))
                 binding=native_object_binding(o,scene_read32(0xFF0000u+o+4),ram16(o+2));
-            if(binding && tile>=binding->base && tile<binding->base+binding->tiles)
+            /* The catapult's early visibility belongs only to wide host
+             * scenery. Keep native SAT/VRAM and the H40 load timing intact. */
+            if(binding && binding->asset!=S2_NATIVE_WFZ_CATAPULT &&
+               tile>=binding->base && tile<binding->base+binding->tiles)
                 g_ram[next-6]|=0xC0;
             if (s2_runtime_knuckles_item(o) && knuckles_item_tile(tile)) g_ram[next-6]|=0x80;
             if (amy_item_tile(tile) && s2_runtime_amy_item(o)) g_ram[next-6]|=0x80;
