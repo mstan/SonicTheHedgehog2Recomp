@@ -68,6 +68,7 @@ typedef struct S2RenderContext {
     int bad_hscroll;
     int frame_level;
     int frame_special;
+    int frame_ending_sky;
     int frame_fg_x;
     int frame_fg_y;
     int frame_bg_y;
@@ -136,7 +137,7 @@ void s2_video_donor_rgb_row(uint32_t *pixels,int width)
 }
 static int s_interpolation_enabled,s_interpolating;
 static double s_interpolation_phase;
-static int interpolation_background_base(int line);
+static int interpolation_background_base(int line,int world_y);
 static void interpolation_reset(void);
 static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_width (s_render->width)
@@ -164,6 +165,7 @@ static void interpolation_sprite(unsigned index,int *x,int *y);
 #define s_bad_hscroll (s_render->bad_hscroll)
 #define s_frame_level (s_render->frame_level)
 #define s_frame_special (s_render->frame_special)
+#define s_frame_ending_sky (s_render->frame_ending_sky)
 #define s_frame_fg_x (s_render->frame_fg_x)
 #define s_frame_fg_y (s_render->frame_fg_y)
 #define s_frame_bg_y (s_render->frame_bg_y)
@@ -976,13 +978,23 @@ static uint32_t scene_read32(unsigned a) { return ((uint32_t)scene_read16(a)<<16
 static void write8(unsigned a, unsigned v) { glue_poke8(0xFF0000u|(a&65535u),(uint8_t)v); }
 static void write16(unsigned a, unsigned v) { glue_poke16(0xFF0000u|(a&65535u),(uint16_t)v); }
 static void write32(unsigned a, unsigned v) { glue_poke32(0xFF0000u|(a&65535u),v); }
-static int view_left(int camera, int w)
+static int scene_view_left(int camera,int w,int extent,unsigned zone,unsigned resize)
 {
-    int end = stage_width()-w, left = camera-(w-320)/2;
+    int end = extent-w, left = camera-(w-320)/2;
     if (end<0) return end/2;
+    /* Keep DEZ's first fight framed before the waiting actor in the next
+     * room. Camera motion opens that room continuously after the fight;
+     * merely advancing the native event state cannot jump the composition. */
+    if(zone==0xE00 && resize<=6 && camera<0x440) {
+        int reveal=camera>0x224?(camera-0x224)*2:0;
+        int room_left=0x420+reveal-w;
+        if(left>room_left)left=room_left;
+    }
     if (left<0) left=0;
     return left>end ? end : left;
 }
+static int view_left(int camera, int w)
+{ return scene_view_left(camera,w,stage_width(),s2_video_level_zone(),g_ram[0xEEDF]); }
 static void activation_bounds(int camera,int w,int *lo,int *hi)
 {
     int left=view_left(camera,w);
@@ -1887,7 +1899,7 @@ static void draw_ending_scenery(SceneFrame *dst,uint32_t *keys,unsigned priority
          * its credits clear. Copies retain both bird frames' map/art identity;
          * no deleted/reused object slot or future scene material is consulted. */
         add_mapping(dst,keys,0xF0000000u+(i<<16),map,p[0x1A],ending_word(p,2),
-            (p[1]&3)|0x10004,x,(int16_t)ending_word(p,12),0,0);
+            (p[1]&3)|4,x,(int16_t)ending_word(p,12),0,0);
     }
 }
 static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priority,
@@ -1909,6 +1921,30 @@ static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priorit
                      (p->id==0xCD?0x8000u:0);
         add_mapping(dst,keys,key,p->id==0xCB?0x3B32C:0x11E1C,frame,
                     p->id==0xCB?0x654F:0x594,0x10004,x,y,0,0);
+    }
+}
+static void ending_fall_clouds(SceneFrame *dst,uint32_t *keys,unsigned priority,int width)
+{
+    if(width<=320 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
+       g_ram[0xB124]!=14 || g_ram[0xB134])return;
+    int left=-(width-320)/2;
+    /* ObjCB's vertical field draws X from nine RNG bits. Continue that
+     * authored512px domain to the left with the same live cloud poses and
+     * vertical motion. Whole copies stay outside the original viewport;
+     * no guest object, RNG call or cutscene timing is added. */
+    for(unsigned o=0xB140;o<0xD000;o+=64) {
+        if(g_ram[o]!=0xCB || g_ram[o+0x24]!=2 ||
+           (g_ram[o+0x18]&7)!=priority || !object_queued(o) ||
+           scene_read32(0xFF0000u+o+4)!=0x3B32C)continue;
+        int x=(int16_t)ram16(o+8);
+        for(unsigned copy=1;copy<16;++copy) {
+            int extra=x-(int)copy*512;
+            if(extra+48<=left)break;
+            if(extra+48>0)continue;
+            uint32_t key=0xE0000000u|(((o-0xB000)/64)<<20)|(copy<<16);
+            add_mapping(dst,keys,key,0x3B32C,g_ram[o+0x1A],ram16(o+2),
+                (g_ram[o+1]&3)|4,extra,(int16_t)ram16(o+12),0,0);
+        }
     }
 }
 static void ending_plane_preview(SceneFrame *dst,uint32_t *keys,int width)
@@ -2175,6 +2211,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
         if(pri==5 && !vs)dez_eggman_preview(dst,keys,render_width,cam,cy);
         draw_dez_corpse(dst,keys,pri,render_width,cam,cy,read_only);
         draw_ending_scenery(dst,keys,pri,render_width,read_only);
+        ending_fall_clouds(dst,keys,pri,render_width);
         ending_birth_preview(dst,keys,pri,births,birth_count,render_width);
         if(!vs)parked_boss(dst,keys,pri,render_width,cam,cy,read_only);
         if(pri==6 && !vs)dez_window_preview(dst,keys,render_width,cam,cy);
@@ -2600,7 +2637,9 @@ static void select_scene(const GVDP *v)
         /* An in-progress native SAT is not a custom-scene publication. Keep
          * the completed scene until its replacement is ready, without
          * flashing the native centered HUD or dropping host-only rings. */
-        if(scene && s_display_frame.serial && s_display_frame.scene==scene) {
+        int title_handoff=scene==1 && s_frame_card && s_display_frame.scene==0;
+        if(scene && s_display_frame.serial &&
+           (s_display_frame.scene==scene || title_handoff)) {
             s_display=&s_display_frame;++s_scene_holds;
         }
     }
@@ -2844,6 +2883,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         }
         s_frame_level=(gameplay() || (outgoing && !ram16(0xFFD8))) && g_ram[0xF711];
         s_frame_special=(g_ram[0xF600]&127)==16 && !gameplay();
+        s_frame_ending_sky=(g_ram[0xF600]&127)==0x20 && g_ram[0xB100]==0xCA &&
+            g_ram[0xB124]>=0x0C && g_ram[0xB124]<=0x0E;
         s_frame_zone=s2_video_level_zone()>>8;
         s_frame_act=s2_video_level_zone()&255;
         s_frame_resize=g_ram[0xEEDF];
@@ -2945,8 +2986,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         if(level && !s_interpolating)s_stage_width=stage_width();
         s_camera=camera;s_camera_y=camera_y;++s_frames;
         if(level && s_interpolating) {
-            int end=s_stage_width-width;
-            s_left=end<0?end/2:clamp(camera-(width-320)/2,0,end);
+            s_left=scene_view_left(camera,width,s_stage_width,
+                (s_frame_zone<<8)|s_frame_act,s_frame_resize);
         } else s_left=level?view_left(camera,width):camera-(width-nw)/2;
     }
     int origin=level?s_camera-s_left:(width-nw)/2;
@@ -2954,7 +2995,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     unsigned base_a=(v->reg[2]&56u)<<10,base_b=(v->reg[4]&7u)<<13;
     int wy=camera_y+line;
     int bg_world=level && !special;
-    int by=bg_world?unwrap(v->vsram[1],s_frame_bg_y)+line:line+(v->vsram[1]&1023);
+    int ending_sky=width>nw && !level && base_b==0xE000 && s_frame_ending_sky;
+    int by=(bg_world || ending_sky)?unwrap(v->vsram[1],s_frame_bg_y)+line:line+(v->vsram[1]&1023);
     if (bg_world && s_frame_campaign_view) by+=(camera_y-native_camera_y)/4;
     /* Normal SwScrl_HTZ never streams its background: DrawInitialBG owns
      * the authored512x256 PlaneB domain at source(0,0). Distant quake cells
@@ -2963,7 +3005,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     int normal_htz=bg_world && s_frame_zone==7 && !s_render->frame_htz_shake;
     if(normal_htz)by=(int)((unsigned)by&255u);
     int bg_width=0;
-    if(bg_world) {
+    if(bg_world || ending_sky) {
         if(normal_htz)bg_width=512;
         else {
             int row=((by>>7)&15)*256;
@@ -2978,7 +3020,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * the moving native viewport's foreground-speed translation. */
     if(bg_world && width>nw) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
-        if(s_interpolating)bg_base=interpolation_background_base(line);
+        if(s_interpolating)bg_base=interpolation_background_base(line,by);
     }
     int background_x=bg_base;
     if(bg_width>0) {
@@ -3043,14 +3085,25 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
             }
         }
         if(!level && (g_ram[0xF600]&127)==0x20 && (nx<0 || nx>=nw)) {
-            /* Ending maps populate one viewport. Reflect its background
-             * composition into the margins: stars/cloud bands keep their
-             * live scrolling instead of stretching one edge into stripes.
-             * Foreground photographs and credit text stay centered. */
-            int sample=nx%(nw*2);if(sample<0)sample+=nw*2;
-            if(sample>=nw)sample=nw*2-1-sample;
-            int source=sample-hs_b;
-            b=plane_attr(v,base_b,source,by);bp=pattern_pixel(v,b,source,by);
+            if(ending_sky) {
+                /* ObjCA's fall scrolls the original DEZ sky layout. Follow
+                 * that same world domain through the margins: reflecting a
+                 * moving viewport makes stars turn back at the H40 edge. */
+                int source=bg_width?(nx-hs_b)%bg_width:0;
+                if(source<0)source+=bg_width;
+                /* Unpopulated columns point at chunk zero, reused for
+                 * ending-picture decompression. Wrap the populated domain
+                 * only and keep any deliberately empty cells transparent. */
+                unsigned layout=0x8080u+(((unsigned)by>>7)&15u)*256u+((unsigned)source>>7);
+                b=bg_width && s_world_frame[layout]?world_attr(s_world_frame,source,by,1):0;
+                bp=b?pattern_pixel(v,b,source,by):0;
+            } else {
+                /* The later plane photographs/credits have no level map. */
+                int sample=nx%(nw*2);if(sample<0)sample+=nw*2;
+                if(sample>=nw)sample=nw*2-1-sample;
+                int source=sample-hs_b;
+                b=plane_attr(v,base_b,source,by);bp=pattern_pixel(v,b,source,by);
+            }
         }
         if (s_frame_card) {
             /* Stretch only the original geometric fill. Its live name table
@@ -3109,12 +3162,15 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     if((s_frame_card || s_frame_sega) && s_display) {
         draw_scene_sprites(v,line,out,width,origin,palette);
     } else if(!level) {
-        if (!native) native = native_row(native_ctx);
         /* Logos/copyright/menus remain centered at their original pixel
-         * scale. The full-width background follows the live scene palette. */
-        if((g_ram[0xF600]&127)==0x20 && s_display)
+         * scale. Ending sprites share one completed display list across the
+         * whole wide image, including retired clouds straddling H40's edge. */
+        if(width>nw && (g_ram[0xF600]&127)==0x20 && s_display)
             draw_scene_sprites(v,line,out,width,origin,palette);
-        if(origin>=0)memcpy(out+origin,native,(size_t)nw*sizeof(uint32_t));
+        else {
+            if (!native) native = native_row(native_ctx);
+            if(origin>=0)memcpy(out+origin,native,(size_t)nw*sizeof(uint32_t));
+        }
     } else if(s_display) {
         draw_scene_sprites(v,line,out,width,origin,palette);
     } else {
@@ -3291,26 +3347,41 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
 }
 static int lerp_position(int a,int b)
 { return a+(int)((b-a)*s_interpolation_phase+((b>=a)?0.5:-0.5)); }
-static int captured_background_base(const PresentationFrame *f,int line)
+static int captured_background_base(const PresentationFrame *f,int line,int world_y)
 {
     const S2RenderContext *r=&f->render;
     int row=r->frame_zone==0 && line>=222?221:line;
-    int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
     int by=unwrap(f->vscroll[line][1],r->frame_bg_y)+line;
     if(r->frame_campaign_view)
         by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
+    int extra=0;
+    if(r->frame_zone==15) {
+        /* ARZ's parallax bands are attached to the background world, not
+         * to screen rows. Sample the same band in both completed frames;
+         * blending neighboring bands invents a one-row horizontal seam. */
+        int sample=line+world_y-by;
+        row=sample<0?0:sample>223?223:sample;
+        int sampled_by=unwrap(f->vscroll[row][1],r->frame_bg_y)+row;
+        if(r->frame_campaign_view)
+            sampled_by+=(r->frame_view_y-unwrap(f->vscroll[row][0],r->frame_fg_y))/4;
+        int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
+        extra=source_background_scroll(r,camera,row,world_y)-
+              source_background_scroll(r,camera,row,sampled_by);
+        by=world_y;
+    }
+    int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
     if(r->frame_zone==7 && !r->frame_htz_shake)by=(int)((unsigned)by&255u);
-    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]);
+    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]+extra);
 }
-static int interpolation_background_base(int line)
+static int interpolation_background_base(int line,int world_y)
 {
     /* Remove native camera motion at each completed endpoint before
      * interpolating. Re-evaluating quantized parallax at a fractional camera
      * can disagree by a pixel with interpolated native scroll words, making
      * a clamped, stationary wide background shake between identical frames.
      * Endpoint rebasing also retains native animation and event offsets. */
-    return lerp_position(captured_background_base(s_lerp_old,line),
-                         captured_background_base(s_lerp_new,line));
+    return lerp_position(captured_background_base(s_lerp_old,line,world_y),
+                         captured_background_base(s_lerp_new,line,world_y));
 }
 static void interpolation_sprite(unsigned index,int *x,int *y)
 {
