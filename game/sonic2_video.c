@@ -1920,13 +1920,14 @@ static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priorit
         if(x+64<=left || x-64>=right)continue;
         unsigned frame=p->frame;
         if(p->id==0xCD)frame=(unsigned)scroll_floor(-(int64_t)p->tick-1,6)&1u;
-        /* Presentation-only scenery is clipped to the added margins. Native
-         * positions, animation, allocation and random sequence stay untouched.
-         * A birth-clock key remains stable as the lookahead distance shrinks. */
+        /* A predicted cloud can span the right edge of H40 before the
+         * native object submits it. Compose its complete mapping in the
+         * wide view so the handoff cannot clip the part inside H40.
+         * Bird previews retain their margin clip. */
         uint32_t key=0xE0000000u|(((ram16(0xB132)+p->tick)&4095u)<<16)|
                      (p->id==0xCD?0x8000u:0);
         add_mapping(dst,keys,key,p->id==0xCB?0x3B32C:0x11E1C,frame,
-                    p->id==0xCB?0x654F:0x594,0x10004,x,y,0,0);
+                    p->id==0xCB?0x654F:0x594,p->id==0xCB?4:0x10004,x,y,0,0);
     }
 }
 static void ending_fall_clouds(SceneFrame *dst,uint32_t *keys,unsigned priority,int width)

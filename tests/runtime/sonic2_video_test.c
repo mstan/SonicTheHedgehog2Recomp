@@ -703,13 +703,16 @@ static void ending_scenery_birth_test(void)
     word(g_rom,0x11E1C,4);word(g_rom,0x11E1E,4);word(g_rom,0x11E20,1);
     memset(g_rom+0x11E22,0,8);
     word(g_rom,0x3B32C,6);word(g_rom,0x3B332,1);memset(g_rom+0x3B334,0,8);
+    g_rom[0x3B335]=12;word(g_rom,0x3B33A,-40);
     static SceneFrame scene;scene.count=0;
     ending_birth_preview(&scene,NULL,2,births,n,796);
     CHECK(scene.count==1 && scene.sprites[0].x==-74 && scene.sprites[0].y==130);
     CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
     scene.count=0;ending_birth_preview(&scene,NULL,6,births,n,796);
-    CHECK(scene.count==1 && scene.sprites[0].x==351 && scene.sprites[0].y==91);
-    CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
+    CHECK(scene.count==1 && scene.sprites[0].x==311 && scene.sprites[0].y==91);
+    /* This 32px cloud crosses H40's right edge before native allocation.
+     * Its whole mapping belongs to the wide view during that handoff. */
+    CHECK(!(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
     g_ram[0xB124]=16;CHECK(!s2_ending_births(g_ram,5,again,16));
     g_ram[0xB124]=14;g_ram[0xF600]=12;CHECK(!s2_ending_births(g_ram,5,again,16));
 }
