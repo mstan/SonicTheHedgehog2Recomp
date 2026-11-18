@@ -1,9 +1,13 @@
-# v0.13.0
+# v0.14.0
 
-Expands music customization with CD boss music for the final boss, additional ending and credits arrangements, prototype Game Over and Continue music, and three Continue arrangements for two-player results. Emerald jingles offer Stock and Sonic 3 & Knuckles. Supply your own supported donor media to use imported music.
+The widescreen ending extends the star field and adds clouds to the left side during Sonic's fall. Clouds remain whole at the original viewport edge.
 
-Stabilizes widescreen parallax during camera catch-up and high-refresh interpolation. Improves wide-view ending scenery entrances, ending sprite clipping, and Death Egg and Wing Fortress scenery presentation. Fixes native debug-object initialization after death and restores imported Sonic 3 music correctly after sound effects interrupt its FM channel.
+Aquatic Ruin's background scrolls smoothly during high refresh interpolation. Wing Fortress title text stays in position as the card starts to leave. Death Egg reveals Eggman as the camera opens the next room.
 
-Fit to screen remains the default for fresh settings. Existing aspect and mod choices are preserved. Supply your own supported game and donor media.
+The lead character keeps control of debug placement in custom parties. A jump starts normally with seven Chaos Emeralds, and a fresh airborne press triggers the Super transformation when eligible. Sonic-based companions such as Knuckles retain their standing height after landing on moving platforms.
+
+Fixes a freeze that could stall level loading after rewinding across a save request.
+
+Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices. Supply your own supported game and donor media.
 
 After loading a save state, play can diverge from an uninterrupted run. This remains under investigation.
