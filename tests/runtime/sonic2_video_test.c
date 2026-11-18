@@ -88,7 +88,7 @@ static void clamped_background_alignment_test(void)
     static const unsigned native_terms[][3]={{0,8,27},{0,64,212},{0,64,213},{0,64,212},
         {0,409,1360},{0,400,1328},{0,64,212},{0,512,1700},{0,562,1866},{0,0,0}};
     static const unsigned wide_terms[][3]={{0,5,20},{0,34,156},{0,35,157},{0,34,156},
-        {0,219,1001},{0,214,978},{0,34,156},{0,274,1252},{0,300,1374},{0,0,0}};
+        {0,219,1001},{0,214,978},{0,34,156},{0,260,1252},{0,300,1374},{0,0,0}};
     presentation_configure(0);online=0;
     CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
     for(unsigned z=0;z<sizeof zones/sizeof *zones;++z)
@@ -262,6 +262,49 @@ static void cloud_edge_test(void)
         CHECK(pattern_pixel(&v,(uint16_t)(1|flip),x,0)==pattern_pixel(&v,1,source,0));
     }
 }
+static void ending_background_world_test(void)
+{
+    /* The opening ending uses the scrolling DEZ sky layout, not a reflected
+     * crop of the current H40 image. A moving star crosses the old viewport
+     * edge in the same direction and phase as the rest of its world. */
+    clear_guest();presentation_configure(0);online=0;CHECK(configure("32:9"));
+    CHECK(width(1,1,320,224)==796);g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;g_ram[0xB124]=0x0C;
+    word(g_ram,0xFE10,0xE00);
+    for(unsigned row=0;row<16;++row)for(unsigned col=0;col<4;++col)
+        g_ram[0x8080+row*256+col]=(uint8_t)(1+(col&1));
+    /* The ending reuses chunk zero for its picture decompression. Unused
+     * layout columns must never sample those now-unrelated blocks. */
+    for(unsigned n=0;n<64;++n)word(g_ram,n*2,3);
+    for(unsigned n=0;n<64;++n){word(g_ram,128+n*2,1);word(g_ram,256+n*2,2);}
+    for(unsigned n=0;n<4;++n){word(g_ram,0x9008+n*2,1);word(g_ram,0x9010+n*2,2);}
+    for(unsigned n=0;n<4;++n)word(g_ram,0x9018+n*2,3);
+    static GVDP v;memset(&v,0,sizeof v);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
+    v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;v.cram[1]=0xE;v.cram[2]=0xE00;
+    memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
+    memset(v.vram+96,0x33,32);v.cram[3]=0xE0;
+    for(unsigned y=0;y<32;++y)for(unsigned x=0;x<64;++x)
+        word(v.vram,0xE000+(y*64+x)*2,world_attr(g_ram,x*8,y*8,1));
+    memset(s_history,0,sizeof s_history);memset(&s_display_frame,0,sizeof s_display_frame);
+    s_history[0].serial=1;s_history[0].scene=0;
+    uint32_t out[796],native[320]={0};
+    for(unsigned scroll=0;scroll<=11;scroll+=11) {
+        for(unsigned y=0;y<224;++y)word(v.vram,0xFC02+y*4,-(int)scroll);
+        render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+        for(unsigned x=0;x<796;++x) {
+            unsigned source=(unsigned)((int)x-238+(int)scroll)&16383u;
+            unsigned ink=(source/128&1)?2:1;
+            if(out[x]!=genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL))
+                fprintf(stderr,"ending x=%u scroll=%u source=%u actual=%08X expected=%08X phase=%u mode=%u left=%d\n",
+                    x,scroll,source,out[x],genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL),
+                    g_ram[0xB124],g_ram[0xF600],s_left);
+            CHECK(out[x]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
+        }
+    }
+    for(unsigned x=0;x<320;++x)native[x]=0xFF010203u+x;
+    render_source_scanline(&v,0,native,320,out,320,NULL,NULL);
+    CHECK(!memcmp(out,native,sizeof native));CHECK(configure("off"));clear_guest();
+}
 static void behind_screen_lifetime_test(void)
 {
     clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;
@@ -371,7 +414,7 @@ static void dormant_dez_margin_test(void)
     memcpy(before,g_ram,sizeof before);capture_objects_into(&scene,796,0,NULL);
     CHECK(!memcmp(before,g_ram,sizeof before));
     CHECK(scene.count==1 && (scene.sprites[0].art&SCENE_ART_NATIVE_VIEW));
-    CHECK(s_visible_count==1 && s_visible_objects[0]==0xB400);
+    CHECK(!s_visible_count); /* First-room framing does not activate the next room. */
     /* Source frame0's32px head can straddle the native right edge. Clip
      * only its6added pixels: all26native pixels must remain identical. */
     word(g_ram,0xEE00,0x440-310);word(g_ram,0xEEF0,0x440-310);
@@ -402,6 +445,16 @@ static void dormant_dez_margin_test(void)
 }
 static void dez_eggman_preview_test(void)
 {
+    /* The first room's extra view must stop before the waiting story actor.
+     * Opening the next room follows camera movement after Mecha's defeat;
+     * a resize-state change alone must not move the displayed scene. */
+    clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;
+    word(g_ram,0xFE10,0xE00);g_ram[0xEEDF]=2;g_ram[0x800F]=1;
+    CHECK(configure("32:9"));CHECK(width(1,1,320,224)==796);
+    CHECK(view_left(548,796)==0x420-796);
+    g_ram[0xEEDF]=4;CHECK(view_left(548,796)==0x420-796);
+    g_ram[0xEEDF]=6;CHECK(view_left(598,796)==598-238);
+    CHECK(view_left(548,320)==548);
     clear_guest();g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
     word(g_ram,0xFE10,0xE00);g_ram[0xEEDF]=2;
     NativeSpriteArt upper=s_native_sprite_art[S2_NATIVE_ROBOTNIK_UPPER];
@@ -678,12 +731,35 @@ static void ending_scenery_retirement_test(void)
     CHECK(!memcmp(before,g_ram,sizeof before));EndingScenery *c=&s_ending_scenery.continued[0];
     CHECK(c->active && (int16_t)ending_word(c->object,8)==-33 && ending_word(c->object,12)==100);
     static SceneFrame scene;scene.count=0;draw_ending_scenery(&scene,NULL,5,796,0);
-    CHECK(scene.count==3 && (scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
+    CHECK(scene.count==3 && !(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
     static GVDP v;memset(&v,0,sizeof v);v.reg[12]=1;memset(v.vram+0x54F*32,0x11,69*32);
     uint32_t out[796]={0},palette[64]={0};palette[49]=0xFFFFFFFF;
     s_display=&scene;s_camera=s_camera_y=0;s_left=-238;
     CHECK(reserve_sprite_row(796));memset(s_priority,0,796);draw_scene_sprites(&v,100,out,796,238,palette);
-    CHECK(out[237]==palette[49]);for(unsigned x=238;x<558;++x)CHECK(!out[x]);
+    /* The cloud's last piece still extends six pixels into the original
+     * viewport after its native root retires. Keep that piece whole in the
+     * wide scene, rather than cutting a visible notch at the old boundary. */
+    CHECK(out[237]==palette[49] && out[238]==palette[49] && out[244]==palette[49]);
+    for(unsigned x=245;x<558;++x)CHECK(!out[x]);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;v.reg[13]=0x3F;v.reg[16]=1;
+    v.cram[49]=0xEEE;s_video_frame=v;s_frame_level=s_frame_card=s_frame_sega=0;
+    uint32_t native[320]={0};memset(out,0,sizeof out);
+    render_scanline(&v,100,native,320,out,796,NULL,NULL);
+    CHECK(out[238]==0xFFFFFFFF && out[244]==0xFFFFFFFF);
+    /* Vertical falling clouds also fill the left margin using their real
+     * nine-bit X domain. Every added piece is whole and outside H40, and
+     * the native objects/RNG remain byte-identical. */
+    unsigned extra=0xB1C0;g_ram[extra]=0xCB;g_ram[extra+1]=0x84;
+    g_ram[extra+0x24]=2;g_ram[extra+0x18]=5;word(g_ram,extra+2,0x654F);
+    glue_poke32(0xFF0000+extra+4,0x3B32C);word(g_ram,extra+8,400);word(g_ram,extra+12,100);
+    word(g_ram,0xAE80,2);word(g_ram,0xAE82,extra);g_ram[0xB124]=14;g_ram[0xB134]=0;
+    memcpy(before,g_ram,sizeof before);scene.count=0;ending_fall_clouds(&scene,NULL,5,796);
+    CHECK(!memcmp(before,g_ram,sizeof before) && scene.count==3);
+    for(unsigned n=0;n<scene.count;++n)
+        CHECK(scene.sprites[n].x+((((scene.sprites[n].size>>2)&3)+1)*8)<=0);
+    scene.count=0;ending_fall_clouds(&scene,NULL,5,320);CHECK(!scene.count);
+    g_ram[0xB134]=0xFF;ending_fall_clouds(&scene,NULL,5,796);CHECK(!scene.count);
+    g_ram[0xB124]=0;g_ram[extra]=0;word(g_ram,0xAE80,0);
     /* Read-only/native-width capture must not advance or discard continuations. */
     uint8_t pose[64];memcpy(pose,c->object,64);prepare_ending_scenery(796,1);
     CHECK(!memcmp(pose,c->object,64));scene.count=0;draw_ending_scenery(&scene,NULL,5,320,1);CHECK(!scene.count);
@@ -785,6 +861,32 @@ static void title_card_world_margin_test(void)
     /* Public actor visibility keeps its original priority contract. */
     CHECK(s2_video_intro_pixel_visible(&v,0,0,1));
     s_display=NULL;s_frame_card=0;s_width=320;CHECK(configure("off"));clear_guest();
+}
+static void title_card_publication_handoff_test(void)
+{
+    clear_guest();presentation_configure(0);online=0;CHECK(configure("32:9"));
+    CHECK(width(1,1,320,224)==796);g_ram[0x800F]=1;
+    g_ram[0xF600]=0x8C;g_ram[0xB000]=1;g_ram[0xB080]=0x34;word(g_ram,0xB0BE,0xFFFF);
+    static GVDP v;memset(&v,0,sizeof v);
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
+    v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;v.cram[1]=0xEEE;
+    memset(v.vram+32,0x11,32);memset(v.vram+0xBB40,0x33,64);
+    memset(s_history,0,sizeof s_history);memset(&s_display_frame,0,sizeof s_display_frame);
+    s_history[0].serial=1;s_history[0].scene=0;s_history[0].count=1;
+    s_history[0].sprites[0]=(SceneSprite){.x=160,.y=56,.attr=0x8001,.hud=2};
+    uint32_t native[320]={0},out[796];
+    for(unsigned x=160;x<168;++x)native[x]=0xFFFFFFFF;
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,56,native,320,out,796,NULL,NULL);
+    CHECK(out[398]==0xFFFFFFFF);
+    /* A partial next SAT can overlap the mode/Level_started publication.
+     * Preserve the completed title text until a matching list reaches DMA,
+     * rather than relocating the native H40 glyphs to the terrain origin. */
+    g_ram[0xF600]=12;g_ram[0xF711]=1;v.vram[0xF800]=1;
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,56,native,320,out,796,NULL,NULL);
+    CHECK(s_display && s_display->serial==1 && out[398]==0xFFFFFFFF);
+    CHECK(configure("off"));clear_guest();
 }
 static void htz_background_domain_test(void)
 {
@@ -3211,6 +3313,7 @@ int main(void)
     act_runoff_test();
     parked_car_test();
     cloud_edge_test();
+    ending_background_world_test();
     behind_screen_lifetime_test();
     mapping_vertical_bounds_test();
     mapping_horizontal_bounds_test();
@@ -3224,6 +3327,7 @@ int main(void)
     ending_scenery_birth_test();
     ending_scenery_retirement_test();
     title_card_world_margin_test();
+    title_card_publication_handoff_test();
     htz_background_domain_test();
     cnz_closure_margin_test();
     wfz_early_background_margin_test();
