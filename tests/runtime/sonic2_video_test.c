@@ -641,6 +641,10 @@ static void ending_plane_preview_test(void)
     capture_objects_into(&scene,796,0,NULL);CHECK(!memcmp(before,g_ram,sizeof before));
     CHECK(scene.count==1 && scene.sprites[0].x==-32 && scene.sprites[0].y==188);
     CHECK(scene.sprites[0].art==SCENE_ART_MARGIN_VIEW && !(scene.sprites[0].attr&0x800));
+    word(g_rom,0x3AFF2+14,0x2A0);
+    capture_objects_into(&scene,796,0,NULL);
+    CHECK(scene.count==1 && scene.sprites[0].art==(SCENE_ART_MARGIN_VIEW|(1+S2_NATIVE_ENDING_TAILS_PILOT)));
+    word(g_rom,0x3AFF2+14,0);
     word(g_ram,0xB13C,0);capture_objects_into(&scene,796,0,NULL);
     CHECK(scene.count==1 && scene.sprites[0].x==-24 && scene.sprites[0].y==184);
     s_display=&scene;s_camera=s_camera_y=0;s_left=-238;
@@ -671,7 +675,7 @@ static void ending_scenery_birth_test(void)
     g_ram[0xB2E5]=4;CHECK(ending_parked_player(0xB000));
     CHECK(!ending_parked_player(0xB040));
     word(g_ram,0xB00C,1);CHECK(!ending_parked_player(0xB000));
-    word(g_ram,0xB00C,0);word(g_ram,0xF750,2);CHECK(!ending_parked_player(0xB000));
+    word(g_ram,0xB00C,0);word(g_ram,0xF750,2);CHECK(ending_parked_player(0xB000));
     clear_guest();g_ram[0xF600]=0x20;g_ram[0xB100]=0xCA;
     g_ram[0xB124]=14;g_ram[0xB134]=255;word(g_ram,0xB130,4);
     word(g_ram,0xB132,2857);word(g_ram,0xB13C,0xFF4F);
@@ -699,13 +703,16 @@ static void ending_scenery_birth_test(void)
     word(g_rom,0x11E1C,4);word(g_rom,0x11E1E,4);word(g_rom,0x11E20,1);
     memset(g_rom+0x11E22,0,8);
     word(g_rom,0x3B32C,6);word(g_rom,0x3B332,1);memset(g_rom+0x3B334,0,8);
+    g_rom[0x3B335]=12;word(g_rom,0x3B33A,-40);
     static SceneFrame scene;scene.count=0;
     ending_birth_preview(&scene,NULL,2,births,n,796);
     CHECK(scene.count==1 && scene.sprites[0].x==-74 && scene.sprites[0].y==130);
     CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
     scene.count=0;ending_birth_preview(&scene,NULL,6,births,n,796);
-    CHECK(scene.count==1 && scene.sprites[0].x==351 && scene.sprites[0].y==91);
-    CHECK(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW);
+    CHECK(scene.count==1 && scene.sprites[0].x==311 && scene.sprites[0].y==91);
+    /* This 32px cloud crosses H40's right edge before native allocation.
+     * Its whole mapping belongs to the wide view during that handoff. */
+    CHECK(!(scene.sprites[0].art&SCENE_ART_MARGIN_VIEW));
     g_ram[0xB124]=16;CHECK(!s2_ending_births(g_ram,5,again,16));
     g_ram[0xB124]=14;g_ram[0xF600]=12;CHECK(!s2_ending_births(g_ram,5,again,16));
 }
@@ -1765,6 +1772,12 @@ static void native_demo_hud_test(void)
 }
 static void competition_intro_alignment_test(void)
 {
+    /* Each split's original CNZ scroll row uses a different band offset. */
+    CHECK(competition_cnz_background_scroll(280,9,0)==280);
+    CHECK(competition_cnz_background_scroll(280,89,0)==126);
+    CHECK(competition_cnz_background_scroll(243,89,1)==83);
+    CHECK(competition_cnz_background_scroll(280,128,0)==17);
+    CHECK(competition_cnz_background_scroll(280,144,0)==35);
     CHECK(sonic2_video.configure("32:9"));CHECK(reserve_sprite_row(796));
     GVDP v={0};v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[12]=7;v.reg[16]=1;
     memset(v.vram+64,0x11,64);s_video_frame=v;memset(s_world_frame,0,sizeof s_world_frame);
@@ -1782,6 +1795,28 @@ static void competition_intro_alignment_test(void)
     s_vs_world=0;s_display=NULL;word(v.vram,0xC000+3*64*2,0x8001);
     CHECK(competition_scanline(&v,50,native,320,out,796,NULL,NULL,palette));
     CHECK(out[750]==0xFF000000);
+    /* The last CNZ2P band follows the wide view's own camera despite an
+     * invalid live row from the native lower-half segment table. */
+    s_vs_ready=s_vs_world=1;s_frame_zone=12;
+    v.reg[11]=3;v.reg[13]=63;v.vsram[1]=(-224)&1023;
+    s_world_frame[0x8180]=1;
+    for(unsigned x=0;x<8;++x)word(s_world_frame,128+32+x*2,1);
+    word(s_world_frame,0x9008,1);word(s_world_frame,0x900A,1);
+    for(unsigned row=0;row<16;++row) {
+        v.vram[64+row*4]=0x12;v.vram[65+row*4]=0x34;
+        v.vram[66+row*4]=0x56;v.vram[67+row*4]=0x78;
+    }
+    s_video_frame=v;
+    palette[2]=0xFF0000FF;
+    int line=224+160;
+    unsigned hscroll=0xFC00+(unsigned)(line/2)*4;
+    word(v.vram,hscroll,0xFF00);word(v.vram,hscroll+2,0xBE6D);
+    s_vs_camera[1][0]=256;s_vs_camera[1][3]=0;
+    CHECK(competition_scanline(&v,line,native,320,out,796,NULL,NULL,palette));
+    CHECK(out[0]==palette[1] && out[1]==palette[2]);
+    s_vs_camera[1][3]=8;
+    CHECK(competition_scanline(&v,line,native,320,out,796,NULL,NULL,palette));
+    CHECK(out[0]==palette[2]);
     s_frame_vs=s_vs_ready=s_vs_world=0;s_display=NULL;
 }
 static void menu_background_lifetime_test(void)

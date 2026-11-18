@@ -347,8 +347,17 @@ unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset
         0x8030A,0x81048,0x81C96,0x81AB0,0x809D0,0x8E886,0x8EE52,0x7B592,0x7EF60,0x7F0A2,0x8EF96,0x8DCA2};
     static const unsigned lengths[]={1452,908,2027,1852,1374,126,108,112,309,486,660,468,323,948,322,356,141,106},
         tiles[]={78,49,128,96,111,8,4,4,18,32,40,24,28,68,16,20,8,5};
-    if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT ||
-       capacity<tiles[asset]*32)return 0;
+    if(!r || !out || size!=0x100000 || asset>=S2_NATIVE_SPRITE_ART_COUNT)return 0;
+    if(asset==S2_NATIVE_ENDING_TAILS_PILOT || asset==S2_NATIVE_ENDING_SONIC_PILOT) {
+        /* First six cells queued by ObjB2_Animate_Pilot at ObjCC creation:
+         * Tails DPLC $10 entry $5096; Sonic DPLC $2E entry $52CC. */
+        unsigned at=asset==S2_NATIVE_ENDING_TAILS_PILOT?0x655E0:0x55980;
+        const unsigned bytes=6*32;
+        if(capacity<bytes)return 0;
+        memcpy(out,r+at,bytes);
+        return bytes;
+    }
+    if(capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
     if((be16(r+addresses[asset])&0x7FFF)!=tiles[asset])return 0;
     return nemesis(r+addresses[asset],lengths[asset],out,bytes)?bytes:0;

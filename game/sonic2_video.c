@@ -633,6 +633,7 @@ enum { SCENE_SPRITES = 32768, SCENE_PLACEMENTS = 1024,
        SCENE_ART_SIGNPOST = 8, SCENE_ART_CAPSULE = 32,
        SCENE_ART_EHZ_CAR = 40, SCENE_ART_MASK = 40,
        SCENE_ART_MARGIN_VIEW = 64, SCENE_ART_NATIVE_VIEW = 128 };
+#define ENDING_PLANE_PREVIEW_KEY 0xFFF80000u
 typedef struct { uint8_t pixels[4096]; unsigned ready,bytes; } NativeSpriteArt;
 typedef struct { unsigned asset,id,map,base,tiles;int zone; } NativeObjectArt;
 static const NativeObjectArt s_native_object_art[]={
@@ -1686,6 +1687,11 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         }
         if(flags&0x20000)q->art=(uint8_t)(1+((q->attr&2047)<0x518?
             S2_NATIVE_ROBOTNIK_UPPER:S2_NATIVE_ROBOTNIK_LOWER));
+        if(owner==ENDING_PLANE_PREVIEW_KEY) {
+            unsigned tile=attr&2047u;
+            if(tile==0x7A0)q->art=1+S2_NATIVE_ENDING_TAILS_PILOT;
+            else if(tile==0x780)q->art=1+S2_NATIVE_ENDING_SONIC_PILOT;
+        }
         if(flags&0x8000)q->art|=SCENE_ART_NATIVE_VIEW;
         if(flags&0x10000)q->art|=SCENE_ART_MARGIN_VIEW;
         unsigned art=vs?0:map==0x195BE?SCENE_ART_SIGNPOST:map==0x3F436?SCENE_ART_CAPSULE:
@@ -1914,13 +1920,14 @@ static void ending_birth_preview(SceneFrame *dst,uint32_t *keys,unsigned priorit
         if(x+64<=left || x-64>=right)continue;
         unsigned frame=p->frame;
         if(p->id==0xCD)frame=(unsigned)scroll_floor(-(int64_t)p->tick-1,6)&1u;
-        /* Presentation-only scenery is clipped to the added margins. Native
-         * positions, animation, allocation and random sequence stay untouched.
-         * A birth-clock key remains stable as the lookahead distance shrinks. */
+        /* A predicted cloud can span the right edge of H40 before the
+         * native object submits it. Compose its complete mapping in the
+         * wide view so the handoff cannot clip the part inside H40.
+         * Bird previews retain their margin clip. */
         uint32_t key=0xE0000000u|(((ram16(0xB132)+p->tick)&4095u)<<16)|
                      (p->id==0xCD?0x8000u:0);
         add_mapping(dst,keys,key,p->id==0xCB?0x3B32C:0x11E1C,frame,
-                    p->id==0xCB?0x654F:0x594,0x10004,x,y,0,0);
+                    p->id==0xCB?0x654F:0x594,p->id==0xCB?4:0x10004,x,y,0,0);
     }
 }
 static void ending_fall_clouds(SceneFrame *dst,uint32_t *keys,unsigned priority,int width)
@@ -1957,7 +1964,7 @@ static void ending_plane_preview(SceneFrame *dst,uint32_t *keys,int width)
      * Extend that very approach backwards from the native CA countdown.
      * The allocation tick(countdown0) is covered until CC actually publishes. */
     int ticks=ram16(0xB13C);
-    add_mapping(dst,keys,0xFFF80000u,0x3AFF2,ram16(0xFF70)==2?4:0,0x8500,0x10004,
+    add_mapping(dst,keys,ENDING_PLANE_PREVIEW_KEY,0x3AFF2,ram16(0xFF70)==2?4:0,0x8500,0x10004,
         -16-ticks,192+ticks/2,0,0);
 }
 static void wfz_robotnik_preview(SceneFrame *dst,uint32_t *keys,int width,int cam,int cy,int read_only)
@@ -2129,8 +2136,8 @@ static void parked_boss(SceneFrame *dst,uint32_t *keys,unsigned priority,
 static int ending_parked_player(unsigned o)
 {
     if(o!=0xB000 || g_ram[0xF600]!=0x20 || g_ram[0xB100]!=0xCA ||
-       ram16(0xF750)==2 || ram16(o+8)!=512 || ram16(o+12)!=0)return 0;
-    /* sub_A58C parks the ordinary player outside H40 while the native
+       ram16(o+8)!=512 || ram16(o+12)!=0)return 0;
+    /* sub_A594 parks the player outside H40 while the native
      * ending picture owns Sonic/Tails. That staging pose is not scenery. */
     for(unsigned p=0xB140;p<0xD000;p+=64)
         if(g_ram[p]==0xCC && g_ram[p+0x24]==2 &&
@@ -2723,7 +2730,8 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                 unsigned base=binding?binding->base:asset==S2_NATIVE_OOZ_BLOCK_VERT?0x332:
                     asset==S2_NATIVE_OOZ_BLOCK_HORIZ?0x3FF:asset==S2_NATIVE_CNZ_PLUNGER_VERT?0x422:
                     asset==S2_NATIVE_CNZ_PLUNGER_DIAG?0x402:asset==S2_NATIVE_ROBOTNIK_UPPER?0x500:
-                    asset==S2_NATIVE_ROBOTNIK_LOWER?0x564:asset==S2_NATIVE_DEZ_WINDOW?0x378:0x39D;
+                    asset==S2_NATIVE_ROBOTNIK_LOWER?0x564:asset==S2_NATIVE_DEZ_WINDOW?0x378:
+                    asset==S2_NATIVE_ENDING_TAILS_PILOT?0x7A0:asset==S2_NATIVE_ENDING_SONIC_PILOT?0x780:0x39D;
                 p=native_asset_pixel(v,asset,base,cell,ix,iy,width);
             }
             if (s->size&0x80) {
@@ -2797,6 +2805,16 @@ static void competition_hud_sprites(const GVDP *v,int line,uint32_t *out,int wid
         slot=v->vram[(at+3)&65535u]&127;if(!slot)break;
     }
 }
+static int competition_cnz_background_scroll(int camera,int by,unsigned player)
+{
+    /* SwScrl_CNZ_2P selects eight IM2 lines per band. The lower half
+     * starts four lines into the extra four-line first segment and
+     * therefore uses the next gradient value at the same local Y. */
+    int band=(by<0?0:by/16)+(int)player;
+    int slow=scroll_floor(camera,8);
+    if(band<7)return camera+scroll_floor((int64_t)band*(slow-camera),8);
+    return band<9?scroll_floor(camera,16):slow;
+}
 static int competition_scanline(const GVDP *v,int line,const uint32_t *native,int nw,
                                 uint32_t *out,int width,GameVideoNativeRow native_row,void *native_ctx,
                                 const uint32_t *palette)
@@ -2818,6 +2836,21 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
         if(s_world_frame[0x8080+(((by>>7)&15)*256)+col])bg_width=(col+1)*128;
     uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
+    if(world && width>nw && s_frame_zone==12) {
+        /* Keep the live line's ripple or animation offset and rebase only
+         * its camera term. A clamped view then holds still at the edge. */
+        int view_scroll=competition_cnz_background_scroll(left,by,p);
+        if(p && by>=144) {
+            /* REV01 inserts an extra segment in the lower half. After
+             * its ripple band the routine advances past the initialized
+             * values. Use the authored 1/8-speed tail for the wide view. */
+            bg_base=view_scroll;
+        } else {
+            int displayed_camera=unwrap(-hs_a,camera);
+            bg_base=-hs_b-competition_cnz_background_scroll(displayed_camera,by,p)
+                         +view_scroll;
+        }
+    }
     int cloud_band=world && s_frame_zone==0 && y>=22 && y<102;
     for(int x=0;x<width;++x) {
         int wx=left+x,wy=plane_y,bx=x+bg_base;

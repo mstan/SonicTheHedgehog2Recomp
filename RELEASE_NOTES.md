@@ -1,12 +1,8 @@
-# v0.14.0
+# v0.14.1
 
-The widescreen ending extends the star field and adds clouds to the left side during Sonic's fall. Clouds remain whole at the original viewport edge.
+The widescreen ending shows the pilot as the Tornado enters. Clouds keep their full shape as they cross the original viewport boundary. The good-ending portrait replaces the earlier Super Sonic sprite when the new artwork takes over.
 
-Aquatic Ruin's background scrolls smoothly during high refresh interpolation. Wing Fortress title text stays in position as the card starts to leave. Death Egg reveals Eggman as the camera opens the next room.
-
-The lead character keeps control of debug placement in custom parties. A jump starts normally with seven Chaos Emeralds, and a fresh airborne press triggers the Super transformation when eligible. Sonic-based companions such as Knuckles retain their standing height after landing on moving platforms.
-
-Fixes a freeze that could stall level loading after rewinding across a save request.
+Casino Night Competition uses each player's camera for background parallax. The lower view follows the intended scroll rate through the final background band.
 
 Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices. Supply your own supported game and donor media.
 
