@@ -1530,6 +1530,17 @@ int s2_runtime_hook(uint32_t pc)
             return 1;
         }
     }
+    if (pc==0x1CB5C) {
+        unsigned player=g_cpu.A[0]&0xFFFFu;
+        /* RideObject_SetRide selects Tails' landing reset for sidekick
+         * slots, even when their actual controller is Sonic's. Preserve
+         * the native reset and its foot position adjustment for that body. */
+        if (player_object(player) && g_ram[player]==1) {
+            recomp_tail_call(0x1B0AC);
+            return 1;
+        }
+        return 0;
+    }
     if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;
     unsigned o=g_cpu.A[0]&0xFFFF;
