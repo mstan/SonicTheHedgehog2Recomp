@@ -181,6 +181,26 @@ int s2_runtime_campaign_online(void)
     return 0;
 #endif
 }
+static unsigned local_campaign_party(void)
+{
+    if (!s2_party.local_split_screen || word(0xFFD8) || (g_ram[0xF600]&127)!=12) return 0;
+#if GENESIS_HAS_RECOMP_NET
+    if (genesis_netplay_active()) return 0;
+#endif
+    unsigned mask=1u;
+    for (unsigned p=1;p<s2_party.roster.slots && p<S2_MAX_PLAYERS;++p)
+        if (strcmp(s2_party.roster.character[p],"none")) mask|=1u<<p;
+    return mask;
+}
+int s2_runtime_campaign_independent(void)
+{
+    return s2_runtime_campaign_online() || local_campaign_party()>1u;
+}
+unsigned s2_runtime_local_view_players(void)
+{
+    unsigned party=local_campaign_party();
+    return party ? 1u | (party & genesis_sim_human_mask()) : 0;
+}
 int s2_runtime_player_position(unsigned p, int *x, int *y)
 {
     if (p>=s2_party.roster.slots || p>=S2_MAX_PLAYERS || !objects[p] || !g_ram[objects[p]]) return 0;
@@ -496,10 +516,10 @@ static void companion_control(unsigned p, unsigned o, int act_end)
      * Settled party followers reach that same boundary. They remain in the
      * act, so do not restart the offscreen recovery timer during the tally. */
     if (act_end && !human) g_ram[o+1]|=0x80;
-    /* Every online human has a camera. Distance from P1 is no longer a
+    /* Every human in an independent-view party has a camera. Distance from P1 is no longer a
      * reason to start Tails' 300-tick offscreen recovery timer. Actual death
      * and its normal recovery continue through the original controller. */
-    if (human && s2_runtime_campaign_online()) g_ram[o+1]|=0x80;
+    if (human && s2_runtime_campaign_independent()) g_ram[o+1]|=0x80;
     /* Preserve the party's explicit controller ownership; the CPU must not
      * take over an idle connected controller after the stock ten seconds. */
     if (human) putword(0xF702,600);
@@ -1279,7 +1299,7 @@ int s2_runtime_hook(uint32_t pc)
            word(0xFE10)!=ss_return_zone || g_ram[0xFE31]!=ss_return_post))ss_return_pending=0;
         s2_video_hook(pc); /* title-card initialization installs a fresh palette directly */
         for(unsigned p=0;p<s2_party.roster.slots && p<2;++p)prepare_native_bank(kind(p));
-        active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_online());
+        active=g_ram[0xF600]!=0x88 && (!vanilla() || s2_runtime_campaign_independent());
         gvdp_set_unlimited_sprites(active);
         memset(published_sprites,0,sizeof published_sprites);
         memset(published_dust,0,sizeof published_dust);
@@ -2071,6 +2091,14 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
 }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { *out=s_overlay_frame; }
+void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
+{
+    S2RuntimePresentation *f=&s_overlay_frame;
+    int left=f->left,top=f->top;
+    s2_video_actor_origin(v,line,width,&f->left,&f->top);
+    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+    f->left=left;f->top=top;
+}
 int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
 {
     if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;

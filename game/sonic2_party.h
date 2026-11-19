@@ -34,6 +34,7 @@ typedef struct S2PartyConfig {
     char mighty_path[1024];
     char kis2_path[1024]; /* original KiS2 artwork and Knuckles-led campaign stages */
     char campaign_path[1024]; /* empty until selected or first save; exe-relative */
+    int local_split_screen;
 } S2PartyConfig;
 
 extern S2PartyConfig s2_party;

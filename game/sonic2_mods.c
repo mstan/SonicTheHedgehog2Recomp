@@ -19,15 +19,17 @@
 #include <string.h>
 static const RecompLauncherCModProvider *base;
 static char error[256];
-static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation" };
-static const char *names[] = { "Amy Rose (Experimental)", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences" };
-static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow" };
+static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation", "sonic2.local-coop" };
+static const char *names[] = { "Amy Rose (Experimental)", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences", "Local Co-op" };
+static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow", "split-screen" };
+enum { LOCAL_COOP_PACKAGE=5, SPLIT_SCREEN=10, PARTY_PACKAGES=6, PARTY_FEATURES=11 };
+static const char split_description[] = "Give each local player their own camera in the shared campaign, with up to six views. Assign devices in Controls, choose the party in the title OPTIONS menu, then start 1 PLAYER.";
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
 {
-    if (p) for (int i = 0; i < 5; ++i)
+    if (p) for (int i = 0; i < PARTY_PACKAGES; ++i)
         if (!strcmp(p, ids[i])) {
-            int feature=i==4?8:i==3?5:i==2?3:i;
+            int feature=i==LOCAL_COOP_PACKAGE?SPLIT_SCREEN:i==4?8:i==3?5:i==2?3:i;
             if (!f || !strcmp(f, features[feature])) return feature;
             if (i==1 && !strcmp(f,features[2])) return 2;
             if (i==1 && !strcmp(f,features[9])) return 9;
@@ -37,12 +39,12 @@ static int owner(const char *p, const char *f)
         }
     return -1;
 }
-static int *flag(int i) { return i==9?&s2_party.knuckles_flow:i==8?&s2_party.presentation_enabled:i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
+static int *flag(int i) { return i==SPLIT_SCREEN?&s2_party.local_split_screen:i==9?&s2_party.knuckles_flow:i==8?&s2_party.presentation_enabled:i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
 static unsigned resource_id(int i) { return i>=3?S2_RESOURCE_MEGAMIX:i?S2_RESOURCE_SK:S2_RESOURCE_AMY; }
 static char *path(int i) { return i>=3?s2_party.mighty_path:i?s2_party.s3k_path:s2_party.amy_path; }
 static int ready(int i) { return i>=5?1:i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
-static int packages(void *ctx) { (void)ctx; return 5 + (base && base->package_count ? base->package_count(base->ctx) : 0); }
-static int feature_count(void *ctx) { (void)ctx; return 10 + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
+static int packages(void *ctx) { (void)ctx; return PARTY_PACKAGES + (base && base->package_count ? base->package_count(base->ctx) : 0); }
+static int feature_count(void *ctx) { (void)ctx; return PARTY_FEATURES + (base && base->feature_count ? base->feature_count(base->ctx) : 0); }
 static const char *status(int i)
 {
     if (!*flag(i)) return "Disabled";
@@ -54,7 +56,12 @@ static const char *status(int i)
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 {
     (void)ctx;
-    if (i >= 5) return base && base->package_get && base->package_get(base->ctx, i - 5, out);
+    if (i >= PARTY_PACKAGES) return base && base->package_get && base->package_get(base->ctx, i - PARTY_PACKAGES, out);
+    if (i==LOCAL_COOP_PACKAGE && out) {
+        memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.0.0");
+        COPY(out->description,split_description);
+        out->enabled=s2_party.local_split_screen;COPY(out->status,status(SPLIT_SCREEN));return 1;
+    }
     if(i==4 && out) {
         memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.0.0");
         COPY(out->author,"Host adapter contributors");COPY(out->license,"Project license");
@@ -79,7 +86,13 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
 {
-    if (i >= 10) return base && base->feature_get && base->feature_get(base->ctx, i - 10, out);
+    if (i >= PARTY_FEATURES) return base && base->feature_get && base->feature_get(base->ctx, i - PARTY_FEATURES, out);
+    if (i==SPLIT_SCREEN && out) {
+        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[LOCAL_COOP_PACKAGE]);
+        COPY(out->package_name,names[LOCAL_COOP_PACKAGE]);COPY(out->package_version,"1.0.0");
+        COPY(out->name,"Local Split-Screen");COPY(out->group,"Campaign");COPY(out->description,split_description);
+        out->enabled=s2_party.local_split_screen;COPY(out->status,status(i));return 1;
+    }
     if((i==8 || i==9) && out) {
         memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[i==8?4:1]);
         COPY(out->package_name,names[i==8?4:1]);COPY(out->package_version,"1.0.0");
@@ -137,7 +150,7 @@ static int set_enabled(void *ctx, const char *p, int on)
         return enable(ctx,p,features[4],on);
     }
     if (i == 0) return enable(ctx, p, features[i], on);
-    if (i == 8) return enable(ctx,p,features[8],on);
+    if (i == 8 || i == SPLIT_SCREEN) return enable(ctx,p,features[i],on);
     return base && base->set_enabled && base->set_enabled(base->ctx, p, on);
 }
 static const char *const presentation_ids[]={"save-entry","save-act","title-colours","panel-transition","backdrop-speed"};

@@ -41,6 +41,7 @@ const uint8_t *s2_runtime_ui_font(void) {return ui_font;}
 const uint8_t *s2_runtime_title_font(void) {return title_font;}
 const S2KnucklesArt *s2_resource_knuckles_art(void) { return hud_available?&hud_art:NULL; }
 static int online,local_player,item_owner;
+static unsigned local_view_players;
 static int shadow_item_owner;
 int s2_runtime_knuckles_item(unsigned o) { return item_owner && o==0xD180; }
 int s2_runtime_amy_item(unsigned o) { return amy_item_owner && o==0xD180; }
@@ -49,6 +50,9 @@ static int positions[4][2];
 int genesis_netplay_active(void){return online;}
 int genesis_netplay_local_player(void){return local_player;}
 int s2_runtime_campaign_online(void){return online && !ram16(0xFFD8) && (g_ram[0xF600]&127)==12;}
+int s2_runtime_campaign_independent(void){return s2_runtime_campaign_online() || local_view_players>1;}
+unsigned s2_runtime_local_view_players(void)
+{return !online && g_ram[0xF600]==12 && !ram16(0xFFD8)?local_view_players:0;}
 int s2_runtime_player_position(unsigned p,int *x,int *y)
 {if(p>=4)return 0;*x=positions[p][0];*y=positions[p][1];return 1;}
 void s2_runtime_published_actors(S2RuntimeActors *out)
@@ -62,6 +66,11 @@ void s2_runtime_published_actors(S2RuntimeActors *out)
 }
 void s2_options_overlay(const GVDP *v,int line,uint32_t *out,int width)
 { (void)v; (void)line; (void)out; (void)width; }
+void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
+{ (void)v; (void)line; (void)out; (void)width; }
+void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
+{ (void)v; (void)line; (void)out; (void)width; }
+static const uint32_t *test_native_row(void *ctx) { return ctx; }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { memset(out,0,sizeof *out); }
 int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
@@ -109,8 +118,8 @@ static void clamped_background_alignment_test(void)
             v.reg[12]=1;v.reg[13]=0x3F;v.reg[16]=1;v.cram[1]=0xE;v.cram[2]=0xE00;
             memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
             for(unsigned y=0;y<224;++y){word(v.vram,0xFC00+y*4,-camera);word(v.vram,0xFC02+y*4,-(int)(native_terms[z][c]+11));}
-            render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
-            render_source_scanline(&v,40,native,320,out,796,NULL,NULL);
+            render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
+            render_source_scanline(&v,40,native,320,out,796,NULL,NULL,-1);
             CHECK(s_display && s_native_x==(int)camera-view_left((int)camera,796));
             /* The expanded foreground viewport owns its background origin.
              * At a clamp it no longer inherits native-camera translation. */
@@ -125,8 +134,8 @@ static void clamped_background_alignment_test(void)
                             zones[z],camera,s_left,nx,source,out[nx]);
                 CHECK(out[nx]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
             }
-            render_source_scanline(&v,0,native,320,out,320,NULL,NULL);
-            render_source_scanline(&v,40,native,320,out,320,NULL,NULL);
+            render_source_scanline(&v,0,native,320,out,320,NULL,NULL,-1);
+            render_source_scanline(&v,40,native,320,out,320,NULL,NULL,-1);
             for(unsigned nx=0;nx<320;++nx) {
                 unsigned source=(nx+native_terms[z][c]+11)%512,ink=source/128%2?2:1;
                 CHECK(out[nx]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
@@ -145,7 +154,7 @@ static void ending_background_extension_test(void)
     memset(v.vram+32,0x11,32);memset(v.vram+64,0x22,32);
     for(unsigned n=0;n<64;++n)word(v.vram,0xE000+n*2,n%5?1:2);
     for(unsigned x=0;x<320;++x)native[x]=0xFF123456;
-    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
     for(int x=0;x<796;++x) {
         int nx=x-238;
         if(nx>=0 && nx<320)CHECK(out[x]==native[nx]);
@@ -290,7 +299,7 @@ static void ending_background_world_test(void)
     uint32_t out[796],native[320]={0};
     for(unsigned scroll=0;scroll<=11;scroll+=11) {
         for(unsigned y=0;y<224;++y)word(v.vram,0xFC02+y*4,-(int)scroll);
-        render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+        render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
         for(unsigned x=0;x<796;++x) {
             unsigned source=(unsigned)((int)x-238+(int)scroll)&16383u;
             unsigned ink=(source/128&1)?2:1;
@@ -302,7 +311,7 @@ static void ending_background_world_test(void)
         }
     }
     for(unsigned x=0;x<320;++x)native[x]=0xFF010203u+x;
-    render_source_scanline(&v,0,native,320,out,320,NULL,NULL);
+    render_source_scanline(&v,0,native,320,out,320,NULL,NULL,-1);
     CHECK(!memcmp(out,native,sizeof native));CHECK(configure("off"));clear_guest();
 }
 static void behind_screen_lifetime_test(void)
@@ -886,15 +895,15 @@ static void title_card_publication_handoff_test(void)
     s_history[0].sprites[0]=(SceneSprite){.x=160,.y=56,.attr=0x8001,.hud=2};
     uint32_t native[320]={0},out[796];
     for(unsigned x=160;x<168;++x)native[x]=0xFFFFFFFF;
-    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
-    render_source_scanline(&v,56,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
+    render_source_scanline(&v,56,native,320,out,796,NULL,NULL,-1);
     CHECK(out[398]==0xFFFFFFFF);
     /* A partial next SAT can overlap the mode/Level_started publication.
      * Preserve the completed title text until a matching list reaches DMA,
      * rather than relocating the native H40 glyphs to the terrain origin. */
     g_ram[0xF600]=12;g_ram[0xF711]=1;v.vram[0xF800]=1;
-    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
-    render_source_scanline(&v,56,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
+    render_source_scanline(&v,56,native,320,out,796,NULL,NULL,-1);
     CHECK(s_display && s_display->serial==1 && out[398]==0xFFFFFFFF);
     CHECK(configure("off"));clear_guest();
 }
@@ -1523,7 +1532,7 @@ static void ooz_static_fragment_art_test(void)
     palette[49]=0xFFFF0000;palette[50]=0xFF223344;palette[51]=0xFF556677;palette[52]=0xFF8899AA;
     memcpy(before,g_ram,sizeof before);
     for(unsigned i=0;i<7;++i) {
-        unsigned map=0x110CE+i*8;s_build.count=0;s_build.scene=1;s_build.camera_x=s_build.camera_y=0;
+        unsigned map=0x110CE + i*8;s_build.count=0;s_build.scene=1;s_build.camera_x=s_build.camera_y=0;
         add_mapping(&s_build,NULL,0xB4000000u,map,0,0x639D,0x24,100,80,0,1);
         CHECK(s_build.count==1 && s_build.sprites[0].art==1+S2_NATIVE_OOZ_COLLAPSE);
         SceneSprite *q=&s_build.sprites[0];CHECK(q->size==pieces[i][1]);
@@ -1857,7 +1866,7 @@ static void menu_background_lifetime_test(void)
     for(unsigned phase=0;phase<3;++phase) {
         g_ram[0xF600]=(uint8_t)(phase==0?0x24:phase==1?0x1C:4);
         for(int width=398;width<=796;width+=398) {
-            render_source_scanline(&v,0,native,320,out,width,NULL,NULL);
+            render_source_scanline(&v,0,native,320,out,width,NULL,NULL,-1);
             CHECK(s_render->frame_menu_background);
             for(int x=0;x<width;++x) {
                 int bx=x-(width-320)/2,phase=bx%48;if(phase<0)phase+=48;
@@ -1867,7 +1876,7 @@ static void menu_background_lifetime_test(void)
         }
     }
     word(v.vram,0xE000,0x4001); /* The incoming title owns a different map. */
-    render_source_scanline(&v,0,native,320,out,796,NULL,NULL);
+    render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
     CHECK(!s_render->frame_menu_background);
     s_menu_background_ready=0;
 }
@@ -3247,6 +3256,33 @@ int main(void)
     CHECK(out[4]==0xFFFF0000);s2_video_actor_origin(&v,0,320,&left,&top);CHECK(left==2044 && top==400);
     save.pos=0;save.data=after;s2_video_rb_state(&save);CHECK(!memcmp(before,after,measure.pos));
     online=0;CHECK(!sonic2_video.enabled());
+    /* Use the same published scene in a grid and address the second row at
+     * full height. A CPU-only gap must not leave a stale tile behind. */
+    static uint32_t grid[960*448];
+    local_view_players=1;
+    CHECK(!game_video_prepare_frame(&sonic2_video,1920,1080,320,224).height);
+    for(unsigned count=2;count<=6;++count) {
+        local_view_players=(1u<<count)-1u;
+        GameVideoFrame frame=game_video_prepare_frame(&sonic2_video,1920,1080,320,224);
+        CHECK(frame.requested_width==320);
+        CHECK(frame.width==(count>4?960:640) && frame.height==(count>2?448:224));
+    }
+    local_view_players=(1u<<0)|(1u<<2)|(1u<<3);
+    GameVideoFrame grid_frame=game_video_prepare_frame(&sonic2_video,1920,1080,320,224);
+    CHECK(grid_frame.width==640 && grid_frame.height==448);
+    sonic2_video.canvas_scanline(&v,0,320,grid,960,640,448,test_native_row,native320);
+    CHECK(grid[16]==0xFFFF0000 && grid[320+2]==0xFFFF0000);
+    CHECK(grid[224*960+4]==0xFFFF0000 && grid[224*960+320]==0xFF000000);
+    sonic2_video.canvas_scanline(&v,1,320,grid,960,640,448,test_native_row,native320);
+    CHECK(grid[960+320+2]==0xFFFF0000 && grid[225*960+4]==0xFFFF0000);
+    CHECK(grid[640]==0 && grid[224*960+640]==0); /* respected stride and width */
+    save.pos=0;s2_video_rb_state(&save);CHECK(!memcmp(before,after,measure.pos));
+    online=1;CHECK(!game_video_prepare_frame(&sonic2_video,1920,1080,320,224).height);
+    online=0;
+    word(g_ram,0xFFD8,1);CHECK(!game_video_prepare_frame(&sonic2_video,1920,1080,320,224).height);
+    word(g_ram,0xFFD8,0);
+    g_ram[0xF600]=16;CHECK(!game_video_prepare_frame(&sonic2_video,1920,1080,320,224).height);
+    g_ram[0xF600]=12;local_view_players=0;
     /* A return to local play may select a different aspect before the cold
      * reset. Restore world bookkeeping while retaining that local choice. */
     CHECK(sonic2_video.configure("16:9"));memset(s_active_cells,0,sizeof s_active_cells);

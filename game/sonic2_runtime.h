@@ -38,11 +38,14 @@ void s2_runtime_prepare_stages(void);
 uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act);
 void s2_runtime_capture(void);
 int s2_runtime_campaign_online(void);
+int s2_runtime_campaign_independent(void);
+unsigned s2_runtime_local_view_players(void);
 /* Read-only world positions, including the dynamically reserved P3/P4 slots. */
 int s2_runtime_player_position(unsigned player, int *x, int *y);
 const char *s2_runtime_state_unavailable_reason(void);
 struct GVDP;
 void s2_runtime_overlay(const struct GVDP *vdp, int line, uint32_t *out, int width);
+void s2_runtime_overlay_view(const struct GVDP *vdp, int line, uint32_t *out, int width);
 /* Rollback state (GameSpec rb_state_save/load, runner/rb_state.c "game"). */
 size_t s2_runtime_rb_save(void *dst, size_t cap);
 int s2_runtime_rb_load(const void *src, size_t len);

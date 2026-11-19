@@ -89,6 +89,9 @@ typedef struct S2RenderContext {
 } S2RenderContext;
 static S2RenderContext s_real_render,*s_render=&s_real_render;
 static int s_requested_width=320;
+enum { SPLIT_VIEW_WIDTH=320, SPLIT_VIEW_HEIGHT=224 };
+static unsigned s_split_players[S2_MAX_PLAYERS],s_split_count;
+static struct { int camera,left,top; } s_split_origin[S2_MAX_PLAYERS];
 static uint16_t s_menu_background_row[40];
 static int s_menu_background_ready;
 enum { FADE_NONE,FADE_FROM_BLACK,FADE_TO_BLACK,FADE_FROM_WHITE,FADE_TO_WHITE };
@@ -294,7 +297,7 @@ static int enabled(void)
 #if GENESIS_HAS_RECOMP_NET
     if (genesis_netplay_active()) return 1;
 #endif
-    return s_mode != VIDEO_OFF;
+    return s_mode != VIDEO_OFF || s2_runtime_local_view_players()>1u;
 }
 unsigned s2_video_main_cpu_divisor(void)
 {
@@ -308,6 +311,10 @@ unsigned s2_video_main_cpu_divisor(void)
 static int width(int dw, int dh, int nw, int nh)
 {
     if (!enabled()) return 0;
+    if (s2_runtime_local_view_players()>1u) {
+        s_requested_width=SPLIT_VIEW_WIDTH;
+        return s_requested_width;
+    }
     /* The half-pipe's operator sprites project only the native H32 track.
      * Restore the native display span rather than expose unprojected planes.
      * Keep the outgoing level wide until its objects have actually retired. */
@@ -1041,7 +1048,7 @@ static int scene_contains(int x,int lo,int hi)
     if (competition()) {
         return (x>=lo && x<hi) || (x>=s_vs_other_lo && x<s_vs_other_hi);
     }
-    return s2_runtime_campaign_online()?active_x(x):x>=lo && x<hi;
+    return s2_runtime_campaign_independent()?active_x(x):x>=lo && x<hi;
 }
 
 static void scene_mode_changed(int was_enabled)
@@ -1656,7 +1663,7 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         uint16_t attr=(uint16_t)(scene_read16(p+(vs?4:2))+gfx);
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
-        if(!(flags&0x4000) && !vs && !s2_runtime_campaign_online() &&
+        if(!(flags&0x4000) && !vs && !s2_runtime_campaign_independent() &&
            (y+dy>=224 || y+dy+((size&3)+1)*8<=0))continue;
         if(keys) {
             /* Asteron's lit frame inserts an eye before the same two body
@@ -1757,7 +1764,7 @@ static void spawn_scene(void)
     }
     int camera=ram16(0xEE00),w=enabled()?s_requested_width:320;
     int lo,hi;activation_bounds(camera,w,&lo,&hi);
-    if (s2_runtime_campaign_online()) campaign_cells();
+    if (s2_runtime_campaign_independent()) campaign_cells();
     int player=ram16(0xB008);s_pool_pressure=0;
     for(unsigned i=0;i<s_placement_count;++i) {
         Placement *p=&s_placements[i];
@@ -1771,7 +1778,7 @@ static void spawn_scene(void)
             if(p->loaded || !scene_contains(p->x,lo,hi))continue;
             if(p->state && (g_ram[0xFC02+p->state]&128)){p->loaded=1;continue;}
             int d=abs((int)p->x-player);
-            if (s2_runtime_campaign_online() || competition()) for (unsigned n=1;n<S2_MAX_PLAYERS;++n) {
+            if (s2_runtime_campaign_independent() || competition()) for (unsigned n=1;n<S2_MAX_PLAYERS;++n) {
                 int x,y;
                 if (s2_runtime_player_position(n,&x,&y) && abs((int)p->x-x)<d) d=abs((int)p->x-x);
             }
@@ -1780,7 +1787,7 @@ static void spawn_scene(void)
         if(best<0)break;
         Placement *p=&s_placements[best];unsigned o;
         for(o=0xB400;o<0xD000 && g_ram[o];o+=64){}
-        if(o==0xD000){++s_pool_pressure;if(s2_runtime_campaign_online())s_streaming_pressure=1;break;}
+        if(o==0xD000){++s_pool_pressure;if(s2_runtime_campaign_independent())s_streaming_pressure=1;break;}
         write16(o+8,p->x);write16(o+12,p->y&4095);
         unsigned flip=(p->y>>13)&3;
         write8(o+1,flip);write8(o+0x22,flip);write8(o+0x23,p->state);
@@ -2158,7 +2165,7 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     dst->native_hscroll=(int16_t)ram16(0xE000);dst->native_vscroll=ram16(0xF616);
     s2_runtime_published_actors(&dst->actors);
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&dst->views[p][0],&dst->views[p][1]);
-    int campaign=s2_runtime_campaign_online();
+    int campaign=s2_runtime_campaign_independent();
     int runoff[2]={0,0};
     if(!vs && render_width>320)for(unsigned p=0;p<2;++p) {
         int x=ram16(0xB008+p*64);
@@ -2556,7 +2563,7 @@ int s2_video_hook(uint32_t pc)
         unsigned o=g_cpu.A[0]&65535u;
         int lo,hi;activation_bounds(ram16(0xEE00),s_requested_width,&lo,&hi);
         int behind=(ram16(o+8)&~127)<lo;
-        if(s2_runtime_campaign_online())behind=!active_x(ram16(o+8));
+        if(s2_runtime_campaign_independent())behind=!active_x(ram16(o+8));
         g_cpu.SR=(uint16_t)((g_cpu.SR&~8u)|(behind?8u:0u));
         return 0;
     }
@@ -2581,7 +2588,7 @@ int s2_video_hook(uint32_t pc)
         int radius=pc==0x16F3E?g_ram[o+0x19]:0;
         int left=view_left(ram16(0xEE00),s_requested_width);
         g_cpu.D[0]=(x+radius<left || x-radius>=left+s_requested_width || y<0 || y>=224)?1:0;
-        if (s2_runtime_campaign_online()) g_cpu.D[0]=!active_x(x);
+        if (s2_runtime_campaign_independent()) g_cpu.D[0]=!active_x(x);
         g_cpu.SR=(uint16_t)((g_cpu.SR&~15u)|(g_cpu.D[0]?0:4));
         return 1;
     }
@@ -2931,7 +2938,7 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
 }
 static void render_source_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
                             uint32_t *out, int width,
-                            GameVideoNativeRow native_row, void *native_ctx)
+                            GameVideoNativeRow native_row, void *native_ctx, int split_player)
 {
     item_palette_row(NULL,v,NULL);
     /* Publish one immutable art/scroll snapshot per frame. Palettes stay
@@ -2943,7 +2950,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         shadow[i]=genesis_dac_cram_to_argb(v->cram[i],GENESIS_DAC_SHADOW);
         if(palette[i]!=palette[0])uniform_palette=0;
     }
-    if(line==0 && !s_interpolating) {
+    if(line==0 && !s_interpolating && split_player<=0) {
         memcpy(&s_video_frame,v,sizeof s_video_frame);
         slot_patterns(&s_video_frame,line);
         memcpy(s_world_frame,g_ram,sizeof s_world_frame);
@@ -3003,6 +3010,13 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         }
 #endif
     }
+    if(split_player>=0) {
+        s_frame_campaign_view=split_player>0 && s_display && s_display->scene==1;
+        if(s_frame_campaign_view) {
+            s_frame_view_x=s_display->views[split_player][0];
+            s_frame_view_y=s_display->views[split_player][1];
+        }
+    }
     int slot_views=slot_theme(0) || (presented_competition() && slot_theme(1));
     if(slot_views && s_frame_vs && line==224 && !s_interpolating) {
         memcpy(&s_video_frame,v,sizeof s_video_frame);
@@ -3058,12 +3072,22 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         camera=s_frame_view_x;camera_y=s_frame_view_y;
     }
     if(line==0) {
-        if(level && !s_interpolating)s_stage_width=stage_width();
-        s_camera=camera;s_camera_y=camera_y;++s_frames;
+        if(level && !s_interpolating && split_player<=0)s_stage_width=stage_width();
+        s_camera=camera;s_camera_y=camera_y;
+        if(line==0 && split_player<=0)++s_frames;
         if(level && s_interpolating) {
             s_left=scene_view_left(camera,width,s_stage_width,
                 (s_frame_zone<<8)|s_frame_act,s_frame_resize);
         } else s_left=level?view_left(camera,width):camera-(width-nw)/2;
+        if(split_player>=0) {
+            s_split_origin[split_player].camera=s_camera;
+            s_split_origin[split_player].left=s_left;
+            s_split_origin[split_player].top=s_camera_y;
+        }
+    } else if(split_player>=0) {
+        s_camera=s_split_origin[split_player].camera;
+        s_left=s_split_origin[split_player].left;
+        s_camera_y=s_split_origin[split_player].top;
     }
     int origin=level?s_camera-s_left:(width-nw)/2;
     s_native_x=origin;
@@ -3267,7 +3291,7 @@ static void render_scanline(const GVDP *v, int line, const uint32_t *native, int
      * Native aspect keeps its untouched 256-pixel image for the runner. */
     int source_width=nw==256 && (g_ram[0xF600]&127)==16 && width>=320 ?
         (int)((int64_t)width*4/5):width;
-    render_source_scanline(v,line,native,nw,out,source_width,native_row,native_ctx);
+    render_source_scanline(v,line,native,nw,out,source_width,native_row,native_ctx,-1);
     if(source_width!=width) {
         for(int x=width-1;x>=0;--x)out[x]=out[(int)((int64_t)x*source_width/width)];
         s_width=width;s_native_x=(width-320)/2;
@@ -3284,6 +3308,46 @@ static void scanline_lazy(const GVDP *v, int line, int nw, uint32_t *out, int wi
                           GameVideoNativeRow native_row, void *native_ctx)
 {
     render_scanline(v,line,NULL,nw,out,width,native_row,native_ctx);
+}
+
+static void split_canvas_size(int *width,int *height)
+{
+    s_split_count=0;
+    if(g_ram[0xF600]!=12 || !g_ram[0xF711] || !gameplay()) return;
+    unsigned mask=s2_runtime_local_view_players();
+    for(unsigned p=0;p<S2_MAX_PLAYERS;++p)
+        if(mask&(1u<<p)) s_split_players[s_split_count++]=p;
+    if(s_split_count<2) return;
+    *width=(s_split_count>4?3:2)*SPLIT_VIEW_WIDTH;
+    *height=(s_split_count>2?2:1)*SPLIT_VIEW_HEIGHT;
+}
+
+static void split_canvas_scanline(const GVDP *v,int line,int nw,uint32_t *pixels,
+                                  int stride,int width,int height,
+                                  GameVideoNativeRow native_row,void *native_ctx)
+{
+    if(line>=SPLIT_VIEW_HEIGHT) return;
+    int columns=width/SPLIT_VIEW_WIDTH,rows=height/SPLIT_VIEW_HEIGHT;
+    for(int y=0;y<rows;++y) {
+        uint32_t *out=pixels+(size_t)(line+y*SPLIT_VIEW_HEIGHT)*stride;
+        for(int x=0;x<columns;++x,out+=SPLIT_VIEW_WIDTH) {
+            unsigned seat=(unsigned)(y*columns+x);
+            if(seat<s_split_count && (seat==0 || (s_display && s_display->scene==1)) &&
+               nw==SPLIT_VIEW_WIDTH && !(v->reg[12]&6)) {
+                unsigned p=s_split_players[seat];
+                render_source_scanline(v,line,NULL,nw,out,SPLIT_VIEW_WIDTH,native_row,native_ctx,(int)p);
+                if(p) s2_runtime_overlay_view(v,line,out,SPLIT_VIEW_WIDTH);
+                else s2_runtime_overlay(v,line,out,SPLIT_VIEW_WIDTH);
+            } else {
+                for(int i=0;i<SPLIT_VIEW_WIDTH;++i) out[i]=0xFF000000u;
+                if(seat==0 && nw<=SPLIT_VIEW_WIDTH)
+                    memcpy(out+(SPLIT_VIEW_WIDTH-nw)/2,native_row(native_ctx),(size_t)nw*sizeof *out);
+            }
+            if(y+1<rows && line==SPLIT_VIEW_HEIGHT-1)
+                for(int i=0;i<SPLIT_VIEW_WIDTH;++i) out[i]=0xFF000000u;
+            if(x+1<columns) out[SPLIT_VIEW_WIDTH-1]=0xFF000000u;
+        }
+    }
 }
 
 /* These snapshots are deliberately absent from video_state(). Native aspect
@@ -3610,7 +3674,7 @@ void s2_video_actor_origin(const GVDP *v, int line, int width, int *left, int *t
         unsigned p=line>=224;*left=s_vs_camera[p][3];*top=s_vs_camera[p][1]-(p?224:0);return;
     }
     if (s2_video_intro_world_visible()) { *left=s_left;*top=s_camera_y;return; }
-    if (s_frame_campaign_view && s2_runtime_campaign_online()) {
+    if (s_frame_campaign_view) {
         *left=s_left;*top=s_camera_y;return;
     }
     int mode=v->reg[11]&3, row=mode==0?0:mode==2?line&~7:line;
@@ -3882,5 +3946,6 @@ const GameVideo sonic2_video = {
     .configure=configure,.enabled=enabled,.width=width,.scanline=scanline,
     .overlay_scanline=s2_options_overlay,.scanline_lazy=scanline_lazy,
     .presentation_configure=presentation_configure,.presentation_capture=presentation_capture,
-    .interpolate=interpolate,.presentation_reset=interpolation_reset
+    .interpolate=interpolate,.presentation_reset=interpolation_reset,
+    .canvas_size=split_canvas_size,.canvas_scanline=split_canvas_scanline
 };
