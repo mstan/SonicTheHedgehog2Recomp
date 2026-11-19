@@ -1,8 +1,8 @@
-# v0.14.1
+# v0.14.2
 
-The widescreen ending shows the pilot as the Tornado enters. Clouds keep their full shape as they cross the original viewport boundary. The good-ending portrait replaces the earlier Super Sonic sprite when the new artwork takes over.
+Emerald Hill and Mystic Cave Competition now scroll their backgrounds correctly for both players in both acts. Mystic Cave's long vines stay visible when their grab handles extend into the widescreen view.
 
-Casino Night Competition uses each player's camera for background parallax. The lower view follows the intended scroll rate through the final background band.
+The Tornado propeller animates as the plane enters the widescreen ending.
 
 Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices. Supply your own supported game and donor media.
 
