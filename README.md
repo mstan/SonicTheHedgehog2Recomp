@@ -1,18 +1,19 @@
-# SonicTheHedgehog2Recomp
+# Sonic The Hedgehog 2 Recomp
 
-## Optional sound driver
+> A native static recompilation of Sonic the Hedgehog 2 (Sega Genesis/Mega Drive). Supply your own supported ROM.
+
+## Opt-in Enhancements
+
+## Optional Sound Driver
 
 **Mods -> Audio -> Clone Driver + Mega PCM** enables an experimental alternate
-sound driver for local play. It is off by default and prepares music, effects
-and samples automatically from your verified Sonic 2 ROM. Restart after
-changing drivers; disable it and restart before netplay. See
+sound driver for local play. It is off by default and prepares music and sounds
+automatically from your verified Sonic 2 ROM. See
 [sound driver setup and build notes](docs/SOUND_DRIVER_MODS.md).
 
 **Mods -> Sound** offers separate **Shared Themes**, **Sonic 2 Campaign**, and
-**2-Player Competition** sections. Choose Stock or a matching Sonic 2 prototype
-arrangement for each stage, and cross-game versions for applicable shared
-themes. Imports are verified and shared with compatible tracks and games.
-See [music choices and donor setup](docs/EVENT_MUSIC.md).
+**2-Player Competition** sections. Choose Stock or a supported game
+arrangement for each stage theme. See [music choices and donor setup](docs/EVENT_MUSIC.md).
 
 **Mods -> Presentation -> High refresh rate** offers 120 Hz, 144 Hz and Display
 refresh interpolation with either sound driver. Supported camera and actor
@@ -30,14 +31,13 @@ controller layout, press **LB** to save slot 1 and hold **RB** to load it.
 The loading progress bar fills during the hold. Releasing early cancels it.
 
 Files are
-`native_save_<slot>.bin` beside the executable. Quicksaves capture the next
-completed gameplay tick, including the full party, campaign session and
-widescreen objects. Levels, paused gameplay and special stages are supported;
-menus/loading/results are not save points. Loads can start from the title.
+`native_save_<slot>.bin` beside the executable.
+Levels, paused gameplay and special stages are supported;
+menus/loading/results are not save points.
 
 Keep the matching build and character/mod/video setup. Incompatible or damaged
-states are rejected before changing the game. Old machine-only quickstates
-are not compatible. Campaign SRAM remains the portable zone/act save format.
+save states are rejected before changing the game.
+Campaign SRAM remains the portable zone/act save format.
 Campaign quickstates must use the same selected campaign path; they rewind
 only the active slot, without overwriting other slots or immediately writing
 SRAM. These features are local-only.
@@ -45,9 +45,7 @@ SRAM. These features are local-only.
 ## Optional Sonic 3-style save menu
 
 In **Mods -> S3&K**, enable **Sonic 3-style Save Menu** and select your
-supported stock or Sega Classics Steam Sonic 3 & Knuckles ROM. This is disabled by default and
-independent of the Knuckles character option. The donor supplies menu artwork;
-Sonic 2 remains the running game.
+supported Sonic 3 & Knuckles ROM.
 
 Choose **1 PLAYER** on the title screen for eight save files, **No Save**, and
 **Delete**. Files retain the zone and act, Chaos Emeralds, completion, and P1's
@@ -124,9 +122,9 @@ mechanics: **Team Megamix**; characters: **SEGA / Sonic Team**.
 
 Title **OPTIONS** supports up to six party slots. All six characters can travel
 together with independent AI companions. Players 1 and 2 stay distinct; later
-slots may repeat characters. Up to six human players are supported locally
-and in online rooms. Unoccupied local slots use AI companions. Native VS
-remains two competitors.
+slots allow repeat characters. Up to six human players are supported locally
+and in online rooms. Unoccupied local slots use AI companions. 2P VS
+Mode remains two competitors.
 
 ## Mighty the Armadillo (experimental spike)
 
