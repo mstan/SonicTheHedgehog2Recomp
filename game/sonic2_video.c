@@ -1964,7 +1964,10 @@ static void ending_plane_preview(SceneFrame *dst,uint32_t *keys,int width)
      * Extend that very approach backwards from the native CA countdown.
      * The allocation tick(countdown0) is covered until CC actually publishes. */
     int ticks=ram16(0xB13C);
-    add_mapping(dst,keys,ENDING_PLANE_PREVIEW_KEY,0x3AFF2,ram16(0xFF70)==2?4:0,0x8500,0x10004,
+    /* The native approach runs a four-frame propeller cycle from frame 0.
+     * Continue it backward so the margin entrance joins the native phase. */
+    unsigned frame=((96u-(unsigned)ticks)&3u)+(ram16(0xFF70)==2?4u:0u);
+    add_mapping(dst,keys,ENDING_PLANE_PREVIEW_KEY,0x3AFF2,frame,0x8500,0x10004,
         -16-ticks,192+ticks/2,0,0);
 }
 static void wfz_robotnik_preview(SceneFrame *dst,uint32_t *keys,int width,int cam,int cy,int read_only)
@@ -2270,13 +2273,19 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
                     if(!visible_y && render_width<=320)continue;
                 }
                 if (vs) {
-                    int visible=0;
+                    int visible=0,root_visible=0;
+                    int px=ram16(o+8),height=(flags&16)?g_ram[o+(multi?0x14:0x16)]:0;
                     for (unsigned p=0;p<2;++p) {
+                        if(px+radius<vs_left[p] || px-radius>=vs_left[p]+render_width)continue;
                         int dy=(int16_t)(ram16(o+12)-ram16(p?0xEE24:0xEE04));
-                        int px=ram16(o+8);
-                        if (px+radius>=vs_left[p] && px-radius<vs_left[p]+render_width && dy>=-32 && dy<256) visible=1;
+                        int visible_root=dy>=-32 && dy<256;
+                        root_visible|=visible_root;
+                        /* A long vine can hang into the picture above the
+                         * root cutoff. Draw it without changing native AI. */
+                        visible|=visible_root || (height && dy+height>=0 && dy-height<224);
                     }
                     if (!visible) continue;
+                    visible_y=root_visible;
                 }
                 /* Dormant WFZ lasers use on_screen as their activation
                  * trigger (loc3BAD2). A margin preview must not start their
@@ -2805,6 +2814,31 @@ static void competition_hud_sprites(const GVDP *v,int line,uint32_t *out,int wid
         slot=v->vram[(at+3)&65535u]&127;if(!slot)break;
     }
 }
+/* Camera terms of the native IM2 horizontal-scroll routines. Their ripple
+ * and animation offsets stay in the VDP line buffer. */
+static int competition_ehz_background_scroll(int camera,int line)
+{
+    /* P2 writes four lead-in rows before its visible half, and its sky
+     * covers those four rows plus the same eleven visible rows as P1. */
+    int row=(line%224)/2,n=-camera;
+    if(row<11 || (row>=51 && row<56))return 0;
+    if(row<51)return -scroll_floor(n,64);
+    if(row<72) {
+        int q=scroll_floor(n,16);
+        return row<64?-q:-(q+scroll_floor(q,2));
+    }
+    int slow=scroll_floor(n,8);
+    int step=(scroll_floor(n,2)-slow)*256/48;
+    return -slow-scroll_floor((int64_t)(row-72)*step*256,65536);
+}
+static int competition_mcz_background_scroll(int camera,int by)
+{
+    static const uint8_t heights[]={19,11,9,4,3,1,1,24,6,10,16,32,16,10,6,24,1,1,3,4,16,9,11,19};
+    static const uint8_t scales[]={9,8,7,5,4,3,2,1,5,7,8,9,8,7,5,1,2,3,4,5,6,7,8,9};
+    /* P2's extra four rows and longer first segment cancel at the split. */
+    unsigned band=scroll_segment(((unsigned)by&511u)/2,heights,sizeof heights);
+    return scroll_floor((int64_t)(camera*16/10)*scales[band],16);
+}
 static int competition_cnz_background_scroll(int camera,int by,unsigned player)
 {
     /* SwScrl_CNZ_2P selects eight IM2 lines per band. The lower half
@@ -2836,7 +2870,15 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
         if(s_world_frame[0x8080+(((by>>7)&15)*256)+col])bg_width=(col+1)*128;
     uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
     int bg_base=-origin-hs_b;
-    if(world && width>nw && s_frame_zone==12) {
+    if(world && width>nw && s_frame_zone==0 && (p || y<216)) {
+        int displayed_camera=unwrap(-hs_a,camera);
+        bg_base=-hs_b-competition_ehz_background_scroll(displayed_camera,line)
+                     +competition_ehz_background_scroll(left,line);
+    } else if(world && width>nw && s_frame_zone==11 && (p || y<216)) {
+        int displayed_camera=unwrap(-hs_a,camera);
+        bg_base=-hs_b-competition_mcz_background_scroll(displayed_camera,by)
+                     +competition_mcz_background_scroll(left,by);
+    } else if(world && width>nw && s_frame_zone==12) {
         /* Keep the live line's ripple or animation offset and rebase only
          * its camera term. A clamped view then holds still at the edge. */
         int view_scroll=competition_cnz_background_scroll(left,by,p);
