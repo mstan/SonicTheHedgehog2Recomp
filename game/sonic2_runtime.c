@@ -1048,7 +1048,16 @@ static int update_player(unsigned p, uint32_t entry)
         for(unsigned a=0xF602;a<=0xF605;++a)
             if(g_ram[a]&0x10)g_ram[a]=(g_ram[a]&~0x10)|0x20;
     }
+    /* Extra Tails bodies use private artwork. Preserve the fixed Obj05
+     * accessory's native owner across their Obj02 initialization. */
+    int extra_tails_init=p>=2 && initializing && native_id(p)==2;
+    uint8_t tails_id=g_ram[0xD000];
+    uint16_t tails_parent=word(0xD03E);
     recomp_call_addr(entry);
+    if (extra_tails_init) {
+        g_ram[0xD000]=tails_id;
+        putword(0xD03E,tails_parent);
+    }
     if (p==1 && native_id(p)!=2) {
         /* Native sidekick stars follow Tails' position ring, regardless of
          * the sidekick's character ID. Sonic-based companions otherwise
@@ -1560,6 +1569,11 @@ int s2_runtime_hook(uint32_t pc)
             return 1;
         }
         return 0;
+    }
+    if (inside_player && actor>=2 && (pc==0x1B848 || pc==0x1D1AC)) {
+        /* Extra seats draw from decoded poses. Their DPLCs would replace
+         * the tiles and cached pose shared by the hardware Sonic/Tails. */
+        return 1;
     }
     if (pc==0x1B848 && inside_player && kind((unsigned)actor)==S2_CHAR_MIGHTY) return 1;
     if (!inside_player || !imported()) return 0;

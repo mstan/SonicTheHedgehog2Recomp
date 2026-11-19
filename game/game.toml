@@ -278,6 +278,9 @@ kind = "game_hook"
 addr = 0x1B848 # LoadSonicDynPLC
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x1D1AC # LoadTailsDynPLC
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x1AC3E # Sonic_CheckSpindash
 kind = "game_hook"
 [[widescreen_site]]
