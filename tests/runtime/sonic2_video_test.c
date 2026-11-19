@@ -645,6 +645,9 @@ static void ending_plane_preview_test(void)
     capture_objects_into(&scene,796,0,NULL);
     CHECK(scene.count==1 && scene.sprites[0].art==(SCENE_ART_MARGIN_VIEW|(1+S2_NATIVE_ENDING_TAILS_PILOT)));
     word(g_rom,0x3AFF2+14,0);
+    word(g_rom,0x3AFF2+2,20);
+    word(g_ram,0xB13C,7);capture_objects_into(&scene,796,0,NULL);
+    CHECK(scene.count==1 && (scene.sprites[0].attr&2047)==0x510);
     word(g_ram,0xB13C,0);capture_objects_into(&scene,796,0,NULL);
     CHECK(scene.count==1 && scene.sprites[0].x==-24 && scene.sprites[0].y==184);
     s_display=&scene;s_camera=s_camera_y=0;s_left=-238;
@@ -1773,6 +1776,17 @@ static void native_demo_hud_test(void)
 static void competition_intro_alignment_test(void)
 {
     /* Each split's original CNZ scroll row uses a different band offset. */
+    CHECK(competition_ehz_background_scroll(320,20)==0);
+    CHECK(competition_ehz_background_scroll(320,22)==5);
+    CHECK(competition_ehz_background_scroll(321,224+100)==6);
+    CHECK(competition_ehz_background_scroll(321,112)==21);
+    CHECK(competition_ehz_background_scroll(321,128)==32);
+    CHECK(competition_ehz_background_scroll(320,144)==40);
+    CHECK(competition_ehz_background_scroll(320,192)==100);
+    CHECK(competition_mcz_background_scroll(320,37)==288);
+    CHECK(competition_mcz_background_scroll(320,38)==256);
+    CHECK(competition_mcz_background_scroll(321,511)==288);
+    CHECK(competition_mcz_background_scroll(320,512)==288);
     CHECK(competition_cnz_background_scroll(280,9,0)==280);
     CHECK(competition_cnz_background_scroll(280,89,0)==126);
     CHECK(competition_cnz_background_scroll(243,89,1)==83);
