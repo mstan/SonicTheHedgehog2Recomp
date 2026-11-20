@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.15.2
+SonicTheHedgehog2Recomp v0.15.3
 ===========================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -52,6 +52,20 @@ Quickstates and turbo are disabled during netplay.
 
 The enhanced party Options menu is available during netplay, including Amy,
 Knuckles, Mighty, Shadow and six-player parties. Menu edits rewind with rollback.
+
+ONLINE NOT WORKING? SEND A DIAGNOSTICS FILE
+-------------------------------------------
+If online play fails (for example the screen stays black after Play):
+
+  1. Open Mods > Diagnostics and turn on Online diagnostics.
+  2. Host or join and press Play again, as before. Wait about a minute if
+     the screen stays black.
+  3. Close the game.
+  4. Send logs\Sonic2-online-diagnostics.txt from the game folder.
+
+If both players can do this, send both files. The file includes network
+addresses and lobby/player names, but no passwords. It does not affect
+gameplay or who you can play with. Turn it off again whenever you like.
 
 OPTIONAL SOUND DRIVER
 ---------------------
