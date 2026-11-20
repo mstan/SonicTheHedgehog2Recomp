@@ -128,6 +128,15 @@ slots may repeat characters. Up to six human players are supported locally
 and in online rooms. Unoccupied local slots use AI companions. Native VS
 remains two competitors.
 
+For local split-screen, enable **Local Split-Screen** in the launcher's **Mods**
+page and assign each player's input device in **Controls**. Select the characters
+in the title's **OPTIONS** menu, then start **1 PLAYER**. Each occupied local slot
+gets its own camera. Two players sit side by side, three or four use a 2×2 grid,
+and five or six use a 3×2 grid. CPU companions share the party without taking
+a screen. The campaign still shares rings, checkpoints and stage progression.
+Menus and Special Stages use one view. Native **2 PLAYER** Competition keeps its
+original format.
+
 ## Mighty the Armadillo (experimental spike)
 
 Mighty is the sixth character option. In **Mods**, select your raw **Sonic

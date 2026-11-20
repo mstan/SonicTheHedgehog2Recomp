@@ -20,13 +20,13 @@ static void slot_window_test(void)
     uint8_t *rom=calloc(1,0x100000),*ambiguous=calloc(1,0x100000);assert(rom && ambiguous);
     S2KnucklesArt art={0};uint8_t source[512],before[512],out[512],expected[512];
     for(unsigned i=0;i<512;++i)art.slot[i]=(uint8_t)(((i%15+1)<<4)|((i/4)%15+1));
-    for(unsigned icon=0;icon<8;++icon)memset(rom+0x4EEFE+icon*512,(int)((icon+1)*17),512);
+    for(unsigned icon=0;icon<8;++icon)memset(rom+0x4EEFE + icon*512,(int)((icon+1)*17),512);
     for(unsigned s=0;s<3;++s)for(unsigned i=0;i<8;++i)rom[0x2C401+s*8+i]=(uint8_t)((i*3+s)&7);
     for(unsigned slot=0;slot<3;++slot)for(unsigned index=0;index<8;++index)for(unsigned offset=0;offset<32;++offset) {
         for(unsigned col=0;col<4;++col)for(unsigned row=0;row<32;++row) {
             unsigned entry=(index+(row+offset>=32))&7,icon=rom[0x2C401+slot*8+entry];
             unsigned at=col*128+((row+offset)&31)*4,dest=col*128+row*4;
-            memcpy(source+dest,rom+0x4EEFE+icon*512+at,4);
+            memcpy(source+dest,rom+0x4EEFE + icon*512+at,4);
             memcpy(expected+dest,icon?source+dest:art.slot+at,4);
         }
         memcpy(before,source,512);memset(out,0xA5,512);
@@ -116,7 +116,11 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==6 && p->feature_count(p->ctx)==11);
+    assert(p->package_count(p->ctx)==7 && p->feature_count(p->ctx)==12);
+    RecompLauncherCModFeature split;
+    assert(p->feature_get(p->ctx,10,&split) && !split.enabled && !strcmp(split.id,"split-screen"));
+    assert(p->set_enabled(p->ctx,"sonic2.local-coop",1) && s2_party.local_split_screen);
+    assert(p->feature_enable(p->ctx,"sonic2.local-coop","split-screen",0) && !s2_party.local_split_screen);
     RecompLauncherCModOption presentation;
     assert(p->feature_option_get(p->ctx,"sonic2.presentation","presentation",0,&presentation));
     assert(!strcmp(presentation.value,"original")&&!s2_party.presentation_enabled);

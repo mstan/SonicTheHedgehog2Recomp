@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v0.12.2
+SonicTheHedgehog2Recomp v0.15.0
 ===========================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -23,6 +23,14 @@ selection and cheat-code handling: Left/Right changes the sound number, A adds
 Choose Level Select and press A, C or Start to open the native stage selector.
 The original sound-test cheat sequence and title A+Start entry also work.
 These controls work with the original driver and the optional Clone Driver.
+
+LOCAL SPLIT-SCREEN CO-OP
+----------------------
+Enable Local Split-Screen in Mods and assign each player's input device in
+Controls. Choose the characters in the title's OPTIONS, then start 1 PLAYER.
+Each local player gets their own view of the shared campaign, with up to six
+views in a 3-by-2 grid. CPU companions share the party without taking a view.
+Imported characters require their verified donor ROMs.
 
 ONLINE PLAY
 -----------

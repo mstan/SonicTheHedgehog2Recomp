@@ -153,6 +153,7 @@ void s2_party_load(const char *settings_path)
         else if (!strcmp(line, "infinite_time")) s2_party.infinite_time = atoi(value) == 1;
         else if (!strcmp(line, "easy_debug")) s2_party.easy_debug = atoi(value) == 1;
         else if (!strcmp(line,"knuckles_flow")) s2_party.knuckles_flow=atoi(value)==1;
+        else if (!strcmp(line,"local_split_screen")) s2_party.local_split_screen=atoi(value)==1;
         else if (!strcmp(line,"presentation_enabled")) s2_party.presentation_enabled=atoi(value)==1;
         else if (!strcmp(line,"save_entry_warp")) s2_party.save_entry_warp=atoi(value)==1;
         else if (!strcmp(line,"save_card_act")) s2_party.save_card_act=atoi(value)==1;
@@ -186,6 +187,7 @@ int s2_party_save(void)
     fprintf(file, "version=1\nslots=%u\namy_enabled=%d\ns3k_enabled=%d\namy_path=%s\ns3k_path=%s\n",
         s2_party.roster.slots, s2_party.amy_enabled, s2_party.s3k_enabled, s2_party.amy_path, s2_party.s3k_path);
     fprintf(file,"easy_debug=%d\n",s2_party.easy_debug);
+    fprintf(file,"local_split_screen=%d\n",s2_party.local_split_screen);
     fprintf(file,"knuckles_flow=%d\npresentation_enabled=%d\nsave_entry_warp=%d\nsave_card_act=%d\ntitle_card_colors=%d\noptions_panel_fade=%d\noptions_slow_backdrop=%d\n",
         s2_party.knuckles_flow,s2_party.presentation_enabled,s2_party.save_entry_warp,
         s2_party.save_card_act,s2_party.title_card_colors,s2_party.options_panel_fade,s2_party.options_slow_backdrop);
