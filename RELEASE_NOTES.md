@@ -1,7 +1,6 @@
-# v0.15.2
+# v0.15.3
 
-- The Music Player now lists Ending after Credits and plays the selected Ending arrangement.
-- Clone Driver restores the notes that follow short rests in both imported Sky Sanctuary arrangements. Imported Sonic 3-family FM music now retains the last pitch through a rest, as the original driver does.
+- New **Mods > Diagnostics > Online diagnostics** (off by default). If online play does not work, for example a black screen after Play, turn it on, try again, close the game and send `logs\Sonic2-online-diagnostics.txt` from the game folder. It records what the game reports while hosting, joining and playing online, including network addresses and lobby names but no passwords. It does not affect gameplay or who you can play with.
 
 Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices.
 

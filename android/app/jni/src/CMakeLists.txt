@@ -52,6 +52,8 @@ add_library(main SHARED
     "${RUNNER_ROOT}/glue.c"
     "${RUNNER_ROOT}/fiber_compat.c"
     "${RUNNER_ROOT}/crash_report.c"
+    "${RUNNER_ROOT}/console_capture.c"
+    "${RUNNER_ROOT}/online_diagnostics.c"
     "${RUNNER_ROOT}/input_script.c"
     "${RUNNER_ROOT}/gamepad.c"
     "${RUNNER_ROOT}/input_map.c"
