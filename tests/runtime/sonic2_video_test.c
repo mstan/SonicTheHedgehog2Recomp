@@ -1701,6 +1701,20 @@ static void sega_outgoing_composition_test(void)
     CHECK(outgoing[0]==native[0] && outgoing[397]==native[319]);
     CHECK(sonic2_video.configure("off"));
 }
+static void death_egg_escape_fade_test(void)
+{
+    s2_video_hook(0x3D9BE);
+    CHECK(s_donor_fade.mode==FADE_TO_WHITE && s_donor_fade.steps==0);
+    for(unsigned tick=1;tick<=22;++tick) {
+        s2_video_hook(0x3D9D6);
+        CHECK(s_donor_fade.mode==FADE_TO_WHITE && s_donor_fade.steps==tick);
+    }
+    CHECK(donor_fade_color(0x002,s_donor_fade)==0xEEE);
+    s2_video_hook(0x3D9D6);
+    CHECK(s_donor_fade.steps==22);
+    s_donor_fade=(DonorFade){0};
+}
+
 static void composed_menu_fade_test(void)
 {
     uint32_t pixels[512];
@@ -3432,6 +3446,7 @@ int main(void)
     competition_intro_alignment_test();
     outgoing_competition_mapping_test();
     widened_card_front_ui_test();
+    death_egg_escape_fade_test();
     composed_menu_fade_test();
     menu_background_lifetime_test();
     imported_character_hud_test();
