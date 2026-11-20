@@ -179,6 +179,26 @@ Clone_NativeSpeedupTick:
 \tmove.b d0,SMPS_RAM.variables.v_main_tempo_timeout(a6)
 .nativeTempoReady:
 ''', 1)
+            # The S3 FM rest silences the channel but retains its pitch.
+            # A following duration-only event uses that pitch again.
+            start = text.index('FMSetFreq:\n')
+            end = text.index('; End of function FMSetFreq', start)
+            segment = text[start:end]
+            marker = '\tbeq.w\tTrackSetRest'
+            assert segment.count(marker) == 1, 'Upstream FM rest branch changed'
+            segment = segment.replace(marker, '\tbeq.w\tClone_FMSetRest', 1)
+            text = text[:start] + segment + text[end:]
+            text += '''
+Clone_FMSetRest:
+\ttst.b SMPS_RAM.variables.v_foreign_s3(a6)
+\tbeq.w TrackSetRest
+\tmove.l a5,d5
+\tsub.l a6,d5
+\tcmpi.w #SMPS_RAM.v_music_fm_tracks_end,d5
+\tbhs.w TrackSetRest
+\tbset #1,SMPS_Track.PlaybackControl(a5)
+\trts
+'''
             start = text.index('PSGDoNext:\n')
             end = text.index('; End of function PSGDoNext', start)
             segment = text[start:end]

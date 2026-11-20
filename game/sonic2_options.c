@@ -48,7 +48,7 @@ static void player_mask(void)
  s2_cd_theme_audition(s_player_open?player_audible_track():S2_MUSIC_COUNT,s_player_open?s_player_solo:0,s_player_open&&s_player_stopped);
 }
 static int player_used(unsigned t)
-{return strcmp(s2_theme_ids[t],"ending")&&strcmp(s2_theme_ids[t],"hidden-palace");}
+{return strcmp(s2_theme_ids[t],"hidden-palace");}
 static void player_change(int direction)
 {
  do{s_player_track=(s_player_track+S2_MUSIC_COUNT+direction)%S2_MUSIC_COUNT;}while(!player_used(s_player_track));
