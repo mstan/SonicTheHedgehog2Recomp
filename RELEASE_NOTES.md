@@ -1,9 +1,9 @@
-# v0.15.0
+# v0.15.1
 
-Play the campaign locally with independent cameras for up to six players in one window. Enable **Local Split-Screen** under **Mods**, assign devices in **Controls**, choose the party in the title's **OPTIONS**, then start **1 PLAYER**.
+- Emerald Hill's split-screen backgrounds follow their own viewports as the lead player changes elevation.
+- Secondary split-screen views keep their assigned framing during the lead player's death. The campaign still uses shared lives and restarts together.
+- Custom character and HUD colors fade with the Death Egg escape flash.
 
-Two local players sit side by side, three or four use a 2×2 grid, and five or six use a 3×2 grid. Rings, checkpoints and stage progression are shared. Extra party members now use their own animation art without overwriting Sonic and Tails's sprites.
-
-Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices. Supply your own supported game and donor media.
+Fit to screen is the default for fresh settings. Updating preserves saved aspect and mod choices.
 
 After loading a save state, play can diverge from an uninterrupted run. This remains under investigation.

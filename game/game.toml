@@ -76,6 +76,12 @@ kind = "game_hook"
 addr = 0x25B2 # Pal_FadeToWhite.UpdateAllColours
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x3D9BE # ObjC7_SetupEnding begins the Death Egg escape flash
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x3D9D6 # ObjC7_SetupEnding updates or finishes the flash
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x3F7C8 # Touch_Enemy_Part2: Knuckles leaves glide on a damaging rebound
 kind = "game_hook"
 [[widescreen_site]]

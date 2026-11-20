@@ -2164,7 +2164,20 @@ static void capture_objects_into(SceneFrame *dst,int render_width,int read_only,
     dst->camera_x=cam;dst->camera_y=cy;
     dst->native_hscroll=(int16_t)ram16(0xE000);dst->native_vscroll=ram16(0xF616);
     s2_runtime_published_actors(&dst->actors);
-    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) player_camera(p,&dst->views[p][0],&dst->views[p][1]);
+    unsigned local_views=s2_runtime_local_view_players();
+    const SceneFrame *previous=&s_history[s_serial%3];
+    int freeze_views=dst->scene==1 && g_ram[0xB024]>=6 &&
+        previous->serial && previous->scene==1;
+    for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
+        if (p && freeze_views && (local_views&(1u<<p))) {
+            /* The native death loop freezes the other players. Keep the
+             * last published view instead of following death/recovery state. */
+            dst->views[p][0]=previous->views[p][0];
+            dst->views[p][1]=previous->views[p][1];
+        } else {
+            player_camera(p,&dst->views[p][0],&dst->views[p][1]);
+        }
+    }
     int campaign=s2_runtime_campaign_independent();
     int runoff[2]={0,0};
     if(!vs && render_width>320)for(unsigned p=0;p<2;++p) {
@@ -2460,8 +2473,10 @@ int s2_video_hook(uint32_t pc)
     case 0x23C6: s_donor_fade=(DonorFade){FADE_FROM_BLACK,0};break;
     case 0x246A: s_donor_fade=(DonorFade){FADE_TO_BLACK,0};break;
     case 0x24E8: s_donor_fade=(DonorFade){FADE_FROM_WHITE,0};break;
-    case 0x2592: s_donor_fade=(DonorFade){FADE_TO_WHITE,0};break;
-    case 0x23FE: case 0x248A: case 0x2522: case 0x25B2:
+    case 0x2592:
+    case 0x3D9BE: /* The Death Egg escape updates the native palette directly. */
+        s_donor_fade=(DonorFade){FADE_TO_WHITE,0};break;
+    case 0x23FE: case 0x248A: case 0x2522: case 0x25B2: case 0x3D9D6:
         if(s_donor_fade.steps<22)++s_donor_fade.steps;
         break;
     }
@@ -3096,7 +3111,10 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     int bg_world=level && !special;
     int ending_sky=width>nw && !level && base_b==0xE000 && s_frame_ending_sky;
     int by=(bg_world || ending_sky)?unwrap(v->vsram[1],s_frame_bg_y)+line:line+(v->vsram[1]&1023);
-    if (bg_world && s_frame_campaign_view) by+=(camera_y-native_camera_y)/4;
+    /* Emerald Hill's native background starts at a fixed vertical origin.
+     * A secondary view must keep that origin as the lead camera climbs. */
+    if (bg_world && s_frame_campaign_view && (split_player<0 || s_frame_zone!=0))
+        by+=(camera_y-native_camera_y)/4;
     /* Normal SwScrl_HTZ never streams its background: DrawInitialBG owns
      * the authored512x256 PlaneB domain at source(0,0). Distant quake cells
      * share the layout but are not part of that repeating normal scene.
@@ -3117,7 +3135,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * only its camera-dependent term to this viewport's foreground origin.
      * A clamped wide camera then keeps its own parallax instead of inheriting
      * the moving native viewport's foreground-speed translation. */
-    if(bg_world && width>nw) {
+    if(bg_world && (width>nw || (split_player>0 && s_frame_campaign_view))) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
         if(s_interpolating)bg_base=interpolation_background_base(line,by);
     }
