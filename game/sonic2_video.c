@@ -1245,7 +1245,12 @@ void s2_video_prepare_knuckles_items(void)
              * from the large title font already decoded from the same ROM. */
             memcpy(patterns+SPECIAL_RESULT_FONT_K*32,result_font+34*32,4*32);
             memcpy(patterns+SPECIAL_RESULT_FONT_Y*32,result_font+86*32,4*32);
-            memcpy(patterns+SPECIAL_RESULT_COUNTER_FONT*32,s2_runtime_ui_font()+14*32,26*32);
+            const uint8_t *letters=s2_runtime_ui_font()+14*32;
+            uint8_t *counter=patterns+SPECIAL_RESULT_COUNTER_FONT*32;
+            /* Use the cyan ink of the stock RINGS text in the results
+             * palette. The gameplay HUD's yellow is faint on this screen. */
+            for(unsigned i=0;i<26*32;++i)
+                counter[i]=(letters[i]&0xF0?0xC0:0)|(letters[i]&0x0F?0x0C:0);
         }
         if(amy_items) {
             if(amy_items->signpost_tiles && amy_items->signpost_tiles<=78) {
