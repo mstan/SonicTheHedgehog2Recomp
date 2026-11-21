@@ -1169,7 +1169,8 @@ enum {
     SPECIAL_HUD_NAME=SPECIAL_FONT_Y+4,
     SPECIAL_RESULT_NAME=SPECIAL_HUD_NAME+5,
     SPECIAL_RESULT_FONT_K=SPECIAL_RESULT_NAME+8,
-    SPECIAL_RESULT_FONT_Y=SPECIAL_RESULT_FONT_K+4
+    SPECIAL_RESULT_FONT_Y=SPECIAL_RESULT_FONT_K+4,
+    SPECIAL_RESULT_COUNTER_FONT=SPECIAL_RESULT_FONT_Y+4
 };
 static const S2SpecialArtFrame *special_actor_art(const uint16_t **palette)
 {
@@ -1244,6 +1245,7 @@ void s2_video_prepare_knuckles_items(void)
              * from the large title font already decoded from the same ROM. */
             memcpy(patterns+SPECIAL_RESULT_FONT_K*32,result_font+34*32,4*32);
             memcpy(patterns+SPECIAL_RESULT_FONT_Y*32,result_font+86*32,4*32);
+            memcpy(patterns+SPECIAL_RESULT_COUNTER_FONT*32,s2_runtime_ui_font()+14*32,26*32);
         }
         if(amy_items) {
             if(amy_items->signpost_tiles && amy_items->signpost_tiles<=78) {
@@ -1595,6 +1597,11 @@ static unsigned special_results_emit(uint8_t sat[640],unsigned count,
     return count;
 }
 static unsigned result_letter_width(char letter);
+static int special_result_name_frame(unsigned frame)
+{
+    /* Headings GOT A/HAS ALL THE and the nonzero/zero P1 ring rows. */
+    return frame==1 || frame==22 || frame==13 || frame==18;
+}
 static unsigned special_results_retitle(uint8_t sat[640],unsigned count,
                                         const SpecialResultActor *actor,const char *name)
 {
@@ -1607,18 +1614,21 @@ static unsigned special_results_retitle(uint8_t sat[640],unsigned count,
     };
     unsigned mapping=0x14ED0+scene_read16(0x14ED0+actor->frame*2);
     unsigned pieces=scene_read16(mapping);
-    unsigned stock_name=5;
+    int tally=actor->frame==13 || actor->frame==18;
+    unsigned stock_name=tally?2:5;
     int advance=0;
-    for(const char *letter=name;*letter;++letter)advance+=(int)result_letter_width(*letter);
-    int delta=advance-72;
-    int x=(int16_t)scene_read16(mapping+8)-delta/2;
+    for(const char *letter=name;*letter;++letter)advance+=tally?8:(int)result_letter_width(*letter);
+    int delta=advance-(tally?40:72);
+    int x=(int16_t)scene_read16(mapping+8)-(tally?0:delta/2);
     S2SpecialResultArtFrame row={0};
     for(const char *letter=name;*letter;++letter) {
-        unsigned tile=tiles[*letter-'A'];
-        unsigned glyph_width=result_letter_width(*letter);
-        unsigned size=((glyph_width/8-1)<<2)|1;
+        unsigned tile=tally?SPECIAL_RESULT_COUNTER_FONT+*letter-'A':tiles[*letter-'A'];
+        unsigned glyph_width=tally?8:result_letter_width(*letter);
+        unsigned size=tally?0x80:((glyph_width/8-1)<<2)|1;
         if(tile==SPECIAL_RESULT_FONT_K || tile==SPECIAL_RESULT_FONT_Y)size|=0x80;
-        row.pieces[row.count++]=(S2SpecialPiece){.x=x,.y=0,.size=(uint8_t)size,.attr=(uint16_t)(0x8000|tile)};
+        row.pieces[row.count++]=(S2SpecialPiece){
+            .x=x,.y=tally?4:0,.size=(uint8_t)size,.attr=(uint16_t)((tally?0xA000:0x8000)|tile)
+        };
         x+=(int)glyph_width;
     }
     count=special_results_emit(sat,count,&row,actor->x,actor->y,0);
@@ -1627,8 +1637,10 @@ static unsigned special_results_retitle(uint8_t sat[640],unsigned count,
     row.count=0;
     for(unsigned i=stock_name;i<pieces && row.count<S2_SS_RESULT_PIECES;++i) {
         unsigned piece=mapping+2+i*8;
+        /* Move RINGS with the lead name. The native digit cells stay put. */
+        int shift=tally?(i<5?delta:0):delta-delta/2;
         row.pieces[row.count++]=(S2SpecialPiece){
-            .x=(int16_t)scene_read16(piece+6)+delta-delta/2,.y=(int8_t)scene_read8(piece),
+            .x=(int16_t)scene_read16(piece+6)+shift,.y=(int8_t)scene_read8(piece),
             .size=(uint8_t)scene_read8(piece+1),.attr=scene_read16(piece+2)
         };
     }
@@ -1674,7 +1686,7 @@ void s2_video_special_results(const GVDP *v,int line,uint32_t *out,int width)
         if(picture.owner[slot]) {
             int y=((p[0]<<8)|p[1])-128,h=((p[2]&3)+1)*8;
             const SpecialResultActor *a=&picture.actors[picture.owner[slot]-1];
-            if((art || a->frame==1 || a->frame==22) &&
+            if((art || special_result_name_frame(a->frame)) &&
                ((line>=y && line<y+h) || (line>=a->y && line<a->y+16)))affected=1;
         }
         slot=p[3]&127;if(!slot)break;
@@ -1683,7 +1695,7 @@ void s2_video_special_results(const GVDP *v,int line,uint32_t *out,int width)
     GVDP copy=*v;uint8_t sat[640]={0};unsigned count=0,seen=0;slot=0;
     for(unsigned n=0;n<80 && slot<80;++n) {
         const uint8_t *native=picture.sat+slot*8;unsigned owner=picture.owner[slot];
-        if(owner && (art || picture.actors[owner-1].frame==1 || picture.actors[owner-1].frame==22)) {
+        if(owner && (art || special_result_name_frame(picture.actors[owner-1].frame))) {
             unsigned i=owner-1;
             if(!(seen&(1u<<i))) {
                 seen|=1u<<i;const SpecialResultActor *a=&picture.actors[i];unsigned frame=a->frame;

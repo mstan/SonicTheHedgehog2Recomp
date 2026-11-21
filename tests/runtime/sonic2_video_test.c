@@ -2286,11 +2286,12 @@ static void special_results_party_name_test(void)
     hud_available=amy_special_available=0;
     strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
     memset(title_font+86*32,0x66,4*32);
+    memset(ui_font+(14+'M'-'A')*32,0x55,32);
     s2_party.roster.slots=2;
     g_ram[0xF600]=16;g_ram[0xB800]=g_ram[0xB840]=0x6F;
     strcpy(s2_party.roster.character[0],"shadow");s2_video_prepare_knuckles_items();
     v.reg[1]=64;v.reg[5]=0x7C;v.reg[12]=1;
-    v.cram[2]=0xE00;v.cram[3]=0x0E0;v.cram[4]=0xE;v.cram[6]=0xEEE;
+    v.cram[2]=0xE00;v.cram[3]=0x0E0;v.cram[4]=0xE;v.cram[6]=0xEEE;v.cram[21]=0x0EE;
     memset(v.vram+0x2A*32,0x22,4*32); /* S */
     memset(v.vram+0x12*32,0x33,4*32); /* H */
     memset(v.vram+0x1C*32,0x33,6*32); /* M */
@@ -2320,7 +2321,24 @@ static void special_results_party_name_test(void)
     s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
     CHECK(out[28]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
     CHECK(out[108]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+    /* Zero-point P1 ring row: emit the compact name, shift RINGS by one
+     * character for Mighty, and leave the zero at its original x. */
+    unsigned tally=0x15100;
+    word(g_rom,0x14ED0+18*2,tally-0x14ED0);
+    word(g_rom,tally,6);word(g_rom,tally+8,-96);
+    g_rom[tally+19]=5;word(g_rom,tally+20,0x8012);word(g_rom,tally+24,-48);
+    g_rom[tally+43]=1;word(g_rom,tally+44,0x8001);word(g_rom,tally+48,88);
+    memset(v.vram+32,0x66,2*32);
+    g_ram[0xB85A]=18;
+    word(g_ram,0xF806,192);
+    front_ui_begin();special_results_piece(0,0xB840);front_ui_publish();
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,28,out,320);
+    CHECK(out[64]==genesis_dac_cram_to_argb(0x0EE,GENESIS_DAC_NORMAL));
+    CHECK(out[120]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    CHECK(out[248]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
     s2_video_hook(0x4F64);memset(title_font+86*32,0,4*32);
+    memset(ui_font+(14+'M'-'A')*32,0,32);
     strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
 }
 
