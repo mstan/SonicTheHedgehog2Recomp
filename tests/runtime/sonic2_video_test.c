@@ -905,6 +905,17 @@ static void title_card_publication_handoff_test(void)
     render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
     render_source_scanline(&v,56,native,320,out,796,NULL,NULL,-1);
     CHECK(s_display && s_display->serial==1 && out[398]==0xFFFFFFFF);
+    presentation_configure(1);
+    /* Simulation can start while the title pieces are still leaving. A
+     * completed gameplay list does not make the transition interpolatable. */
+    s_display_frame.scene=1;s_display=&s_display_frame;
+    s_display_key_serial=s_display_frame.serial;
+    presentation_capture(&v,0,out,796,320,NULL);
+    CHECK(!s_present[s_present_front].valid);
+    g_ram[0xB080]=0;
+    presentation_capture(&v,0,out,796,320,NULL);
+    CHECK(s_present[s_present_front].valid);
+    presentation_configure(0);
     CHECK(configure("off"));clear_guest();
 }
 static void htz_background_domain_test(void)

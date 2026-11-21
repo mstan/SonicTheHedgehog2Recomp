@@ -3019,6 +3019,13 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
     } else if(ready)competition_hud_sprites(v,line,out,width,palette);
     return 1;
 }
+static int title_card_live(void)
+{
+    for(unsigned o=0xB080;o<=0xB1C0;o+=64)
+        if(g_ram[o]==0x34)return 1;
+    return 0;
+}
+
 static void render_source_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
                             uint32_t *out, int width,
                             GameVideoNativeRow native_row, void *native_ctx, int split_player)
@@ -3061,8 +3068,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         if (width>nw && ((g_ram[0xF600]&127)==12 || (g_ram[0xF600]&127)==8) && !ram16(0xFFD8) &&
             (v->vram[0xBB40]==0x33 || v->vram[0xBB40]==0x44) &&
             v->vram[0xBB7F]==v->vram[0xBB40])
-            for (unsigned o=0xB080;o<=0xB1C0;o+=64)
-                if (g_ram[o]==0x34) s_frame_card=1;
+            s_frame_card=title_card_live();
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
         capture_background_scroll(s_render);
         /* Game_Mode changes before departure fades. The displayed name table
@@ -3522,7 +3528,7 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
         /* Native interlace, online campaigns and transition screens
          * retain ordinary completed pictures until an adapter is qualified. */
         if(width<native_w || native_w!=320 || g_ram[0xF600]!=12 ||
-           !g_ram[0xF711] || ram16(0xF63A) || competition() ||
+           !g_ram[0xF711] || title_card_live() || ram16(0xF63A) || competition() ||
            (v->reg[12]&14) || !(v->reg[1]&64) ||
            s2_runtime_campaign_online())return;
         const SceneFrame *scene=enabled()?s_display:native_select_scene(v);
