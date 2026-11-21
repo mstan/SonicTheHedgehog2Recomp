@@ -18,6 +18,10 @@ int main(int argc,char **argv)
     assert(!s2_roster_set(&s2_party.roster,0,"mighty"));
     assert(!s2_mighty_frame(0) && !s2_mighty_frame(214) && !s2_mighty_frame(~0u));
     for(unsigned i=1;i<214;++i) assert(s2_mighty_frame(i)>0 && s2_mighty_frame(i)<176);
+    for(unsigned i=0x5F;i<=0x6A;++i) {
+        unsigned pose=s2_mighty_frame(i);
+        assert(pose>=0x2E && pose<=0x32);
+    }
     if(argc>=2) {
         assert(s2_resource_set(S2_RESOURCE_MEGAMIX,argv[1]));
         const S2DonorBank *b=s2_resource_bank(S2_RESOURCE_MEGAMIX);
