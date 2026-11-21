@@ -966,6 +966,23 @@ static void htz_background_domain_test(void)
             CHECK(out[x]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
         }
     }
+    /* The wider left edge stays at zero while the native camera crosses
+     * several phase boundaries. Source art follows the viewport in this case. */
+    uint16_t source_before=scene_read16(0x3FD9C);
+    word(g_rom,0x3FD9C,0x1000);
+    memset(g_ram+0x1000,0x11,32);
+    memset(v.vram+0x500*32,0x22,32);
+    for(unsigned j=0;j<4;++j)word(g_ram,0x9008+j*2,0x500);
+    v.vsram[1]=0;
+    const unsigned native_x[]={8,9,16,17};
+    for(unsigned i=0;i<sizeof native_x/sizeof *native_x;++i) {
+        word(g_ram,0xEE00,native_x[i]);word(g_ram,0xEE60,native_x[i]);word(g_ram,0xEEF0,native_x[i]);
+        word(v.vram,0xFC00,-(int)native_x[i]);word(v.vram,0xFC02,-(int)((native_x[i]+7)/8));
+        scanline(&v,0,native,320,out,796);
+        CHECK(s_left==0 && out[0]==genesis_dac_cram_to_argb(v.cram[1],GENESIS_DAC_NORMAL));
+    }
+    for(unsigned j=0;j<4;++j)word(g_ram,0x9008+j*2,1);
+    word(g_rom,0x3FD9C,source_before);
     /* The actual cave/lift also has resize8, but EEBC1 selects streamed
      * quake coordinates24E0/016D. Preserve its distant row/domain. */
     g_ram[0xEEBC]=1;word(g_ram,0xEE60,0x23C3);word(g_ram,0xEE68,0x24E0);word(g_ram,0xEE6C,0x16D);

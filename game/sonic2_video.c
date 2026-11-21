@@ -510,6 +510,14 @@ static int background_view_base(const S2RenderContext *r,int native_camera,int v
     }
     return -hs+source_background_scroll(r,native_camera,line,by)-source_background_scroll(r,view_left,line,by);
 }
+static const uint8_t *htz_mountain_table(int camera)
+{
+    /* Dynamic_HTZ's mountain strip changes with the camera separately from
+     * the plane scroll. Select both from the same viewport or rounding the
+     * rebased plane can make the small ridges move back by a pixel. */
+    unsigned phase=(uint16_t)(scroll_floor(camera,16)+scroll_floor(-camera,8)-16)%48u;
+    return g_rom+0x3FD9C+(phase&7u)*24u+((phase&0x38u)>>2);
+}
 static void capture_background_scroll(S2RenderContext *r)
 {
     r->frame_bg_x[0]=(int32_t)(((uint32_t)ram16(0xEE68)<<16)|ram16(0xEE6A));
@@ -3226,10 +3234,16 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * only its camera-dependent term to this viewport's foreground origin.
      * A clamped wide camera then keeps its own parallax instead of inheriting
      * the moving native viewport's foreground-speed translation. */
-    if(bg_world && (width>nw || (split_player>0 && s_frame_campaign_view))) {
+    int rebase_background=bg_world && (width>nw || (split_player>0 && s_frame_campaign_view));
+    if(rebase_background) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
-        if(s_interpolating)bg_base=interpolation_background_base(line,by);
+        if(s_interpolating) {
+            /* HTZ's static upper scroll and mountain DMA both round the
+             * camera. Apply that rounding after interpolation. */
+            bg_base=normal_htz && line<128?-scroll_floor(-s_left,8):interpolation_background_base(line,by);
+        }
     }
+    const uint8_t *mountains=normal_htz && rebase_background?htz_mountain_table(s_left):NULL;
     int background_x=bg_base;
     if(bg_width>0) {
         background_x%=bg_width;
@@ -3273,7 +3287,13 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
                     width>nw && (nx<0 || nx>=nw),s_frame_zone);
             uint16_t attr=bg_world?(background_attr(s_world_frame,source,by,bg_base+x,
                 width>nw && (nx<0 || nx>=nw),s_frame_zone,s_frame_resize)^(uint16_t)flip):plane_attr(v,base_b,bx,by);
-            gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
+            unsigned tile=attr&2047u;
+            if(mountains && tile>=0x500 && tile<0x518) {
+                unsigned group=((tile-0x500)/4)*2;
+                unsigned source_tile=(((unsigned)mountains[group]<<8)|mountains[group+1])/32+(tile&3u);
+                gtile_row_begin(&bg,s_world_frame,(uint16_t)((attr&0xF800)|source_tile),background_x,by);
+                bg.attr=attr;
+            } else gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
             bg_slot=slot_skin && slot_material(v,attr);
         }
         uint16_t a=fg.attr,b=bg.attr;
