@@ -38,6 +38,15 @@ int main(void)
     tick(&s,&m,&c,0x40,0); assert(m.rings==10 && s.shadow_target==0xB940);
     c.target=0xB980; m.rings=5;
     tick(&s,&m,&c,0x40,0); assert(m.rings==5 && !s.shadow_target);
+    s2_character_reset(&s,S2_CHAR_SHADOW); m=standing(); m.status=6; m.rings=15;
+    c.target=0xB900;
+    tick(&s,&m,&c,0x60,0x20);
+    s2_shadow_after_collision(&s,m.vx,m.vx);
+    assert(s.shadow_target==0xB900);
+    s2_shadow_after_collision(&s,m.vx,0); m.vx=0;
+    assert(!s.shadow_target && s.shadow_last_target==0xB900 && s.shadow_air_used);
+    tick(&s,&m,&c,0x40,0);
+    assert(!m.vx && !s.shadow_target && m.rings==15 && s.move==S2_MOVE_NATIVE);
     c.target=0;
     s2_character_reset(&s,S2_CHAR_SHADOW); m=standing(); m.super=1; m.rings=90;
     tick(&s,&m,&c,0x40,0x40);
@@ -63,6 +72,12 @@ int main(void)
     const uint8_t walk[]={255,8,9,10,11,6,7,255},run[]={255,30,31,32,33,255};
     memcpy(bank.animations[0],walk,sizeof walk); bank.animation_length[0]=sizeof walk;
     memcpy(bank.animations[1],run,sizeof run); bank.animation_length[1]=sizeof run;
+    const uint8_t hanging[]={4,0x41,0x42,0xFF},gesture[]={0,0x49,0xFF};
+    memcpy(bank.animations[0x11],hanging,sizeof hanging);bank.animation_length[0x11]=sizeof hanging;
+    memcpy(bank.animations[0x14],gesture,sizeof gesture);bank.animation_length[0x14]=sizeof gesture;
+    s2_character_reset(&s,S2_CHAR_SHADOW); m=standing(); m.animation=0x14;
+    s2_character_animate(&s,&m,&bank);
+    assert(s.source_animation==0x11 && m.frame==0x41);
     const uint8_t falling[]={1,0xA9,0xAA,255},rising[]={3,0xAB,0xAC,0xAD,0xAE,0xAF,255};
     for (unsigned super=0;super<2;++super) {
         uint8_t (*scripts)[256]=super?bank.super_animations:bank.animations;

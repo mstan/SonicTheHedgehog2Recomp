@@ -199,14 +199,34 @@ static void counter_number(const S2SaveAssets *a,unsigned value,int x,int y,int 
         counter_tile(a,tile+1,x+i*8,y+8,line,out,width);
     }
 }
-static void counters(const S2SaveAssets *a,const S2CampaignSlot *slot,unsigned character,int x,int line,uint32_t *out,int width)
+static void counter_portrait(const uint8_t *tiles,const uint16_t *palette,int rows,
+                             int x,int y,int line,uint32_t *out,int width)
+{
+    int row=line-y;
+    if(row<0 || row>=rows*8)return;
+    for(int px=0;px<16;++px) {
+        if(x+px<0 || x+px>=width)continue;
+        unsigned at=((px/8)*rows+row/8)*32+(row&7)*4+(px&7)/2;
+        unsigned ink=(tiles[at]>>((px&1)?0:4))&15;
+        if(ink)out[x+px]=genesis_dac_cram_to_argb(palette[ink],GENESIS_DAC_NORMAL);
+    }
+}
+static void counters(const S2SaveAssets *a,const S2SaveView *v,const S2CampaignSlot *slot,
+                     int x,int line,uint32_t *out,int width)
 {
     /* Original loc_C97A row18 and loc_C9CC row21. Characters theme the
      * indicators, while every slot keeps its roster-independent counters. */
-    if (character>=3) character=0;
+    unsigned character=v->counter_character<3?v->counter_character:0;
+    int custom=v->counter_life && v->counter_palette;
     const uint16_t *tiles=a->counter_icons[character];
-    for (unsigned i=0;i<15;++i) if (tiles[i])
+    for (unsigned i=0;i<15;++i) if (tiles[i] && (!custom || i%3==2))
         counter_tile(a,tiles[i],x-16+(i%3)*8,144+(i/3)*8,line,out,width);
+    if(custom) {
+        counter_portrait(v->counter_life,v->counter_palette,2,x-16,144,line,out,width);
+        if(v->counter_continue)
+            counter_portrait(v->counter_continue,v->counter_palette,3,x-16,160,line,out,width);
+        else counter_portrait(v->counter_life,v->counter_palette,2,x-16,164,line,out,width);
+    }
     counter_number(a,slot->lives,x+8,144,line,out,width);
     counter_number(a,slot->continues,x+8,168,line,out,width);
 }
@@ -263,7 +283,7 @@ void s2_save_draw_line(const S2SaveAssets *a,const S2SaveView *v,int line,uint32
             else if (picked) snprintf(label,sizeof label,"ZONE %02u",s->zone+1);
             else snprintf(label,sizeof label,"CLEAR");
             centered(a,x,80,label,line,out,width);
-            counters(a,slot,v->counter_character,x,line,out,width);
+            counters(a,v,slot,x,line,out,width);
         }
     }
     centered(a,base+968,96,"DELETE",line,out,width);

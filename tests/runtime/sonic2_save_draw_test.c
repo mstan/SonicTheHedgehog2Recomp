@@ -97,6 +97,19 @@ int main(void)
     }
     assert(!memcmp(&saved_counters,&filled.data,sizeof saved_counters));
     filled.counter_character=0;
+    uint8_t custom_life[4*32],custom_continue[6*32];
+    memset(custom_life,0x11,sizeof custom_life);memset(custom_continue,0x22,sizeof custom_continue);
+    const uint16_t custom_palette[16]={0,0x0E0,0xEEE};
+    filled.counter_life=custom_life;filled.counter_continue=custom_continue;filled.counter_palette=custom_palette;
+    s2_save_draw_line(assets,&filled,144,sonic,320);
+    assert(sonic[128]==0xFF00FF00 && sonic[144]==0xFFFF0000);
+    s2_save_draw_line(assets,&filled,168,sonic,320);
+    assert(sonic[128]==0xFFFFFFFF && sonic[144]==0xFFFF0000);
+    filled.counter_continue=NULL;
+    s2_save_draw_line(assets,&filled,168,sonic,320);
+    assert(sonic[128]==0xFF00FF00 && sonic[144]==0xFFFF0000);
+    filled.counter_life=NULL;filled.counter_palette=NULL;
+    assert(!memcmp(&saved_counters,&filled.data,sizeof saved_counters));
     /* Character-selection arrows must never appear, picked or unpicked. */
     memset(assets->tiles+0x100*32,0x11,4*32);
     assets->frames[15].count=2;

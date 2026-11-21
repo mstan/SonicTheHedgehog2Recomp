@@ -2267,6 +2267,52 @@ static void special_results_identity_test(void)
     s2_video_hook(0x4F64);CHECK(!s_special_serial && !s_ss_result_serial);
 }
 
+static void special_results_party_name_test(void)
+{
+    static GVDP v,before;
+    uint32_t out[320];
+    clear_guest();memset(&v,0,sizeof v);s2_video_hook(0x4F64);
+    hud_available=amy_special_available=0;
+    strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
+    memset(title_font+86*32,0x66,4*32);
+    s2_party.roster.slots=2;
+    g_ram[0xF600]=16;g_ram[0xB800]=g_ram[0xB840]=0x6F;
+    strcpy(s2_party.roster.character[0],"shadow");s2_video_prepare_knuckles_items();
+    v.reg[1]=64;v.reg[5]=0x7C;v.reg[12]=1;
+    v.cram[2]=0xE00;v.cram[3]=0x0E0;v.cram[4]=0xE;v.cram[6]=0xEEE;
+    memset(v.vram+0x2A*32,0x22,4*32); /* S */
+    memset(v.vram+0x12*32,0x33,4*32); /* H */
+    memset(v.vram+0x1C*32,0x33,6*32); /* M */
+    memset(v.vram+0x0E*32,0x44,4*32); /* G */
+    word(g_ram,0xB844,1);word(g_ram,0xB846,0x4ED0);
+    word(g_ram,0xB848,288);word(g_ram,0xB84A,152);
+    const unsigned frames[]={1,22};
+    for(unsigned i=0;i<2;++i) {
+        unsigned frame=frames[i],mapping=i?0x14F2A:0x14F0A;
+        word(g_rom,0x14ED0+frame*2,mapping-0x14ED0);
+        word(g_rom,mapping,6);word(g_rom,mapping+8,i?-120:-72);
+        g_rom[mapping+43]=5;word(g_rom,mapping+44,i?0x8012:0x800E);
+        word(g_rom,mapping+48,i?-40:8);
+        g_ram[0xB85A]=(uint8_t)frame;
+        word(g_ram,0xF800,152);g_ram[0xF802]=5;
+        word(g_ram,0xF804,0x802A);word(g_ram,0xF806,i?168:216);
+        front_ui_begin();special_results_piece(0,0xB840);front_ui_publish();
+        memcpy(v.vram+0xF800,g_ram+0xF800,640);before=v;
+        s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
+        CHECK(out[i?24:72]==genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL));
+        CHECK(out[i?40:88]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+        CHECK(out[i?136:184]==genesis_dac_cram_to_argb(i?0x0E0:0xE,GENESIS_DAC_NORMAL));
+        CHECK(!memcmp(&v,&before,sizeof v) && ram16(0xF804)==0x802A);
+    }
+    strcpy(s2_party.roster.character[0],"mighty");s2_video_prepare_knuckles_items();
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
+    CHECK(out[28]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    CHECK(out[108]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+    s2_video_hook(0x4F64);memset(title_font+86*32,0,4*32);
+    strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
+}
+
 static void amy_special_ui_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
@@ -3399,6 +3445,7 @@ int main(void)
     special_stage_pixel_shape_test();
     special_actor_test();
     special_results_identity_test();
+    special_results_party_name_test();
     amy_special_ui_test();
     knuckles_special_ui_test();
     front_ui_and_background_priority_test();

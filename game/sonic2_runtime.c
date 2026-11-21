@@ -1032,7 +1032,11 @@ static int update_player(unsigned p, uint32_t entry)
                     putword(object+0x12,word(object+0x12)+((g_ram[object+0x22]&64)?0x10:0x38));
                 }
                 if(gliding || falling || sliding)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding || sliding);
-                else host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
+                else if(characters[p].move==S2_MOVE_AIR) {
+                    host_call(0x1AEAA);
+                    if(kind(p)==S2_CHAR_SHADOW)
+                        s2_shadow_after_collision(&characters[p],m.vx,(int16_t)word(object+0x10));
+                } else host_call(0x1E234);
             }
             host_call(0x1A974); /* LevelBound remains authoritative */
             g_ram[object+0x2A]|=1;
