@@ -27,8 +27,6 @@ int s2_sound_available(void){return 1;}
 const char *s2_sound_error(void){return "";}
 static AudioExtraSource extra;
 void audio_set_extra_source(AudioExtraSource source){extra=source;}
-int s2_music_import_file(const char *a,const char *b,const char *c,char d[1024],char *e,size_t n,void (*p)(void *,float,const char *),void *u)
-{(void)a;(void)b;(void)c;(void)d;(void)e;(void)n;(void)p;(void)u;return 0;}
 static void envset(const char *name,const char *value)
 {
 #ifdef _WIN32
@@ -69,10 +67,54 @@ static void competition_loops(const uint8_t *rom,unsigned song,unsigned channel)
  assert(!"Competition Menu did not complete a loop");
 }
 #endif
-int s2_custom_assemble(const char *source,const char *track,const char *settings,char output[1024],char *error,size_t capacity,void (*progress)(void *,float,const char *),void *user)
-{(void)source;(void)track;(void)settings;(void)output;(void)error;(void)capacity;(void)progress;(void)user;return 0;}
+static void vgm_dac_stereo(void)
+{
+ enum { WRITES=128, WINDOW=WRITES*16 };
+ for(int encoded=0;encoded<=1;encoded++){
+  uint8_t vgm[2048]={0};size_t pos=0x40;
+  memcpy(vgm,"Vgm ",4);vgm[8]=0x50;vgm[9]=1;
+  vgm[0x2c]=0xb6;vgm[0x2d]=0x0a;vgm[0x2e]=0x75;
+  if(encoded){
+   const uint8_t block[]={0x67,0x66,0,WRITES,0,0,0};
+   memcpy(vgm+pos,block,sizeof block);pos+=sizeof block;
+   for(unsigned i=0;i<WRITES;i++)vgm[pos++]=i&4?202:54;
+  }
+  vgm[pos++]=0x52;vgm[pos++]=0x2b;vgm[pos++]=0x80;
+  for(unsigned window=0;window<3;window++){
+   const uint8_t pan[]={0x80,0x40,0xc0};
+   vgm[pos++]=0x53;vgm[pos++]=0xb6;vgm[pos++]=pan[window];
+   if(window==2){vgm[pos++]=0x52;vgm[pos++]=0x2b;vgm[pos++]=0;}
+   if(encoded){
+    const uint8_t seek[]={0xe0,0,0,0,0};
+    memcpy(vgm+pos,seek,sizeof seek);pos+=sizeof seek;
+    for(unsigned i=0;i<WRITES;i++){
+     vgm[pos++]=0x8f;vgm[pos++]=0x70;
+    }
+   }else for(unsigned i=0;i<WRITES;i++){
+    vgm[pos++]=0x52;vgm[pos++]=0x2a;vgm[pos++]=i&4?202:54;vgm[pos++]=0x7f;
+   }
+  }
+  vgm[pos++]=0x66;
+  vgm[4]=(uint8_t)(pos-4);vgm[5]=(uint8_t)((pos-4)>>8);
+  for(unsigned mute=0;mute<2;mute++){
+   Music_Emu *emu=NULL;int16_t pcm[WINDOW*3*2];
+   assert(!gme_open_data(vgm,(long)pos,&emu,44100));
+   gme_ignore_silence(emu,1);gme_set_autoload_playback_limit(emu,0);
+   assert(!gme_start_track(emu,0));gme_mute_voices(emu,mute?1<<6:0);
+   assert(!gme_play(emu,WINDOW*3*2,pcm));gme_delete(emu);
+   for(unsigned window=0;window<3;window++)for(unsigned ch=0;ch<2;ch++){
+    unsigned energy=0;
+    for(unsigned i=window*WINDOW+256;i<(window+1)*WINDOW-256;i++)
+     energy+=(unsigned)abs(pcm[i*2+ch]-pcm[(i-1)*2+ch]);
+    assert((!mute&&window==ch)?energy>10000:energy<1000);
+   }
+  }
+ }
+ puts("PASS direct and banked DAC stereo routing, disable gate and voice mute");
+}
 int main(int argc,char **argv)
 {
+ if(argc==2&&!strcmp(argv[1],"--vgm-dac")){vgm_dac_stereo();return 0;}
  /* Mixed-chip VGMs expose only sounding voices, including separate PSG
   * tones/noise. The PSG audition copy keeps every command offset and wait. */
  {
@@ -91,14 +133,20 @@ int main(int argc,char **argv)
   envset("GENESIS_USER_DIR",argv[2]);snprintf(settings,sizeof settings,"%s/settings.ini",argv[2]);s2_music_load(settings);
   unsigned t=track(argv[3]);assert(s2_music_pick(t,"custom"));
   uint8_t before[32],after[32];s2_custom_identity(t,before);
-  int imported=s2_theme_import(t,argv[4],NULL,NULL);
+  const RecompLauncherCModProvider *provider=s2_music_mods(NULL);
+  const char *package="sonic2.audio.event-themes";
+  const char *group=s2_music_group(t)==0?"shared-themes":s2_music_group(t)==1?"sonic2-campaign":"competition";
+  RecompLauncherCModResource resource;
+  assert(provider->feature_resource_get(provider->ctx,package,group,0,&resource));
+  assert(strstr(resource.file_patterns,"*.vgz"));
+  int imported=provider->feature_resource_import(provider->ctx,package,group,resource.id,argv[4],argv[5],NULL,NULL,error,sizeof error);
+  if(!imported&&!reject)fprintf(stderr,"Custom music import: %s\n",error);
   if(reject){assert(!imported&&s2_custom_ready(t));s2_custom_identity(t,after);assert(!memcmp(before,after,32));puts("PASS rejected music; previous selection retained");return 0;}
   assert(imported&&s2_music_active(t)&&s2_theme_ready(t)&&s2_themes_save());
   s2_custom_identity(t,before);s2_music_load(settings);assert(s2_music_active(t)&&s2_theme_ready(t));
   s2_custom_identity(t,after);assert(!memcmp(before,after,32));
-  const RecompLauncherCModProvider *provider=s2_music_mods(NULL);const char *group=s2_music_group(t)==0?"shared-themes":s2_music_group(t)==1?"sonic2-campaign":"competition";
-  assert(provider->feature_resource_count(provider->ctx,"sonic2.audio.event-themes",group)==1);
-  RecompLauncherCModResource resource;assert(provider->feature_resource_get(provider->ctx,"sonic2.audio.event-themes",group,0,&resource)&&resource.verified);
+  assert(provider->feature_resource_count(provider->ctx,package,group)==1);
+  assert(provider->feature_resource_get(provider->ctx,package,group,0,&resource)&&resource.verified);
   assert(strstr(resource.label,"custom music")&&!strncmp(resource.id,"custom-",7));
   uint8_t *rom=calloc(1,0x400000);assert(rom);FILE *f=fopen(argv[5],"rb");assert(f&&fread(rom,1,0x100000,f)==0x100000);fclose(f);
   memcpy(rom+S2_CLONE_LOAD_ADDRESS,s2_clone_program,sizeof s2_clone_program);

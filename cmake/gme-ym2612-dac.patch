@@ -1,0 +1,112 @@
+--- a/gme/Vgm_Emu_Impl.h
++++ b/gme/Vgm_Emu_Impl.h
+@@ -54,9 +54,7 @@
+ 
+ 	byte const* pcm_data;
+ 	byte const* pcm_pos;
+-	int dac_amp;
+-	int dac_disabled; // -1 if disabled
+-	void write_pcm( vgm_time_t, int amp );
++	void write_pcm( vgm_time_t, int amp, int chip = 0 );
+ 
+ 	Ym_Emu<Ym2612_Emu> ym2612[2];
+ 	Ym_Emu<Ym2413_Emu> ym2413[2];
+@@ -65,7 +63,6 @@
+ 	Sms_Apu psg[2];
+ 	bool psg_dual;
+ 	bool psg_t6w28;
+-	Blip_Synth<blip_med_quality,1> dac_synth;
+ 
+ 	friend class Vgm_Emu;
+ };
+--- a/gme/Vgm_Emu_Impl.cpp
++++ b/gme/Vgm_Emu_Impl.cpp
+@@ -106,16 +106,11 @@
+ 	return (t * blip_time_factor) >> blip_time_bits;
+ }
+ 
+-void Vgm_Emu_Impl::write_pcm( vgm_time_t vgm_time, int amp )
+-{
+-	blip_time_t blip_time = to_blip_time( vgm_time );
+-	int old = dac_amp;
+-	int delta = amp - old;
+-	dac_amp = amp;
+-	if ( old >= 0 )
+-		dac_synth.offset_inline( blip_time, delta, &blip_buf );
+-	else
+-		dac_amp |= dac_disabled;
++void Vgm_Emu_Impl::write_pcm( vgm_time_t vgm_time, int amp, int index )
++{
++	// Use YM2612 channel 6's DAC gate, stereo routing and voice mute.
++	if ( ym2612[index].enabled() && ym2612[index].run_until( to_fm_time( vgm_time ) ) )
++		ym2612[index].write0( ym2612_dac_port, amp );
+ }
+ 
+ blip_time_t Vgm_Emu_Impl::run_commands( vgm_time_t end_time )
+@@ -191,11 +186,6 @@
+ 			}
+ 			else if ( ym2612[0].run_until( to_fm_time( vgm_time ) ) )
+ 			{
+-				if ( pos [0] == 0x2B )
+-				{
+-					dac_disabled = (pos [1] >> 7 & 1) - 1;
+-					dac_amp |= dac_disabled;
+-				}
+ 				ym2612[0].write0( pos [0], pos [1] );
+ 			}
+ 			pos += 2;
+@@ -210,15 +200,10 @@
+ 		case cmd_ym2612_2_port0:
+ 			if ( pos [0] == ym2612_dac_port )
+ 			{
+-				write_pcm( vgm_time, pos [1] );
++				write_pcm( vgm_time, pos [1], 1 );
+ 			}
+ 			else if ( ym2612[1].run_until( to_fm_time( vgm_time ) ) )
+ 			{
+-				if ( pos [0] == 0x2B )
+-				{
+-					dac_disabled = (pos [1] >> 7 & 1) - 1;
+-					dac_amp |= dac_disabled;
+-				}
+ 				ym2612[1].write0( pos [0], pos [1] );
+ 			}
+ 			pos += 2;
+--- a/gme/Vgm_Emu.cpp
++++ b/gme/Vgm_Emu.cpp
+@@ -263,7 +263,6 @@
+ 	psg[0].treble_eq( eq );
+ 	if ( psg_dual )
+ 		psg[1].treble_eq( eq );
+-	dac_synth.treble_eq( eq );
+ }
+ 
+ void Vgm_Emu::set_voice( int i, Blip_Buffer* c, Blip_Buffer* l, Blip_Buffer* r )
+@@ -297,7 +296,6 @@
+ void Vgm_Emu::mute_voices_( int mask )
+ {
+ 	Classic_Emu::mute_voices_( mask );
+-	dac_synth.output( &blip_buf );
+ 	if ( uses_fm )
+ 	{
+ 		psg[0].output( (mask & 0x80) ? 0 : &blip_buf );
+@@ -305,7 +303,6 @@
+ 			psg[1].output( (mask & 0x80) ? 0 : &blip_buf );
+ 		if ( ym2612[0].enabled() )
+ 		{
+-			dac_synth.volume( (mask & 0x40) ? 0.0 : 0.1115 / 256 * fm_gain * gain() );
+ 			ym2612[0].mute_voices( mask );
+ 			if ( ym2612[1].enabled() )
+ 				ym2612[1].mute_voices( mask );
+@@ -452,11 +449,9 @@
+ 	if ( psg_dual )
+ 		psg[1].reset( get_le16( header().noise_feedback ), header().noise_width );
+ 
+-	dac_disabled = -1;
+ 	pos          = data + header_size;
+ 	pcm_data     = pos;
+ 	pcm_pos      = pos;
+-	dac_amp      = -1;
+ 	vgm_time     = 0;
+ 	if ( get_le32( header().version ) >= 0x150 )
+ 	{

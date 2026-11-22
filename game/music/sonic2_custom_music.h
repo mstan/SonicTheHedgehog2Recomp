@@ -16,3 +16,6 @@ int s2_custom_build(unsigned track,const S3SoundLayout *layout,uint8_t *bank,
 int s2_custom_assemble(const char *source,const char *track,const char *settings,
                        char output[1024],char *error,size_t capacity,
                        void (*progress)(void *,float,const char *),void *user);
+int s2_custom_normalize_vgm(const char *source,const char *track,const char *settings,
+                            char output[1024],char *error,size_t capacity,
+                            void (*progress)(void *,float,const char *),void *user);

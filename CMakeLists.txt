@@ -77,6 +77,7 @@ foreach(_input IN LISTS _state_inputs)
     string(APPEND _state_fingerprint ";${_hash}")
 endforeach()
 include_directories("${CMAKE_BINARY_DIR}")
+add_compile_definitions(S2_VGM_IMPORT_SOURCE="${CMAKE_SOURCE_DIR}/tools/import_custom_vgm.py")
 add_compile_definitions(S3_CUSTOM_IMPORT_SOURCE="${CMAKE_SOURCE_DIR}/tools/import_custom_smps.py")
 add_compile_definitions(S3_ROM_IMPORT_SOURCE="${CMAKE_SOURCE_DIR}/tools/import_sound_donor.py")
 
@@ -444,6 +445,7 @@ if(BUILD_TESTING)
         tests/runtime/sonic2_music_test.c
         game/music/sonic2_music.c game/music/sonic2_music_mods.c
         game/music/sonic2_music_assets.c game/music/sonic2_cd_themes.c game/music/sonic2_custom_music.c
+        game/music/sonic2_music_import.c
         game/music/sonic3_sound_assets.c game/music/sonic3_sound_legacy.c
         game/music/sonic3_sound_sequences.c game/music/sonic3_sound_pcm.c
         game/music/sonic3_prototype_pcm.c game/sonic2_sound_assets.c
@@ -455,6 +457,12 @@ if(BUILD_TESTING)
     endif()
     target_link_libraries(sonic2_music_test PRIVATE SDL2::SDL2)
     sonic2_link_custom_music(sonic2_music_test)
+    if(WIN32)
+        add_custom_command(TARGET sonic2_music_test POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SDL2_BUNDLED}/lib/x64/SDL2.dll" "$<TARGET_FILE_DIR:sonic2_music_test>")
+    endif()
+    add_test(NAME sonic2_vgm_dac COMMAND sonic2_music_test --vgm-dac)
 endif()
 
 # Optional build-host freezer. Shipped Windows packages include this helper;
@@ -468,7 +476,7 @@ add_custom_target(sonic_sound_importer
 add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/EVENT_MUSIC.md" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/trilogy" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/segacd"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/tools/import_sound_donor.py" "${CMAKE_SOURCE_DIR}/tools/import_custom_smps.py" "${CMAKE_SOURCE_DIR}/tools/assemble_custom_smps.py" "${CMAKE_SOURCE_DIR}/tools/import_cd_sound_donor.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/tools/import_sound_donor.py" "${CMAKE_SOURCE_DIR}/tools/import_custom_smps.py" "${CMAKE_SOURCE_DIR}/tools/import_custom_vgm.py" "${CMAKE_SOURCE_DIR}/tools/assemble_custom_smps.py" "${CMAKE_SOURCE_DIR}/tools/import_cd_sound_donor.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/tools/trilogy/scd_media.py" "${CMAKE_SOURCE_DIR}/tools/trilogy/scd_iso.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/trilogy"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RECOMP_ROOT}/tools/segacd/owned_media.py" "${RECOMP_ROOT}/tools/segacd/disc_image.py" "${RECOMP_ROOT}/tools/segacd/sgcd_owned_extract.py" "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/tools/segacd"
     COMMENT "Staging music customization guide and source-build import tools")
