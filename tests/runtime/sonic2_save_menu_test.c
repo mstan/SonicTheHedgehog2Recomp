@@ -39,6 +39,7 @@ int s2_campaign_file_commit(const S2CampaignData *data)
 int s2_resources_prepare_stage_images(const unsigned char *r,unsigned n)
 { (void)r; (void)n; return 1; }
 const S2SaveAssets *s2_resource_save_assets(void) { return &assets; }
+const S2ItemArt *s2_resource_primary_items(void) { return NULL; }
 const S2DonorBank *s2_resource_bank(unsigned i) { assert(i<S2_RESOURCE_COUNT); return &portrait_banks[i]; }
 const S2DonorBank *s2_resource_shadow_bank(void) { return &portrait_banks[S2_RESOURCE_COUNT]; }
 void s2_save_portraits(const S2SaveAssets *a,const S2SavePortrait *p,unsigned n,uint32_t *o)

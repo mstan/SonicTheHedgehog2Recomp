@@ -108,11 +108,22 @@ void s2_shadow_after(S2CharacterState *s,S2Motion *m)
     }
     if (m->hurt) cancel_chaos(s,m);
 }
+void s2_shadow_after_collision(S2CharacterState *s,int16_t before_x,int16_t after_x)
+{
+    if (s->special!=HOMING || !before_x || after_x) return;
+    /* Native terrain blocked the horizontal step. Stop steering at this
+     * target so the next tick can fall away instead of driving into the wall. */
+    s->shadow_last_target=s->shadow_target;
+    s->shadow_target=s->shadow_target_age=s->shadow_chain=0;
+    s->special=DOUBLE_JUMP;
+}
 void s2_shadow_animate(S2CharacterState *s,S2Motion *m,const S2DonorBank *b)
 {
     if (!b || b->animation_count<38) return;
+    /* Sonic 2's Hang2 is a vine grip. The donor's script at that index
+     * shows an idle gesture, so both host grips use the donor Hang script. */
     static const uint8_t translation[34]={0,1,2,3,4,5,6,7,8,0x1F,5,0,6,0xD,0xE,0xF,
-        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x1A,0x1A,0x1B,0x1C,6,6,0x23,5,5};
+        0x10,0x11,0x12,0x13,0x11,0x15,0x16,0x17,0x18,0x1A,0x1A,0x1B,0x1C,6,6,0x23,5,5};
     unsigned source=m->animation<34?translation[m->animation]:5;
     unsigned free_air=(m->status&6)==AIR && m->animation<=1;
     if (free_air) source=m->vy<0?0x25:0x24;

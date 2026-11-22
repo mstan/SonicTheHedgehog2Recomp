@@ -905,6 +905,17 @@ static void title_card_publication_handoff_test(void)
     render_source_scanline(&v,0,native,320,out,796,NULL,NULL,-1);
     render_source_scanline(&v,56,native,320,out,796,NULL,NULL,-1);
     CHECK(s_display && s_display->serial==1 && out[398]==0xFFFFFFFF);
+    presentation_configure(1);
+    /* Simulation can start while the title pieces are still leaving. A
+     * completed gameplay list does not make the transition interpolatable. */
+    s_display_frame.scene=1;s_display=&s_display_frame;
+    s_display_key_serial=s_display_frame.serial;
+    presentation_capture(&v,0,out,796,320,NULL);
+    CHECK(!s_present[s_present_front].valid);
+    g_ram[0xB080]=0;
+    presentation_capture(&v,0,out,796,320,NULL);
+    CHECK(s_present[s_present_front].valid);
+    presentation_configure(0);
     CHECK(configure("off"));clear_guest();
 }
 static void htz_background_domain_test(void)
@@ -955,6 +966,23 @@ static void htz_background_domain_test(void)
             CHECK(out[x]==genesis_dac_cram_to_argb(v.cram[ink],GENESIS_DAC_NORMAL));
         }
     }
+    /* The wider left edge stays at zero while the native camera crosses
+     * several phase boundaries. Source art follows the viewport in this case. */
+    uint16_t source_before=scene_read16(0x3FD9C);
+    word(g_rom,0x3FD9C,0x1000);
+    memset(g_ram+0x1000,0x11,32);
+    memset(v.vram+0x500*32,0x22,32);
+    for(unsigned j=0;j<4;++j)word(g_ram,0x9008+j*2,0x500);
+    v.vsram[1]=0;
+    const unsigned native_x[]={8,9,16,17};
+    for(unsigned i=0;i<sizeof native_x/sizeof *native_x;++i) {
+        word(g_ram,0xEE00,native_x[i]);word(g_ram,0xEE60,native_x[i]);word(g_ram,0xEEF0,native_x[i]);
+        word(v.vram,0xFC00,-(int)native_x[i]);word(v.vram,0xFC02,-(int)((native_x[i]+7)/8));
+        scanline(&v,0,native,320,out,796);
+        CHECK(s_left==0 && out[0]==genesis_dac_cram_to_argb(v.cram[1],GENESIS_DAC_NORMAL));
+    }
+    for(unsigned j=0;j<4;++j)word(g_ram,0x9008+j*2,1);
+    word(g_rom,0x3FD9C,source_before);
     /* The actual cave/lift also has resize8, but EEBC1 selects streamed
      * quake coordinates24E0/016D. Preserve its distant row/domain. */
     g_ram[0xEEBC]=1;word(g_ram,0xEE60,0x23C3);word(g_ram,0xEE68,0x24E0);word(g_ram,0xEE6C,0x16D);
@@ -2267,6 +2295,70 @@ static void special_results_identity_test(void)
     s2_video_hook(0x4F64);CHECK(!s_special_serial && !s_ss_result_serial);
 }
 
+static void special_results_party_name_test(void)
+{
+    static GVDP v,before;
+    uint32_t out[320];
+    clear_guest();memset(&v,0,sizeof v);s2_video_hook(0x4F64);
+    hud_available=amy_special_available=0;
+    strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
+    memset(title_font+86*32,0x66,4*32);
+    memset(ui_font+(14+'M'-'A')*32,0x55,32);
+    s2_party.roster.slots=2;
+    g_ram[0xF600]=16;g_ram[0xB800]=g_ram[0xB840]=0x6F;
+    strcpy(s2_party.roster.character[0],"shadow");s2_video_prepare_knuckles_items();
+    v.reg[1]=64;v.reg[5]=0x7C;v.reg[12]=1;
+    v.cram[2]=0xE00;v.cram[3]=0x0E0;v.cram[4]=0xE;v.cram[6]=0xEEE;v.cram[0x1C]=0xEC0;
+    memset(v.vram+0x2A*32,0x22,4*32); /* S */
+    memset(v.vram+0x12*32,0x33,4*32); /* H */
+    memset(v.vram+0x1C*32,0x33,6*32); /* M */
+    memset(v.vram+0x0E*32,0x44,4*32); /* G */
+    word(g_ram,0xB844,1);word(g_ram,0xB846,0x4ED0);
+    word(g_ram,0xB848,288);word(g_ram,0xB84A,152);
+    const unsigned frames[]={1,22};
+    for(unsigned i=0;i<2;++i) {
+        unsigned frame=frames[i],mapping=i?0x14F2A:0x14F0A;
+        word(g_rom,0x14ED0+frame*2,mapping-0x14ED0);
+        word(g_rom,mapping,6);word(g_rom,mapping+8,i?-120:-72);
+        g_rom[mapping+43]=5;word(g_rom,mapping+44,i?0x8012:0x800E);
+        word(g_rom,mapping+48,i?-40:8);
+        g_ram[0xB85A]=(uint8_t)frame;
+        word(g_ram,0xF800,152);g_ram[0xF802]=5;
+        word(g_ram,0xF804,0x802A);word(g_ram,0xF806,i?168:216);
+        front_ui_begin();special_results_piece(0,0xB840);front_ui_publish();
+        memcpy(v.vram+0xF800,g_ram+0xF800,640);before=v;
+        s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
+        CHECK(out[i?24:72]==genesis_dac_cram_to_argb(0xE00,GENESIS_DAC_NORMAL));
+        CHECK(out[i?40:88]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+        CHECK(out[i?136:184]==genesis_dac_cram_to_argb(i?0x0E0:0xE,GENESIS_DAC_NORMAL));
+        CHECK(!memcmp(&v,&before,sizeof v) && ram16(0xF804)==0x802A);
+    }
+    strcpy(s2_party.roster.character[0],"mighty");s2_video_prepare_knuckles_items();
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,24,out,320);
+    CHECK(out[28]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    CHECK(out[108]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+    /* Zero-point P1 ring row: emit the compact name, shift RINGS by one
+     * character for Mighty, and leave the zero at its original x. */
+    unsigned tally=0x15100;
+    word(g_rom,0x14ED0+18*2,tally-0x14ED0);
+    word(g_rom,tally,6);word(g_rom,tally+8,-96);
+    g_rom[tally+19]=5;word(g_rom,tally+20,0x8012);word(g_rom,tally+24,-48);
+    g_rom[tally+43]=1;word(g_rom,tally+44,0x8001);word(g_rom,tally+48,88);
+    memset(v.vram+32,0x66,2*32);
+    g_ram[0xB85A]=18;
+    word(g_ram,0xF806,192);
+    front_ui_begin();special_results_piece(0,0xB840);front_ui_publish();
+    memcpy(v.vram+0xF800,g_ram+0xF800,640);
+    s2_video_special_results(&v,0,out,320);s2_video_special_results(&v,28,out,320);
+    CHECK(out[64]==genesis_dac_cram_to_argb(0xEC0,GENESIS_DAC_NORMAL));
+    CHECK(out[120]==genesis_dac_cram_to_argb(0x0E0,GENESIS_DAC_NORMAL));
+    CHECK(out[248]==genesis_dac_cram_to_argb(0xEEE,GENESIS_DAC_NORMAL));
+    s2_video_hook(0x4F64);memset(title_font+86*32,0,4*32);
+    memset(ui_font+(14+'M'-'A')*32,0,32);
+    strcpy(s2_party.roster.character[0],"sonic");s2_video_prepare_knuckles_items();
+}
+
 static void amy_special_ui_test(void)
 {
     static GVDP v,before;static uint8_t original_ram[65536];uint32_t out[398];
@@ -2490,6 +2582,24 @@ static void clamped_background_interpolation_test(void)
     /* The fixture buffers are static; ordinary capture owns heap buffers. */
     for(unsigned f=0;f<2;++f){s_present[f].image=NULL;s_present[f].capacity=0;}
     presentation_configure(0);CHECK(configure("off"));
+}
+static void cpz_interpolation_band_test(void)
+{
+    static PresentationFrame f;
+    f.render.frame_zone=13;
+    f.render.frame_fg_x=3360;
+    f.render.frame_bg_y=148;
+    f.render.frame_bg_x[1]=1664*65536;
+    f.vscroll[154][1]=f.vscroll[156][1]=148;
+    f.hscroll[154][0]=f.hscroll[156][0]=(uint16_t)-3360;
+    f.hscroll[154][1]=(uint16_t)-413;
+    f.hscroll[156][1]=(uint16_t)-1664;
+    /* World row 304 is two scanlines below the old ripple sample. */
+    f.width=320;
+    CHECK(captured_background_base(&f,154,302)==413);
+    CHECK(captured_background_base(&f,154,304)==1664);
+    f.width=398;f.render.left=3321;
+    CHECK(captured_background_base(&f,154,304)==1644);
 }
 static void native_interpolation_test(void)
 {
@@ -3386,6 +3496,7 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     clamped_background_interpolation_test();
+    cpz_interpolation_band_test();
     arz_background_stream_limit_test();
     native_interpolation_test();
     scene_scroll_phase_test();
@@ -3399,6 +3510,7 @@ int main(void)
     special_stage_pixel_shape_test();
     special_actor_test();
     special_results_identity_test();
+    special_results_party_name_test();
     amy_special_ui_test();
     knuckles_special_ui_test();
     front_ui_and_background_priority_test();

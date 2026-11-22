@@ -510,6 +510,14 @@ static int background_view_base(const S2RenderContext *r,int native_camera,int v
     }
     return -hs+source_background_scroll(r,native_camera,line,by)-source_background_scroll(r,view_left,line,by);
 }
+static const uint8_t *htz_mountain_table(int camera)
+{
+    /* Dynamic_HTZ's mountain strip changes with the camera separately from
+     * the plane scroll. Select both from the same viewport or rounding the
+     * rebased plane can make the small ridges move back by a pixel. */
+    unsigned phase=(uint16_t)(scroll_floor(camera,16)+scroll_floor(-camera,8)-16)%48u;
+    return g_rom+0x3FD9C+(phase&7u)*24u+((phase&0x38u)>>2);
+}
 static void capture_background_scroll(S2RenderContext *r)
 {
     r->frame_bg_x[0]=(int32_t)(((uint32_t)ram16(0xEE68)<<16)|ram16(0xEE6A));
@@ -1167,7 +1175,10 @@ enum {
     SPECIAL_FONT_K=S2_SPECIAL_FRAMES*S2_SPECIAL_TILES,
     SPECIAL_FONT_Y=SPECIAL_FONT_K+4,
     SPECIAL_HUD_NAME=SPECIAL_FONT_Y+4,
-    SPECIAL_RESULT_NAME=SPECIAL_HUD_NAME+5
+    SPECIAL_RESULT_NAME=SPECIAL_HUD_NAME+5,
+    SPECIAL_RESULT_FONT_K=SPECIAL_RESULT_NAME+8,
+    SPECIAL_RESULT_FONT_Y=SPECIAL_RESULT_FONT_K+4,
+    SPECIAL_RESULT_COUNTER_FONT=SPECIAL_RESULT_FONT_Y+4
 };
 static const S2SpecialArtFrame *special_actor_art(const uint16_t **palette)
 {
@@ -1186,6 +1197,7 @@ void s2_video_prepare_knuckles_items(void)
     static const S2KnucklesArt *cached;
     static const S2SpecialArtFrame *cached_special;
     static const S2ItemArt *cached_amy_items;
+    static const uint8_t *cached_result_font;
     static unsigned cached_native;
     static uint8_t patterns[65536];
     static uint8_t shadow_patterns[65536],shadow_lines[2048],world_lines[2048],item_lines[2048];
@@ -1195,6 +1207,8 @@ void s2_video_prepare_knuckles_items(void)
     const S2SpecialArtFrame *special=special_actor_art(&special_palette);
     const S2SpecialStageArt *amy=!strcmp(s2_party.roster.character[0],"amy")?s2_resource_amy_special():NULL;
     const S2ItemArt *amy_items=s2_resource_primary_items();
+    const uint8_t *result_font=(g_ram[0xF600]&127)==16 && g_ram[0xB800]==0x6F &&
+        custom_result_name()?s2_runtime_title_font():NULL;
     const S2DonorBank *amy_bank=!amy_items?NULL:
         !strcmp(s2_party.roster.character[0],"shadow")?s2_resource_shadow_bank():
         s2_resource_bank(!strcmp(s2_party.roster.character[0],"amy")?S2_RESOURCE_AMY:S2_RESOURCE_MEGAMIX);
@@ -1202,7 +1216,8 @@ void s2_video_prepare_knuckles_items(void)
     unsigned native=0;
     for(unsigned i=0;i<sizeof s_native_object_art/sizeof *s_native_object_art;++i)
         if(native_art_ready(s_native_object_art[i].asset))native|=1u<<i;
-    if (art!=cached || special!=cached_special || amy_items!=cached_amy_items || native!=cached_native) {
+    if (art!=cached || special!=cached_special || amy_items!=cached_amy_items ||
+        native!=cached_native || result_font!=cached_result_font) {
         memset(patterns,0,sizeof patterns);
         memset(item_lines,0,sizeof item_lines);
         /* Destruction pieces share their native atlas with title-card PLCs.
@@ -1233,6 +1248,18 @@ void s2_video_prepare_knuckles_items(void)
             for(unsigned t=SPECIAL_HUD_NAME;t<SPECIAL_HUD_NAME+5;++t)
                 item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
         }
+        if(result_font) {
+            /* The stock results alphabet omits K and Y. Use those letters
+             * from the large title font already decoded from the same ROM. */
+            memcpy(patterns+SPECIAL_RESULT_FONT_K*32,result_font+34*32,4*32);
+            memcpy(patterns+SPECIAL_RESULT_FONT_Y*32,result_font+86*32,4*32);
+            const uint8_t *letters=s2_runtime_ui_font()+14*32;
+            uint8_t *counter=patterns+SPECIAL_RESULT_COUNTER_FONT*32;
+            /* Use the cyan ink of the stock RINGS text in the results
+             * palette. The gameplay HUD's yellow is faint on this screen. */
+            for(unsigned i=0;i<26*32;++i)
+                counter[i]=(letters[i]&0xF0?0xC0:0)|(letters[i]&0x0F?0x0C:0);
+        }
         if(amy_items) {
             if(amy_items->signpost_tiles && amy_items->signpost_tiles<=78) {
                 memcpy(patterns+0x434*32,amy_items->signpost,amy_items->signpost_tiles*32);
@@ -1257,9 +1284,10 @@ void s2_video_prepare_knuckles_items(void)
             item_lines[t]=GVDP_EXT_SPRITE_FORCE|3;
     }
     cached=art;cached_special=special;cached_amy_items=amy_items;cached_native=native;
+    cached_result_font=result_font;
     /* Original grey items keep live CRAM. The signpost patch and tagged
      * world objects select a separate, native-timed Knuckles palette. */
-    int have_patterns=art || special || amy_items;
+    int have_patterns=art || special || amy_items || result_font;
     gvdp_set_sprite_patterns_bank(0,have_patterns?patterns:NULL,have_patterns?sizeof patterns:0,item_lines);
     const S2DonorBank *shadow=s2_party.shadow_enabled?s2_resource_shadow_bank():NULL;
     int selected=0;
@@ -1536,9 +1564,7 @@ void s2_video_special_actor(const GVDP *v,int line,uint32_t *out,int width)
 static void special_results_begin(void)
 {
     memset(&s_ss_result_build,0,sizeof s_ss_result_build);
-    if((g_ram[0xF600]&127)!=16 || s2_party.roster.slots!=1 ||
-       (strcmp(s2_party.roster.character[0],"knuckles") && strcmp(s2_party.roster.character[0],"amy")) ||
-       g_ram[0xB800]!=0x6F)return;
+    if((g_ram[0xF600]&127)!=16 || !custom_result_name() || g_ram[0xB800]!=0x6F)return;
     SpecialResultFrame *f=&s_ss_result_build;
     f->got_emerald=g_ram[0xFFB0];f->main_routine=g_ram[0xB824];
     for(unsigned o=0xB000;o<0xD400 && f->count<16;o+=64) {
@@ -1583,16 +1609,79 @@ static unsigned special_results_emit(uint8_t sat[640],unsigned count,
     }
     return count;
 }
+static unsigned result_letter_width(char letter);
+static int special_result_name_frame(unsigned frame)
+{
+    /* Headings GOT A/HAS ALL THE and the nonzero/zero P1 ring rows. */
+    return frame==1 || frame==22 || frame==13 || frame==18;
+}
+static unsigned special_results_retitle(uint8_t sat[640],unsigned count,
+                                        const SpecialResultActor *actor,const char *name)
+{
+    static const uint16_t tiles[26]={
+        ['A'-'A']=2,['C'-'A']=6,['D'-'A']=0xA,['E'-'A']=0x580,
+        ['G'-'A']=0xE,['H'-'A']=0x12,['I'-'A']=0x16,['K'-'A']=SPECIAL_RESULT_FONT_K,
+        ['L'-'A']=0x18,['M'-'A']=0x1C,['N'-'A']=0x584,['O'-'A']=0x588,
+        ['S'-'A']=0x2A,['T'-'A']=0x2E,['U'-'A']=0x32,['W'-'A']=0x36,
+        ['Y'-'A']=SPECIAL_RESULT_FONT_Y
+    };
+    unsigned mapping=0x14ED0+scene_read16(0x14ED0+actor->frame*2);
+    unsigned pieces=scene_read16(mapping);
+    int tally=actor->frame==13 || actor->frame==18;
+    unsigned stock_name=tally?2:5;
+    int advance=0;
+    for(const char *letter=name;*letter;++letter)advance+=tally?8:(int)result_letter_width(*letter);
+    int delta=advance-(tally?40:72);
+    int x=(int16_t)scene_read16(mapping+8)-(tally?0:delta/2);
+    S2SpecialResultArtFrame row={0};
+    for(const char *letter=name;*letter;++letter) {
+        unsigned tile=tally?SPECIAL_RESULT_COUNTER_FONT+*letter-'A':tiles[*letter-'A'];
+        unsigned glyph_width=tally?8:result_letter_width(*letter);
+        unsigned size=tally?0x80:((glyph_width/8-1)<<2)|1;
+        if(tile==SPECIAL_RESULT_FONT_K || tile==SPECIAL_RESULT_FONT_Y)size|=0x80;
+        row.pieces[row.count++]=(S2SpecialPiece){
+            .x=x,.y=tally?4:0,.size=(uint8_t)size,.attr=(uint16_t)((tally?0xA000:0x8000)|tile)
+        };
+        x+=(int)glyph_width;
+    }
+    count=special_results_emit(sat,count,&row,actor->x,actor->y,0);
+    /* Keep GOT A / HAS ALL THE in the original atlas and move the whole row
+     * around its native center. The result object still owns its slide. */
+    row.count=0;
+    for(unsigned i=stock_name;i<pieces && row.count<S2_SS_RESULT_PIECES;++i) {
+        unsigned piece=mapping+2+i*8;
+        /* Move RINGS with the lead name. The native digit cells stay put. */
+        int shift=tally?(i<5?delta:0):delta-delta/2;
+        row.pieces[row.count++]=(S2SpecialPiece){
+            .x=(int16_t)scene_read16(piece+6)+shift,.y=(int8_t)scene_read8(piece),
+            .size=(uint8_t)scene_read8(piece+1),.attr=scene_read16(piece+2)
+        };
+    }
+    return special_results_emit(sat,count,&row,actor->x,actor->y,0);
+}
 void s2_video_special_results(const GVDP *v,int line,uint32_t *out,int width)
 {
     static SpecialResultFrame picture;static int valid;
-    int amy=!strcmp(s2_party.roster.character[0],"amy");
-    const S2KnucklesArt *knuckles=!strcmp(s2_party.roster.character[0],"knuckles")?s2_resource_knuckles_art():NULL;
-    const S2SpecialStageArt *amy_art=amy?s2_resource_amy_special():NULL;
-    const S2SpecialResultArtFrame *art=knuckles?knuckles->special_results:amy_art?amy_art->results:NULL;
+    static int amy;
+    static const char *name;
+    static const S2SpecialResultArtFrame *art;
     if(!line) {
         valid=0;
-        if(art && s2_party.roster.slots==1 && (v->reg[12]&15)==1) {
+        name=custom_result_name();
+        art=NULL;amy=0;
+        if(name && s2_party.roster.slots==1) {
+            if(!strcmp(s2_party.roster.character[0],"amy")) {
+                const S2SpecialStageArt *donor=s2_resource_amy_special();
+                if(donor){art=donor->results;amy=1;}
+                else name=NULL;
+            } else if(!strcmp(s2_party.roster.character[0],"knuckles")) {
+                const S2KnucklesArt *donor=s2_resource_knuckles_art();
+                if(donor)art=donor->special_results;
+                else name=NULL;
+            }
+        }
+        if(!art && !s2_runtime_title_font())name=NULL;
+        if(name && (v->reg[12]&15)==1) {
             const SpecialResultFrame *best=NULL;unsigned table=(v->reg[5]&127u)<<9;
             for(unsigned i=0;i<4;++i) {
                 const SpecialResultFrame *f=i==3?&s_ss_result_display:&s_ss_result_history[i];
@@ -1603,14 +1692,15 @@ void s2_video_special_results(const GVDP *v,int line,uint32_t *out,int width)
             if(best){picture=*best;s_ss_result_display=*best;valid=1;}
         }
     }
-    if(!valid || !art || !(v->reg[1]&64) || (v->reg[12]&15)!=1)return;
+    if(!valid || !name || !(v->reg[1]&64) || (v->reg[12]&15)!=1)return;
     unsigned table=(v->reg[5]&127u)<<9,slot=0;int affected=0;
     for(unsigned n=0;n<80 && slot<80;++n) {
         const uint8_t *p=picture.sat+slot*8;
         if(picture.owner[slot]) {
             int y=((p[0]<<8)|p[1])-128,h=((p[2]&3)+1)*8;
             const SpecialResultActor *a=&picture.actors[picture.owner[slot]-1];
-            if((line>=y && line<y+h) || (line>=a->y && line<a->y+16))affected=1;
+            if((art || special_result_name_frame(a->frame)) &&
+               ((line>=y && line<y+h) || (line>=a->y && line<a->y+16)))affected=1;
         }
         slot=p[3]&127;if(!slot)break;
     }
@@ -1618,16 +1708,19 @@ void s2_video_special_results(const GVDP *v,int line,uint32_t *out,int width)
     GVDP copy=*v;uint8_t sat[640]={0};unsigned count=0,seen=0;slot=0;
     for(unsigned n=0;n<80 && slot<80;++n) {
         const uint8_t *native=picture.sat+slot*8;unsigned owner=picture.owner[slot];
-        if(owner) {
+        if(owner && (art || special_result_name_frame(picture.actors[owner-1].frame))) {
             unsigned i=owner-1;
             if(!(seen&(1u<<i))) {
                 seen|=1u<<i;const SpecialResultActor *a=&picture.actors[i];unsigned frame=a->frame;
-                int offset=amy?0:frame==1?80:frame==22?(picture.got_emerald?68:80):0;
-                count=special_results_emit(sat,count,&art[frame],a->x+offset,a->y,amy);
-                if(!amy && (frame==1 || frame==22) && picture.got_emerald) {
-                    int name_x=a->x+(frame==22?-36:8),hardware_x=name_x+128;
-                    int visible=picture.main_routine>=0x30?hardware_x>32:hardware_x>=80 && hardware_x<=512;
-                    if(visible)count=special_results_emit(sat,count,&art[29],name_x,a->y,0);
+                if(!art)count=special_results_retitle(sat,count,a,name);
+                else {
+                    int offset=amy?0:frame==1?80:frame==22?(picture.got_emerald?68:80):0;
+                    count=special_results_emit(sat,count,&art[frame],a->x+offset,a->y,amy);
+                    if(!amy && (frame==1 || frame==22) && picture.got_emerald) {
+                        int name_x=a->x+(frame==22?-36:8),hardware_x=name_x+128;
+                        int visible=picture.main_routine>=0x30?hardware_x>32:hardware_x>=80 && hardware_x<=512;
+                        if(visible)count=special_results_emit(sat,count,&art[29],name_x,a->y,0);
+                    }
                 }
             }
         } else if(count<80)memcpy(sat+count++*8,native,8);
@@ -2951,6 +3044,13 @@ static int competition_scanline(const GVDP *v,int line,const uint32_t *native,in
     } else if(ready)competition_hud_sprites(v,line,out,width,palette);
     return 1;
 }
+static int title_card_live(void)
+{
+    for(unsigned o=0xB080;o<=0xB1C0;o+=64)
+        if(g_ram[o]==0x34)return 1;
+    return 0;
+}
+
 static void render_source_scanline(const GVDP *v, int line, const uint32_t *native, int nw,
                             uint32_t *out, int width,
                             GameVideoNativeRow native_row, void *native_ctx, int split_player)
@@ -2993,8 +3093,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         if (width>nw && ((g_ram[0xF600]&127)==12 || (g_ram[0xF600]&127)==8) && !ram16(0xFFD8) &&
             (v->vram[0xBB40]==0x33 || v->vram[0xBB40]==0x44) &&
             v->vram[0xBB7F]==v->vram[0xBB40])
-            for (unsigned o=0xB080;o<=0xB1C0;o+=64)
-                if (g_ram[o]==0x34) s_frame_card=1;
+            s_frame_card=title_card_live();
         s_frame_fg_x=ram16(0xEE60);s_frame_fg_y=ram16(0xEE64);s_frame_bg_y=ram16(0xEE6C);
         capture_background_scroll(s_render);
         /* Game_Mode changes before departure fades. The displayed name table
@@ -3135,10 +3234,17 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
      * only its camera-dependent term to this viewport's foreground origin.
      * A clamped wide camera then keeps its own parallax instead of inheriting
      * the moving native viewport's foreground-speed translation. */
-    if(bg_world && (width>nw || (split_player>0 && s_frame_campaign_view))) {
+    int rebase_background=bg_world && (width>nw || (split_player>0 && s_frame_campaign_view));
+    if(rebase_background) {
         bg_base=background_view_base(s_render,native_camera,s_left,line,by,hs_b);
-        if(s_interpolating)bg_base=interpolation_background_base(line,by);
-    }
+        if(s_interpolating) {
+            /* HTZ's static upper scroll and mountain DMA both round the
+             * camera. Apply that rounding after interpolation. */
+            bg_base=normal_htz && line<128?-scroll_floor(-s_left,8):interpolation_background_base(line,by);
+        }
+    } else if(s_interpolating && bg_world && s_frame_zone==13)
+        bg_base=interpolation_background_base(line,by);
+    const uint8_t *mountains=normal_htz && rebase_background?htz_mountain_table(s_left):NULL;
     int background_x=bg_base;
     if(bg_width>0) {
         background_x%=bg_width;
@@ -3182,7 +3288,13 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
                     width>nw && (nx<0 || nx>=nw),s_frame_zone);
             uint16_t attr=bg_world?(background_attr(s_world_frame,source,by,bg_base+x,
                 width>nw && (nx<0 || nx>=nw),s_frame_zone,s_frame_resize)^(uint16_t)flip):plane_attr(v,base_b,bx,by);
-            gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
+            unsigned tile=attr&2047u;
+            if(mountains && tile>=0x500 && tile<0x518) {
+                unsigned group=((tile-0x500)/4)*2;
+                unsigned source_tile=(((unsigned)mountains[group]<<8)|mountains[group+1])/32+(tile&3u);
+                gtile_row_begin(&bg,s_world_frame,(uint16_t)((attr&0xF800)|source_tile),background_x,by);
+                bg.attr=attr;
+            } else gtile_row_begin(&bg,v->vram,attr,bg_world?background_x:bx,by);
             bg_slot=slot_skin && slot_material(v,attr);
         }
         uint16_t a=fg.attr,b=bg.attr;
@@ -3454,7 +3566,7 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
         /* Native interlace, online campaigns and transition screens
          * retain ordinary completed pictures until an adapter is qualified. */
         if(width<native_w || native_w!=320 || g_ram[0xF600]!=12 ||
-           !g_ram[0xF711] || ram16(0xF63A) || competition() ||
+           !g_ram[0xF711] || title_card_live() || ram16(0xF63A) || competition() ||
            (v->reg[12]&14) || !(v->reg[1]&64) ||
            s2_runtime_campaign_online())return;
         const SceneFrame *scene=enabled()?s_display:native_select_scene(v);
@@ -3512,10 +3624,10 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     if(r->frame_campaign_view)
         by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
     int extra=0;
-    if(r->frame_zone==15) {
-        /* ARZ's parallax bands are attached to the background world, not
-         * to screen rows. Sample the same band in both completed frames;
-         * blending neighboring bands invents a one-row horizontal seam. */
+    if(r->frame_zone==15 || r->frame_zone==13) {
+        /* These parallax bands follow the background world, not screen rows.
+         * At the CPZ ripple edge, neighboring rows can sample different
+         * cameras. Blend the same world row from both completed frames. */
         int sample=line+world_y-by;
         row=sample<0?0:sample>223?223:sample;
         int sampled_by=unwrap(f->vscroll[row][1],r->frame_bg_y)+row;
@@ -3528,7 +3640,8 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     }
     int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
     if(r->frame_zone==7 && !r->frame_htz_shake)by=(int)((unsigned)by&255u);
-    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]+extra);
+    int left=f->width==320 && !r->frame_campaign_view?camera:r->left;
+    return background_view_base(r,camera,left,line,by,(int16_t)f->hscroll[row][1]+extra);
 }
 static int interpolation_background_base(int line,int world_y)
 {

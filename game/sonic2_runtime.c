@@ -501,9 +501,8 @@ static int companion_recovering(void)
     unsigned state=word(0xF708);
     return state==2 || state==4;
 }
-static void companion_control(unsigned p, unsigned o, int act_end)
+static int host_actor_visibility(unsigned o)
 {
-    if (g_ram[o+0x24]!=2) return;
     /* Host-rendered actors never go through BuildSprites' on-screen writer.
      * Supply its camera-relative visibility instead of forcing bit 7 on. */
     int x=(int16_t)(word(o+8)-word(0xEE00));
@@ -511,6 +510,12 @@ static void companion_control(unsigned p, unsigned o, int act_end)
     int visible=x>=-(int)g_ram[o+0x19] && x<320+g_ram[o+0x19] &&
         y>=-32 && y<256;
     g_ram[o+1]=(g_ram[o+1]&0x7F)|(visible?0x80:0);
+    return visible;
+}
+static void companion_control(unsigned p, unsigned o, int act_end)
+{
+    if (g_ram[o+0x24]!=2) return;
+    int visible=host_actor_visibility(o);
     int human=human_companion(p);
     /* The signpost lets P1 run beyond the fixed camera's native viewport.
      * Settled party followers reach that same boundary. They remain in the
@@ -1032,7 +1037,11 @@ static int update_player(unsigned p, uint32_t entry)
                     putword(object+0x12,word(object+0x12)+((g_ram[object+0x22]&64)?0x10:0x38));
                 }
                 if(gliding || falling || sliding)characters[p].glide_collision=(uint8_t)knuckles_glide_collision(object,gliding || sliding);
-                else host_call(characters[p].move==S2_MOVE_AIR?0x1AEAA:0x1E234);
+                else if(characters[p].move==S2_MOVE_AIR) {
+                    host_call(0x1AEAA);
+                    if(kind(p)==S2_CHAR_SHADOW)
+                        s2_shadow_after_collision(&characters[p],m.vx,(int16_t)word(object+0x10));
+                } else host_call(0x1E234);
             }
             host_call(0x1A974); /* LevelBound remains authoritative */
             g_ram[object+0x2A]|=1;
@@ -1534,12 +1543,18 @@ int s2_runtime_hook(uint32_t pc)
         /* RunObjectDisplayOnly freezes the dynamic pool during P1 death.
          * Its submissions bypass update_player, but donor/extra frames must
          * still never enter native Sonic mappings or shared VRAM slots. */
-        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==(g_cpu.A[0]&65535) &&
-            (p>=2 || kind(p)>=S2_CHAR_AMY)) { displayed[p]=1; return 1; }
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p]==o &&
+            (p>=2 || kind(p)>=S2_CHAR_AMY)) {
+            if(!p && kind(0)==S2_CHAR_MIGHTY)host_actor_visibility(o);
+            displayed[p]=1;return 1;
+        }
     }
     if (pc==0x164F4 && inside_player) {
         if ((g_cpu.A[0]&0xFFFF)==objects[actor]) {
             if (actor>0 && !word(0xFFD8) && word(0xF708)==2) return 1;
+            /* Native plungers use this flag while they control P1. Mighty
+             * borrows Sonic's controller but skips the native sprite list. */
+            if(actor==0 && kind(0)==S2_CHAR_MIGHTY)host_actor_visibility(objects[0]);
             displayed[actor]=actor==0 && kind(0)==S2_CHAR_TAILS && custom_super_palette()?2:1;
         }
         if (actor>=2 || kind((unsigned)actor)>=S2_CHAR_AMY || (actor==0 && displayed[0]==2)) return 1;

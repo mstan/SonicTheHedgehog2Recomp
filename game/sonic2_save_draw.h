@@ -21,6 +21,8 @@ typedef struct S2SaveView {
     int native_clear_portrait;
     const char *notice;
     const uint32_t *portrait; /* immutable 80x48 host composition; NULL = stock pair */
+    const uint8_t *counter_life, *counter_continue;
+    const uint16_t *counter_palette;
 } S2SaveView;
 void s2_save_portraits(const S2SaveAssets *assets,const S2SavePortrait *portraits,
                       unsigned count,uint32_t *out);

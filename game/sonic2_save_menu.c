@@ -104,6 +104,9 @@ void s2_save_menu_state(S2StateIO *io)
         view.portrait=NULL;
         if(menu || departure_ready)bind_portrait();
         departure_view.portrait=view.portrait;
+        departure_view.counter_life=view.counter_life;
+        departure_view.counter_continue=view.counter_continue;
+        departure_view.counter_palette=view.counter_palette;
     }
 }
 static uint16_t word(unsigned a) { return (uint16_t)((g_ram[a]<<8)|g_ram[a+1]); }
@@ -165,6 +168,7 @@ static void save_transition(uint16_t destination)
 static void bind_portrait(void)
 {
     view.portrait=NULL;
+    view.counter_life=view.counter_continue=NULL;view.counter_palette=NULL;
     view.counter_character=!strcmp(s2_party.roster.character[0],"knuckles")?2:
         !strcmp(s2_party.roster.character[0],"tails")?1:0;
     view.native_clear_portrait=!strcmp(s2_party.roster.character[0],"sonic") ||
@@ -186,6 +190,13 @@ static void bind_portrait(void)
             if (!strcmp(id,"shadow")) bank=s2_resource_shadow_bank();
             if (bank && bank->count>1 && bank->frames[1].pixels) {
                 portraits[p].image=&bank->frames[1]; portraits[p].palette=bank->palette;
+                if(!p) {
+                    const S2ItemArt *items=s2_resource_primary_items();
+                    if(items) {
+                        view.counter_life=items->life;view.counter_palette=bank->palette;
+                        if(!strcmp(id,"amy"))view.counter_continue=items->continue_icons;
+                    }
+                }
             }
         }
         s2_save_portraits(s2_resource_save_assets(),portraits,count,menu_portrait);
