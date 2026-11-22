@@ -53,7 +53,7 @@ static int wav_loop(const uint8_t *p,size_t n,unsigned rate,unsigned *frames,uns
 }
 /* Genesis VGM commands only. Verify every boundary, DAC read and loop before
  * asking a synthesizer to run untrusted data. A loop must advance audio time. */
-static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop,uint32_t *voices,uint8_t *psg_copy)
+static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop,uint32_t *voices)
 {
  if(size<=0x40||memcmp(data,"Vgm ",4))return 0;
  unsigned version=le32(data+8);if(version<0x100||version>0x171)return 0;
@@ -63,7 +63,6 @@ static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
  if(pc<0x40||pc>=end||(repeat&&(repeat<pc||repeat>=end)))return 0;
  uint64_t samples=0,loop_time=0;unsigned bank=0,at=0,latch=0,dac=0;int loop_seen=0;
  uint32_t active=0;
- if(psg_copy){memcpy(psg_copy,data,size);memset(psg_copy+0x10,0,4);memset(psg_copy+0x2c,0,8);if(version<0x110)put32(psg_copy+8,0x110);}
  while(pc<end){
   if(pc==repeat){loop_seen=1;loop_time=samples;}
   unsigned op=data[pc++],bytes=0,wait=0;
@@ -92,7 +91,6 @@ static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
    if(op==0x52&&reg==0x28&&(value&0xf0)){
     unsigned ch=value&7;if(ch<3)active|=1u<<ch;else if(ch>=4&&ch<=6&&!(ch==6&&dac))active|=1u<<(ch-1);
    }
-   if(psg_copy){psg_copy[pc-1]=0x61;psg_copy[pc]=psg_copy[pc+1]=0;}
   }
   pc+=bytes;samples+=wait;
   if(samples>44100u*1800u)return 0;
@@ -100,9 +98,9 @@ static int vgm_scan(const uint8_t *data,size_t size,unsigned *frames,unsigned *l
  return 0;
 }
 static int vgm_info(const uint8_t *data,size_t size,unsigned *frames,unsigned *loop)
-{return vgm_scan(data,size,frames,loop,NULL,NULL);}
-uint32_t s2_custom_vgm_channels(const uint8_t *data,size_t size,uint8_t *psg_copy)
-{unsigned frames,loop;uint32_t voices=0;return vgm_scan(data,size,&frames,&loop,&voices,psg_copy)?voices:0;}
+{return vgm_scan(data,size,frames,loop,NULL);}
+uint32_t s2_custom_vgm_channels(const uint8_t *data,size_t size)
+{unsigned frames,loop;uint32_t voices=0;return vgm_scan(data,size,&frames,&loop,&voices)?voices:0;}
 static uint8_t *read_file(const char *path,size_t *size)
 {
  FILE *f=fopen(path,"rb");if(!f)return NULL;

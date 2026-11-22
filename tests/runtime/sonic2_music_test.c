@@ -7,8 +7,11 @@
 #include "sonic2_sound_assets.h"
 #include "sonic2_cd_themes.h"
 #include "sonic2_custom_music.h"
+#include "sonic2_vgm.h"
 #include "sonic2_state_io.h"
 #include "audio.h"
+#include "app_config.h"
+AppConfig g_app_config;
 #include "recomp_launcher.h"
 #include <SDL2/SDL.h>
 #include <gme/gme.h>
@@ -115,20 +118,18 @@ static void vgm_dac_stereo(void)
 int main(int argc,char **argv)
 {
  if(argc==2&&!strcmp(argv[1],"--vgm-dac")){vgm_dac_stereo();return 0;}
- /* Mixed-chip VGMs expose only sounding voices, including separate PSG
-  * tones/noise. The PSG audition copy keeps every command offset and wait. */
+ /* Mixed-chip VGMs expose sounding voices, including separate PSG tones
+  * and noise. Scanning malformed input must fail. */
  {
-  uint8_t vgm[128]={0},psg[128];memcpy(vgm,"Vgm ",4);vgm[8]=0x50;vgm[9]=1;
+  uint8_t vgm[128]={0};memcpy(vgm,"Vgm ",4);vgm[8]=0x50;vgm[9]=1;
   const uint8_t commands[]={0x52,0x28,0xf0,0x52,0x28,0xf6,0x52,0x2b,0x80,0x52,0x2a,0x80,
    0x50,0x90,0x50,0xb0,0x50,0xd0,0x50,0xf0,0x62,0x66};
   size_t bytes=0x40+sizeof commands;vgm[4]=(uint8_t)(bytes-4);memcpy(vgm+0x40,commands,sizeof commands);
-  assert(s2_custom_vgm_channels(vgm,bytes,psg)==((1u<<0)|(1u<<5)|(1u<<6)|0x780u));
-  assert(!memcmp(psg+0x4c,vgm+0x4c,sizeof commands-12));
-  for(unsigned i=0;i<12;i+=3)assert(psg[0x40+i]==0x61&&!psg[0x41+i]&&!psg[0x42+i]);
-  vgm[0x40]=0xff;assert(!s2_custom_vgm_channels(vgm,bytes,NULL));
+  assert(s2_custom_vgm_channels(vgm,bytes)==((1u<<0)|(1u<<5)|(1u<<6)|0x780u));
+  vgm[0x40]=0xff;assert(!s2_custom_vgm_channels(vgm,bytes));
  }
 #ifdef SONIC2_MUSIC_DRIVER
- if(argc==6&&(!strcmp(argv[1],"--custom-import")||!strcmp(argv[1],"--custom-reject")||!strcmp(argv[1],"--vgm-voices"))){
+ if(argc==6&&(!strcmp(argv[1],"--custom-import")||!strcmp(argv[1],"--custom-reject")||!strcmp(argv[1],"--vgm-voices")||!strcmp(argv[1],"--vgm-transport"))){
   int reject=!strcmp(argv[1],"--custom-reject");char settings[1200],error[256]={0};
   envset("GENESIS_USER_DIR",argv[2]);snprintf(settings,sizeof settings,"%s/settings.ini",argv[2]);s2_music_load(settings);
   unsigned t=track(argv[3]);assert(s2_music_pick(t,"custom"));
@@ -163,6 +164,65 @@ int main(int argc,char **argv)
    assert((rom[song+voice-2]==0xFF&&(rom[song+voice-1]==0x10||rom[song+voice-1]==0x04))||
           (voice==60&&rom[song+56]==0xFF&&rom[song+57]==0x14&&rom[song+58]==0xFF&&rom[song+59]==0xFB));
   }
+  if(!strcmp(argv[1],"--vgm-transport")){
+   unsigned dac=0;
+   for(unsigned ch=1;ch<s2_cd_theme_channel_count(t);ch++)
+    if(!strcmp(s2_cd_theme_channel_name(t,ch),"DAC"))dac=ch;
+   assert(extra&&dac);
+   uint64_t start=SDL_GetPerformanceCounter();
+   s2_cd_theme_request(s2_music_target(t));
+   for(unsigned i=0;i<3600;i++){s2_cd_theme_frame(0,0);s2_cd_theme_tick(i);}
+   uint64_t sixty=SDL_GetPerformanceCounter();
+   S2StateIO measured={0};s2_cd_theme_state(&measured);
+   uint8_t *bytes=malloc(measured.pos);assert(bytes);
+   S2StateIO save={bytes,measured.pos,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
+   S2StateIO check={bytes,save.pos,0,1,1};s2_cd_theme_state(&check);assert(check.ok);
+   s2_cd_theme_frame(0,0);s2_cd_theme_tick(3600);
+   int16_t normal[1400]={0},back[1400]={0},faded[1400]={0};
+   extra(normal,700,44100);
+   uint64_t restore_from=SDL_GetPerformanceCounter();
+   S2StateIO restore={bytes,save.pos,0,2,1};s2_cd_theme_state(&restore);assert(restore.ok);
+   s2_cd_theme_frame(0,0);s2_cd_theme_tick(3600);extra(back,700,44100);
+   uint64_t restore_end=SDL_GetPerformanceCounter();
+   assert(!memcmp(normal,back,sizeof normal));
+   restore.pos=0;s2_cd_theme_state(&restore);assert(restore.ok);
+   uint64_t paused,resume;
+   s2_cd_theme_debug(NULL,NULL,&paused);
+   s2_cd_theme_frame(0,1);s2_cd_theme_tick(3600);
+   s2_cd_theme_debug(NULL,NULL,&resume);assert(paused==resume);
+   s2_cd_theme_frame(0,0);s2_cd_theme_tick(3601);extra(faded,700,44100);
+   unsigned energy=0;
+   for(unsigned i=0;i<1400;i++){
+    energy+=(unsigned)abs(normal[i]);
+    assert(faded[i]==(int32_t)normal[i]*2072/65536);
+   }
+   assert(energy);
+   uint64_t channel_from=SDL_GetPerformanceCounter();
+   s2_cd_theme_audition(t,dac,0);s2_cd_theme_frame(0,0);s2_cd_theme_tick(3602);
+   memset(back,0,sizeof back);extra(back,700,44100);
+   uint64_t channel_end=SDL_GetPerformanceCounter();
+   /* Repeat the restart with the same solo selection. Then confirm All is
+    * a different signal over that same prefix. */
+   enum { RESTART_TICKS=120 };
+   int16_t (*prefix)[1400]=calloc(RESTART_TICKS,sizeof *prefix);assert(prefix);
+   int different=0;
+   for(unsigned pass=0;pass<3;pass++){
+    if(pass!=1)s2_cd_theme_audition(t,pass==2?0:dac,0);
+    s2_cd_theme_request(s2_music_target(t));
+    for(unsigned i=0;i<RESTART_TICKS;i++){
+     s2_cd_theme_frame(0,0);s2_cd_theme_tick(i);
+     memset(back,0,sizeof back);extra(back,700,44100);
+     if(pass==0)memcpy(prefix[i],back,sizeof back);
+     else if(pass==1)assert(!memcmp(prefix[i],back,sizeof back));
+     else different|=memcmp(prefix[i],back,sizeof back)!=0;
+    }
+   }
+   assert(different);free(prefix);
+   double tick=1000.0/SDL_GetPerformanceFrequency();
+   printf("VGM transport: sixty seconds %.3f ms, restore and render %.3f ms, channel switch and render %.3f ms, snapshot %zu bytes\n",
+      (sixty-start)*tick,(restore_end-restore_from)*tick,(channel_end-channel_from)*tick,save.pos);
+   free(bytes);s2_cd_themes_reset();free(rom);return 0;
+  }
   if(!strcmp(argv[1],"--vgm-voices")){
    static const char *names[]={"ALL CHANNELS","FM1","PSG1","PSG2","PSG3","PSG NOISE"};
    int16_t voices[6][2048]={{0}},restored[2048]={0};assert(extra&&s2_cd_theme_channel_count(t)==6&&!s2_cd_theme_native_channels(t));
@@ -174,24 +234,18 @@ int main(int argc,char **argv)
    }
    s2_cd_theme_audition(t,0,0);s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(restored,1024,44100);
    assert(!memcmp(voices[0],restored,sizeof restored));
-   /* The auxiliary PSG-only decoder must keep mixed-chip GME's 0.405
-    * balance, rather than making PSG solos louder than their source. */
-   uint8_t raw[512],psg[512];FILE *source=fopen(argv[4],"rb");assert(source);
-   size_t bytes=fread(raw,1,sizeof raw,source);assert(feof(source)&&bytes<sizeof raw);fclose(source);
-   assert(s2_custom_vgm_channels(raw,bytes,psg));Music_Emu *reference=NULL;
-   assert(!gme_open_data(psg,(long)bytes,&reference,44100));gme_ignore_silence(reference,1);gme_set_autoload_playback_limit(reference,0);
-   assert(!gme_start_track(reference,0));gme_mute_voices(reference,~1);int16_t direct[2048];assert(!gme_play(reference,2048,direct));gme_delete(reference);
-   for(unsigned i=0;i<2048;i++)assert(voices[2][i]==(int32_t)direct[i]*405/1000);
    puts("PASS mixed VGM: active FM/individual PSG isolation and exact All restoration");s2_cd_themes_reset();free(rom);return 0;
   }
   if(extra&&s2_cd_theme_channel_count(t)!=11){
    s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,t==0);s2_cd_theme_tick(0);
    int16_t pcm[2048]={0},again[2048]={0};extra(pcm,1024,44100);
    int nonzero=0;for(unsigned i=0;i<2048;i++)nonzero|=pcm[i];assert(nonzero);
-   uint8_t state[128];S2StateIO save={state,sizeof state,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
+   S2StateIO size={0};s2_cd_theme_state(&size);
+   uint8_t *state=malloc(size.pos);assert(state);
+   S2StateIO save={state,size.pos,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
    s2_cd_theme_tick(1);memset(pcm,0,sizeof pcm);extra(pcm,1024,44100);s2_cd_theme_tick(2);
    S2StateIO load={state,save.pos,0,2,1};s2_cd_theme_state(&load);assert(load.ok);s2_cd_theme_tick(1);
-   extra(again,1024,44100);assert(!memcmp(pcm,again,sizeof pcm));
+   extra(again,1024,44100);assert(!memcmp(pcm,again,sizeof pcm));free(state);
    s2_cd_theme_audition(t,0,1);memset(again,0,sizeof again);extra(again,1024,44100);for(unsigned i=0;i<2048;i++)assert(!again[i]);
    if(s2_cd_theme_channel_count(t)>1&&t==track("ehz")){
     for(unsigned i=0;i<180;i++)s2_cd_theme_tick(i);
@@ -388,7 +442,9 @@ int main(int argc,char **argv)
     s2_cd_theme_request(0x17);s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);
    }
    unsigned active=0;s2_cd_theme_debug(&active,NULL,NULL);assert(active);
-   uint8_t state[128];S2StateIO save={state,sizeof state,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
+   S2StateIO size={0};s2_cd_theme_state(&size);
+   uint8_t *state=malloc(size.pos);assert(state);
+   S2StateIO save={state,size.pos,0,0,1};s2_cd_theme_state(&save);assert(save.ok);
    uint64_t position=0;s2_cd_theme_debug(NULL,NULL,&position);
    assert(position>0);extra(pcm,256,44100);uint64_t held;s2_cd_theme_debug(NULL,NULL,&held);assert(position==held);
    s2_cd_theme_frame(1,0);s2_cd_theme_tick(1);memset(pcm,0,sizeof pcm);extra(pcm,256,44100);

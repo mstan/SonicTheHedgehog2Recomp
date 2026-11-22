@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp VERSION 0.15.5 LANGUAGES C)
+project(SonicTheHedgehog2Recomp VERSION 0.15.6 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 # Build version = netplay lobby key + release package name. Derived from git on
@@ -209,6 +209,9 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_import.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_assets.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_cd_themes.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_vgm.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_vgm_fm.cpp"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic2_vgm_psg.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_custom_music.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_assets.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_legacy.c"
@@ -256,6 +259,7 @@ set(SONIC2_INCLUDES_NATIVE
     "${CMAKE_CURRENT_SOURCE_DIR}/game"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/music"
     "${CMAKE_SOURCE_DIR}/recomp-ui/src/common"
+    "${RUNNER_ROOT}/audio"
 )
 
 # Clean-room own backend (VDP+bus+Z80 scheduler, superzazu Z80 core embedded
@@ -446,6 +450,11 @@ if(BUILD_TESTING)
         game/music/sonic2_music.c game/music/sonic2_music_mods.c
         game/music/sonic2_music_assets.c game/music/sonic2_cd_themes.c game/music/sonic2_custom_music.c
         game/music/sonic2_music_import.c
+        game/music/sonic2_vgm.c game/music/sonic2_vgm_fm.cpp game/music/sonic2_vgm_psg.c
+        "${RUNNER_ROOT}/external/ymfm/src/ymfm_opn.cpp"
+        "${RUNNER_ROOT}/external/ymfm/src/ymfm_ssg.cpp"
+        "${RUNNER_ROOT}/external/ymfm/src/ymfm_adpcm.cpp"
+        "${RUNNER_ROOT}/external/ymfm/src/ymfm_pcm.cpp"
         game/music/sonic3_sound_assets.c game/music/sonic3_sound_legacy.c
         game/music/sonic3_sound_sequences.c game/music/sonic3_sound_pcm.c
         game/music/sonic3_prototype_pcm.c game/sonic2_sound_assets.c
