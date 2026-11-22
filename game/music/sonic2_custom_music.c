@@ -159,7 +159,7 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
 {
  if(t>=S2_MUSIC_COUNT||!source||!*root)return 0;
  char compiled[1024];const char *extension=strrchr(source,'.');
- if(extension&&!SDL_strcasecmp(extension,".s2music")){snprintf(error,capacity,"Select the original WAV, VGM, BIN or ASM source.");return 0;}
+ if(extension&&!SDL_strcasecmp(extension,".s2music")){snprintf(error,capacity,"Select the original WAV, VGM/VGZ, BIN or ASM source.");return 0;}
  if(extension&&!SDL_strcasecmp(extension,".asm")){
   if(!s2_custom_assemble(source,s2_theme_ids[t],settings_file,compiled,error,capacity,progress,user))return 0;
   source=compiled;
@@ -167,6 +167,19 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
  size_t n=0;uint8_t *raw=read_file(source,&n),*payload=NULL;size_t bytes=0;
  unsigned kind=0,frames=0,loop=0;int ok=0;
  if(!raw){snprintf(error,capacity,"Unable to read music (64 MiB maximum).");return 0;}
+ int is_vgm=n>=4&&!memcmp(raw,"Vgm ",4);
+ if((raw[0]==0x1f&&raw[1]==0x8b)||(is_vgm&&!vgm_info(raw,n,&frames,&loop))){
+  free(raw);
+  if(!s2_custom_normalize_vgm(source,s2_theme_ids[t],settings_file,compiled,error,capacity,progress,user))return 0;
+  raw=read_file(compiled,&n);
+  remove(compiled);
+  if(!raw||!vgm_info(raw,n,&frames,&loop)){
+   free(raw);
+   if(error&&capacity)snprintf(error,capacity,"Unable to read the prepared Genesis VGM.");
+   return 0;
+  }
+  is_vgm=1;
+ }
  if(progress)progress(user,0.25f,"Preparing your custom music...");
  if(n>=12&&!memcmp(raw,"RIFF",4)&&!memcmp(raw+8,"WAVE",4)){
   SDL_AudioSpec spec;Uint8 *wave=NULL;Uint32 length=0;
@@ -184,7 +197,7 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
     }else bytes=(size_t)frames*4;
    }
   }
- }else if(n>=0x40&&!memcmp(raw,"Vgm ",4)&&vgm_info(raw,n,&frames,&loop)){
+ }else if(is_vgm){
   Music_Emu *emu=NULL;
   if(!gme_open_data(raw,(long)n,&emu,44100)){
    gme_ignore_silence(emu,1);gme_set_autoload_playback_limit(emu,0);
@@ -208,7 +221,7 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
   }
  }
  free(payload);free(raw);
- if(!ok&&error&&capacity&&!*error)snprintf(error,capacity,"Use WAV, VGM, or Sonic 1 68K SMPS BIN/ASM with Sonic 2 PSG envelopes and DAC notes.");
+ if(!ok&&error&&capacity&&!*error)snprintf(error,capacity,"Use WAV, VGM/VGZ, or Sonic 1 68K SMPS BIN/ASM with Sonic 2 PSG envelopes and DAC notes.");
  if(ok&&progress)progress(user,1,"Custom music imported. Restart to apply.");return ok;
 }
 int s2_custom_build(unsigned t,const S3SoundLayout *l,uint8_t *bank,size_t cap,uint32_t *used,char *error,size_t capacity)

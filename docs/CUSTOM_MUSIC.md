@@ -10,12 +10,11 @@ Supported inputs:
 - **WAV:** PCM recordings supported by SDL, converted to 44.1 kHz stereo.
   Campaign, boss, invincibility and Super themes repeat the recording. Event
   jingles, title, credits and drowning play once.
-- **Genesis VGM:** uncompressed VGM using YM2612, SN76489, DAC data blocks,
-  waits and seeks. Campaign loop boundaries are retained; event recordings
-  finish after their first complete pass. Other chip commands,
-  compressed VGZ and VGM streaming commands are rejected with the prior import
-  retained. Files and converted recordings are limited to 64 MiB; VGM duration
-  is limited to 30 minutes.
+- **Genesis VGM and VGZ** support YM2612 and Genesis PSG music, including DAC
+  data blocks, seeks and timed DAC streams. Campaign tracks retain the start of
+  the file loop. Event jingles play once. Invalid files leave the previous
+  import in place. Music files and expanded recordings are limited to 64 MiB.
+  VGM duration is limited to 30 minutes.
 - **SMPS BIN:** standalone Sonic 1 68K SMPS music with relative pointers and
   embedded FM voices, smaller than 32 KiB. PSG envelopes and DAC sample notes
   use Sonic 2's built-in bank. Other SMPS driver formats need conversion first.
@@ -37,16 +36,17 @@ PSG3/noise isolation. VGM offers the channels used by the imported song,
 including individual PSG tones and noise. Stereo WAV/CD recordings offer All Channels.
 Music Player is local-only. Closing it restores all channels and Options music.
 
-VGM playback uses Game_Music_Emu 0.6.5, LGPL 2.1 or later, with its GENS YM2612
-backend. The dynamically linked library can be replaced. Exact source commit:
+VGM playback uses Game_Music_Emu 0.6.5, LGPL 2.1 or later, with its Nuked OPN2
+backend. DAC writes go through the chip's stereo routing and voice controls. The dynamically linked library can be replaced. Exact source commit:
 `9e23d10f9fd2a6a2f33b10912dd8dc7153258995`, from
 <https://github.com/libgme/game-music-emu>. The package includes the source and
 license in `docs/libgme-source`. To rebuild that library:
 
 ```sh
-cmake -S docs/libgme-source -B gme-build -DGME_YM2612_EMU=GENS -DGME_BUILD_SHARED=ON -DGME_BUILD_STATIC=OFF -DGME_BUILD_TESTING=OFF -DGME_BUILD_EXAMPLES=OFF -DGME_ZLIB=OFF
+cmake -S docs/libgme-source -B gme-build -DGME_YM2612_EMU=Nuked -DGME_BUILD_SHARED=ON -DGME_BUILD_STATIC=OFF -DGME_BUILD_TESTING=OFF -DGME_BUILD_EXAMPLES=OFF -DGME_ZLIB=OFF
 cmake --build gme-build --config Release
 ```
 
-The game build enables VGM and disables the other music formats. It pins the
-source archive by SHA-256 in `cmake/Sonic2CustomMusic.cmake`.
+The game build enables VGM and pins the upstream archive by SHA-256 in
+`cmake/Sonic2CustomMusic.cmake`. The shipped source includes the applied DAC
+patch.

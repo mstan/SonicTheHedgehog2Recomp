@@ -103,8 +103,8 @@ static int resource_get(void *c,const char *p,const char *f,int i,RecompLauncher
     int t,d=requirement(group_id(f),i,&t);if(d<0||!o)return 0;memset(o,0,sizeof *o);
     if(d>=S2_DONOR_COUNT){
         snprintf(o->id,sizeof o->id,"custom-%s",s2_theme_ids[t]);snprintf(o->label,sizeof o->label,"%s: custom music",s2_theme_names[t]);
-        COPY(o->description,"Import WAV audio, VGM, or Sonic 1 68K SMPS BIN/ASM. SMPS uses Sonic 2 PSG envelopes and DAC notes. Your source file is retained.");
-        COPY(o->file_patterns,"*.wav,*.vgm,*.bin,*.asm");COPY(o->file_description,"Custom music");COPY(o->path,s2_custom_path((unsigned)t));
+        COPY(o->description,"Import WAV audio, VGM/VGZ, or Sonic 1 68K SMPS BIN/ASM. SMPS uses Sonic 2 PSG envelopes and DAC notes. Your source file is retained.");
+        COPY(o->file_patterns,"*.wav,*.vgm,*.vgz,*.bin,*.asm");COPY(o->file_description,"Custom music");COPY(o->path,s2_custom_path((unsigned)t));
         o->required=1;o->verified=s2_custom_ready((unsigned)t);o->import_on_select=1;COPY(o->status,o->verified?"Imported; restart to apply":"Choose your music file");return 1;
     }
     COPY(o->id,s2_donor_ids[d]);snprintf(o->label,sizeof o->label,"%s %s",s2_donor_names[d],d>=S2_DONOR_CD_US?"disc":"ROM");
