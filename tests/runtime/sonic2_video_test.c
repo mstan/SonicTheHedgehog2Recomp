@@ -2583,6 +2583,24 @@ static void clamped_background_interpolation_test(void)
     for(unsigned f=0;f<2;++f){s_present[f].image=NULL;s_present[f].capacity=0;}
     presentation_configure(0);CHECK(configure("off"));
 }
+static void cpz_interpolation_band_test(void)
+{
+    static PresentationFrame f;
+    f.render.frame_zone=13;
+    f.render.frame_fg_x=3360;
+    f.render.frame_bg_y=148;
+    f.render.frame_bg_x[1]=1664*65536;
+    f.vscroll[154][1]=f.vscroll[156][1]=148;
+    f.hscroll[154][0]=f.hscroll[156][0]=(uint16_t)-3360;
+    f.hscroll[154][1]=(uint16_t)-413;
+    f.hscroll[156][1]=(uint16_t)-1664;
+    /* World row 304 is two scanlines below the old ripple sample. */
+    f.width=320;
+    CHECK(captured_background_base(&f,154,302)==413);
+    CHECK(captured_background_base(&f,154,304)==1664);
+    f.width=398;f.render.left=3321;
+    CHECK(captured_background_base(&f,154,304)==1644);
+}
 static void native_interpolation_test(void)
 {
     static GVDP v;
@@ -3478,6 +3496,7 @@ int main(void)
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     clamped_background_interpolation_test();
+    cpz_interpolation_band_test();
     arz_background_stream_limit_test();
     native_interpolation_test();
     scene_scroll_phase_test();

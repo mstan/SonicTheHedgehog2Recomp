@@ -3242,7 +3242,8 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
              * camera. Apply that rounding after interpolation. */
             bg_base=normal_htz && line<128?-scroll_floor(-s_left,8):interpolation_background_base(line,by);
         }
-    }
+    } else if(s_interpolating && bg_world && s_frame_zone==13)
+        bg_base=interpolation_background_base(line,by);
     const uint8_t *mountains=normal_htz && rebase_background?htz_mountain_table(s_left):NULL;
     int background_x=bg_base;
     if(bg_width>0) {
@@ -3623,10 +3624,10 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     if(r->frame_campaign_view)
         by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
     int extra=0;
-    if(r->frame_zone==15) {
-        /* ARZ's parallax bands are attached to the background world, not
-         * to screen rows. Sample the same band in both completed frames;
-         * blending neighboring bands invents a one-row horizontal seam. */
+    if(r->frame_zone==15 || r->frame_zone==13) {
+        /* These parallax bands follow the background world, not screen rows.
+         * At the CPZ ripple edge, neighboring rows can sample different
+         * cameras. Blend the same world row from both completed frames. */
         int sample=line+world_y-by;
         row=sample<0?0:sample>223?223:sample;
         int sampled_by=unwrap(f->vscroll[row][1],r->frame_bg_y)+row;
@@ -3639,7 +3640,8 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     }
     int camera=unwrap(-(int16_t)f->hscroll[row][0],r->frame_fg_x);
     if(r->frame_zone==7 && !r->frame_htz_shake)by=(int)((unsigned)by&255u);
-    return background_view_base(r,camera,r->left,line,by,(int16_t)f->hscroll[row][1]+extra);
+    int left=f->width==320 && !r->frame_campaign_view?camera:r->left;
+    return background_view_base(r,camera,left,line,by,(int16_t)f->hscroll[row][1]+extra);
 }
 static int interpolation_background_base(int line,int world_y)
 {
