@@ -1,15 +1,15 @@
 #include "sonic2_sound_assets.h"
+#include "sha256.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-static unsigned be(const uint8_t *p){return ((unsigned)p[0]<<24)|((unsigned)p[1]<<16)|((unsigned)p[2]<<8)|p[3];}
 static unsigned word(const uint8_t *p){return ((unsigned)p[0]<<8)|p[1];}
 /* Walk executable track data, including called phrases and loop targets.
  * EHZ's PSG swells must leave its original one-tick global divisor intact.
  * Scanning raw bytes would mistake instrument data/relative pointers for
  * commands, so only reachable instruction starts are inspected. */
-static void ehz_tempo_contract(const uint8_t *song)
+static void ehz_tempo_contract(const uint8_t *song,unsigned bytes)
 {
     static const uint8_t command_size[]={3,3,3,2,2,3,3,2,3,3,3,3,3,3,6,2,2,3,2,3,4,6,4};
     unsigned pending[32768],count=0;uint8_t seen[S2_SOUND_MUSIC_STRIDE]={0};
@@ -17,18 +17,19 @@ static void ehz_tempo_contract(const uint8_t *song)
     assert(song[6]==1);
     for(unsigned i=0;i<fm+psg;i++)pending[count++]=word(song+8+(i<fm?i*4:fm*4+(i-fm)*6));
     while(count) {
-        unsigned pc=pending[--count];assert(pc<S2_SOUND_MUSIC_STRIDE);
+        unsigned pc=pending[--count];assert(pc<bytes);
         if(seen[pc])continue;seen[pc]=1;
         unsigned op=song[pc],length=1,command=0xFF;
         if(op==0xFF) {
-            assert(pc+1<S2_SOUND_MUSIC_STRIDE);command=song[pc+1];
+            assert(pc+1<bytes);command=song[pc+1];
             assert(command<sizeof command_size || command==0x1F || command==0x20);
             length=command<sizeof command_size?command_size[command]:command==0x20?4:2;
+            assert(length<=bytes-pc);
             if(command==0x0B)assert(song[pc+2]==1);
             if(command==0x0C)++volume_changes;
             if(command>=0x14 && command<=0x16) {
                 int target=(int)pc+(int)length-(command==0x16?0:1)+(int16_t)word(song+pc+length-2);
-                assert(target>=0 && target<S2_SOUND_MUSIC_STRIDE);pending[count++]=(unsigned)target;
+                assert(target>=0 && target<(int)bytes);pending[count++]=(unsigned)target;
             }
         } else assert(op<0xE0 || op==0xFE);
         if(command!=3 && command!=4 && command!=7 && command!=0x10 && command!=0x14)pending[count++]=pc+length;
@@ -38,48 +39,70 @@ static void ehz_tempo_contract(const uint8_t *song)
 }
 int main(int argc,char **argv)
 {
-    assert(argc==2);FILE *f=fopen(argv[1],"rb");assert(f);
-    uint8_t *rom=malloc(0x100000),*memory=malloc(0x400000),*copy=malloc(0x400000);assert(rom&&memory&&copy);
-    assert(fread(rom,1,0x100000,f)==0x100000);assert(fgetc(f)==EOF);fclose(f);
-    memset(memory,0xA5,0x400000);memcpy(memory,rom,0x100000);
-    S2SoundAssetLayout layout={0x101000,0x101100,0x101300,0x101400,0x101500};char error[256];
-    int ok=s2_sound_build_assets(rom,0x100000,memory,0x400000,&layout,error,sizeof error);
-    if(!ok)fprintf(stderr,"%s\n",error);assert(ok);
-    assert(!memcmp(rom,memory,0x100000));
-    ehz_tempo_contract(memory+S2_SOUND_MUSIC_BASE+S2_SOUND_MUSIC_STRIDE);
-    for(unsigned i=0;i<31;i++) {
-        unsigned p=be(memory+layout.music_index+i*4)&0xFFFFFE;
-        assert(p==S2_SOUND_MUSIC_BASE+i*S2_SOUND_MUSIC_STRIDE);
-        assert(memory[p+2]>=1 && memory[p+2]<=7 && memory[p+3]<=3);
+    enum { ROM_BYTES=0x100000 };
+    assert(argc==2);
+    FILE *file=fopen(argv[1],"rb");
+    assert(file);
+    uint8_t *rom=malloc(ROM_BYTES);
+    assert(rom && fread(rom,1,ROM_BYTES,file)==ROM_BYTES);
+    assert(fgetc(file)==EOF);
+    fclose(file);
+    uint8_t before[32],after[32];
+    recompui_sha256_compute(rom,ROM_BYTES,before);
+
+    char error[256];
+    S2StockSound *assets=s2_sound_decode_stock(rom,ROM_BYTES,error,sizeof error);
+    if(!assets)fprintf(stderr,"%s\n",error);
+    assert(assets);
+    assert(s2_sound_decode_stock(rom,ROM_BYTES-1,error,sizeof error)==NULL && *error);
+    size_t sega_offset=0xF1E8C;
+    assert(!memcmp(assets->sega,rom+sega_offset,sizeof assets->sega));
+    recompui_sha256_compute(rom,ROM_BYTES,after);
+    assert(!memcmp(before,after,sizeof before));
+    free(rom);
+
+    ehz_tempo_contract(assets->music[1],assets->music_bytes[1]);
+    for(unsigned i=0;i<S2_MUSIC_CUES;++i) {
+        const uint8_t *song=assets->music[i];
+        unsigned length=assets->music_bytes[i];
+        assert(length && length<=sizeof assets->music[i]);
+        unsigned fm=song[2],psg=song[3],header=8+fm*4+psg*6;
+        assert(fm>=1 && fm<=7 && psg<=3);
+        assert(word(song)>=header && word(song)<=length);
+        for(unsigned t=0;t<fm+psg;++t) {
+            unsigned offset=word(song+8+(t<fm?t*4:fm*4+(t-fm)*6));
+            assert(offset>=header && offset<word(song));
+        }
     }
-    for(unsigned i=0;i<81;i++) {
-        unsigned p=be(memory+layout.sfx_index+i*4)&0xFFFFFF;
-        assert(p==S2_SOUND_SFX_BASE+i*S2_SOUND_SFX_STRIDE);
-        assert(memory[p+3]>=1 && memory[p+3]<=6);
+    for(unsigned i=0;i<S2_SFX_CUES;++i) {
+        const uint8_t *sfx=assets->sfx[i];
+        unsigned length=assets->sfx_bytes[i];
+        assert(length && length<=sizeof assets->sfx[i]);
+        assert(sfx[3]>=1 && sfx[3]<=6);
+        for(unsigned t=0;t<sfx[3];++t) {
+            unsigned offset=word(sfx+6+t*6);
+            assert(offset>=4+sfx[3]*6 && offset<word(sfx));
+        }
     }
-    /* Native E5 leaf collision uses PSG3/-8 and the zero-period sentinel.
-     * Expanded S3 period16 must not replace that noise clock. */
-    {
-        const uint8_t *leaf=memory+S2_SOUND_SFX_BASE+(0xE5-0xA0)*S2_SOUND_SFX_STRIDE;
-        assert(leaf[5]==0xC0 && leaf[8]==4);
-        unsigned stream=word(leaf+6);assert(leaf[stream]==0xFF && leaf[stream+1]==0x13);
-        assert(leaf[stream+3]==0xFF && leaf[stream+4]==0x11 && leaf[stream+5]==0xE7);
-        assert(leaf[stream+6]==0xCF && ((leaf[stream+6]-0x81+leaf[8])&127)==0x52);
+    /* E5 leaf collision clocks PSG noise using its zero-period sentinel. */
+    const uint8_t *leaf=assets->sfx[0xE5-0xA0];
+    assert(leaf[5]==0xC0 && leaf[8]==4);
+    unsigned stream=word(leaf+6);
+    assert(leaf[stream]==0xFF && leaf[stream+1]==0x13);
+    assert(leaf[stream+3]==0xFF && leaf[stream+4]==0x11 && leaf[stream+5]==0xE7);
+    assert(leaf[stream+6]==0xCF && ((leaf[stream+6]-0x81+leaf[8])&127)==0x52);
+
+    for(unsigned i=0;i<S2_PSG_ENVELOPES;++i)
+        assert(memchr(assets->envelope[i],0x81,sizeof assets->envelope[i]));
+    unsigned banks=0;
+    for(unsigned i=0;i<S2_PCM_SLOTS;++i) {
+        const S2SoundSample *sample=&assets->samples[i];
+        assert(sample->bank<S2_PCM_BANKS && sample->rate);
+        assert(sample->bytes && sample->bytes<=sizeof assets->pcm[0]);
+        banks|=1u<<sample->bank;
     }
-    for(unsigned i=0;i<17;i++) {
-        const uint8_t *p=memory+layout.sample_table+i*10;
-        assert(p[0]==0x12 && p[1]);unsigned start=be(p+2),end=be(p+6);
-        assert(start>=S2_SOUND_PCM_BASE && start<end && end<=S2_SOUND_SEGA_BASE);
-    }
-    for(unsigned i=S2_SOUND_ASSETS_END;i<0x400000;i++)assert(memory[i]==0xA5);
-    memcpy(copy,memory,0x400000);
-    assert(s2_sound_build_assets(memory,0x100000,memory,0x400000,&layout,error,sizeof error));
-    assert(!memcmp(copy,memory,0x400000));
-    rom[17]^=1;
-    assert(!s2_sound_build_assets(rom,0x100000,memory,0x400000,&layout,error,sizeof error));
-    assert(*error && !memcmp(copy,memory,0x400000));
-    layout.music_index=0xFFFF0;
-    assert(!s2_sound_build_assets(memory,0x100000,memory,0x400000,&layout,error,sizeof error));
-    puts("Sonic 2 ROM sound conversion: 31 music, 81 SFX, 17 drum pitches; aliasing/bounds/identity passed");
-    free(copy);free(memory);free(rom);return 0;
+    assert(banks==(1u<<S2_PCM_BANKS)-1);
+    free(assets);
+    puts("Sonic 2 sound bank: immutable ROM, 31 music cues, 81 SFX, 13 envelopes and 17 drum pitches passed");
+    return 0;
 }
