@@ -16,7 +16,7 @@ enum {
 enum {
     S2_MUSIC_CUES=31, S2_SFX_CUES=81, S2_PSG_ENVELOPES=13,
     S2_PCM_BANKS=7, S2_PCM_SLOTS=17, S2_PCM_BYTES=0x4000,
-    S2_SEGA_PCM_BYTES=0x6174
+    S2_SEGA_PCM_BYTES=0x6174, S2_FM_PITCHES=128, S2_PSG_PITCHES=128
 };
 typedef struct S2SoundSample {
     uint16_t bytes, rate;
@@ -31,6 +31,9 @@ typedef struct S2StockSound {
     uint8_t envelope[S2_PSG_ENVELOPES][256];
     uint8_t pcm[S2_PCM_BANKS][S2_PCM_BYTES], sega[S2_SEGA_PCM_BYTES];
     S2SoundSample samples[S2_PCM_SLOTS];
+    uint16_t fm_pitch[S2_FM_PITCHES], psg_pitch[S2_PSG_PITCHES], sega_rate;
+    uint16_t save_warp_bytes;
+    uint8_t save_warp[S2_SOUND_SFX_STRIDE];
 } S2StockSound;
 
 /* The caller owns the returned bank and may release the original image after

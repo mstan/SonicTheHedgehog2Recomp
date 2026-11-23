@@ -1,5 +1,9 @@
 #include "sonic2_sound_driver.h"
 #include "genesis_runtime.h"
+#include "genesis_clocks.h"
+#include "audio/event_queue.h"
+#include "sonic2_sound_sequence.h"
+#include "sonic2_state_io.h"
 #ifdef SONIC2_MUSIC_DRIVER
 #include "sonic2_music.h"
 #include "sonic2_cd_themes.h"
@@ -20,6 +24,11 @@
 #endif
 
 static int selected, active, verified, bound;
+static S2StockSound *stock_bank;
+static S2SoundSequence stock_sequence;
+/* The shared Genesis mixer consumes one NTSC raster's master cycles. */
+enum { S2_SOUND_FRAME_CYCLES=895780 };
+extern uint32_t g_68k_stamp_rebase;
 #ifdef SONIC2_MUSIC_DRIVER
 static int music_active;
 static uint8_t music_identity[32];
@@ -49,6 +58,7 @@ int s2_sound_uses_rom(void) {
 int s2_sound_active(void) { return active; }
 int s2_sound_music_playing(void)
 {
+    if(stock_bank && !active)return s2_sequence_playing(&stock_sequence);
 #ifdef SONIC2_CLONE_DRIVER
     if(active){
 #ifdef SONIC2_MUSIC_DRIVER
@@ -153,6 +163,8 @@ int s2_sound_select(int enabled)
 void s2_sound_load_settings(const char *settings)
 {
     selected=verified=active=bound=0;error[0]=0;
+    free(stock_bank);stock_bank=NULL;
+    s2_sequence_reset(&stock_sequence);
 #ifdef SONIC2_MUSIC_DRIVER
     music_active=0;memset(music_identity,0,sizeof music_identity);memset(stock_channel_masks,0,sizeof stock_channel_masks);
 #endif
@@ -227,7 +239,15 @@ void s2_sound_post_reset(void)
 {
     if(bound)return;
     active=selected;bound=1;
-    if (!active) {prepare_save_warp();return;}
+    if(!active) {
+        stock_bank=s2_sound_decode_stock(g_rom,0x100000,error,sizeof error);
+        if(!stock_bank) {
+            fprintf(stderr,"[sound-driver] %s\n",error);
+            exit(1);
+        }
+        s2_sequence_reset(&stock_sequence);
+        return;
+    }
     if(!s2_sound_available()){fprintf(stderr,"[sound-driver] Unsupported Z80 backend\n");exit(1);}
 #ifdef S2_CLONE_ASSETS_FROM_ROM
     const S2SoundAssetLayout layout={S2_CLONE_MUSICINDEX,S2_CLONE_SOUNDINDEX,S2_CLONE_SPECSOUNDINDEX,S2_CLONE_PSG_INDEX,S2_CLONE_SAMPLE_TABLE};
@@ -271,12 +291,38 @@ static int queue(unsigned id,unsigned slot)
     (void)id;(void)slot;return 0;
 #endif
 }
+static void stock_write(void *context,uint32_t cycle,uint8_t chip,uint8_t reg,uint8_t value)
+{
+    uint32_t stamp=*(const uint32_t *)context+cycle;
+    if(chip==S2_CHIP_PSG)audio_event_push(stamp,AUDIO_PORT_PSG,value);
+    else audio_event_push_latched(stamp,chip==S2_CHIP_FM1?AUDIO_PORT_FM1_DATA:AUDIO_PORT_FM2_DATA,reg,value);
+}
+
 int s2_sound_hook(uint32_t pc)
 {
+    if(!bound && (pc==0xEC000u || pc==0x1084u))s2_sound_post_reset();
+    if(stock_bank && !active) {
+        if(pc==0xEC000u) {
+            /* The sequencer owns audio. Keep the unneeded CPU held reset. */
+            glue_poke16(0xA11200u,0);
+            s2_sequence_reset(&stock_sequence);
+            return 1;
+        }
+        if(pc==0x1084u) {
+            uint32_t start=g_audio_cycle_counter*7u+g_68k_stamp_rebase;
+            int pal=(glue_peek8(0xA10001u)&0x40)!=0;
+            if(!s2_sequence_frame(&stock_sequence,stock_bank,g_ram+0xFFE0,pal,
+                                  GENESIS_MASTER_CLOCK_NTSC,S2_SOUND_FRAME_CYCLES,
+                                  stock_write,&start)) {
+                fprintf(stderr,"[sound-driver] Native cue $%02X channel %u offset $%04X is unsupported\n",
+                        stock_sequence.fault_cue,stock_sequence.fault_channel,stock_sequence.fault_offset);
+                exit(1);
+            }
+            return 1;
+        }
+        return 0;
+    }
 #ifdef SONIC2_CLONE_DRIVER
-    /* The ROM's actual sound initialisation is also a binding point, so
-     * native reset paths do not depend on an optional lifecycle callback. */
-    if(pc==0xEC000u && !bound)s2_sound_post_reset();
     if(!active)return 0;
 #ifdef SONIC2_MUSIC_DRIVER
     if(pc==0x3BA8u && music_active && s2_music_title_frames()!=640) {
@@ -372,6 +418,63 @@ void s2_sound_state_save(void *out)
 #endif
     memcpy(out,bytes,sizeof bytes);
 }
+static int stock_track_valid(const S2SoundTrack *t,unsigned channel,int effect)
+{
+    if(!t->active)return 1;
+    if(!stock_bank || t->channel!=channel || t->depth>S2_PHRASE_DEPTH ||
+       t->raw_count>sizeof t->raw_register || t->mod_mode>2 || t->note<0x80 || t->note>=0xE0)
+        return 0;
+    const uint8_t *data;
+    size_t size;
+    if(effect) {
+        if(t->cue<0xA0 || t->cue>0xF0)return 0;
+        data=t->cue==0xC3?stock_bank->save_warp:stock_bank->sfx[t->cue-0xA0];
+        size=t->cue==0xC3?stock_bank->save_warp_bytes:stock_bank->sfx_bytes[t->cue-0xA0];
+    } else {
+        if(t->cue<0x81 || t->cue>0x9F)return 0;
+        data=stock_bank->music[t->cue-0x81];
+        size=stock_bank->music_bytes[t->cue-0x81];
+    }
+    unsigned end=(unsigned)data[0]<<8|data[1];
+    if(end>size || t->pc>end)return 0;
+    for(unsigned i=0;i<t->depth;++i)if(t->returns[i]>end)return 0;
+    return channel<S2_FM_CHANNELS || channel==S2_DAC_CHANNEL || t->voice<=S2_PSG_ENVELOPES;
+}
+
+static int stock_sequence_valid(const S2SoundSequence *sequence)
+{
+    unsigned cue=sequence->music_cue,saved=sequence->saved_cue,id=sequence->pcm_id;
+    if((cue && (cue<0x81 || cue>0x9F)) || (saved && (saved<0x81 || saved>0x9F)) ||
+       sequence->pcm_phase>GENESIS_MASTER_CLOCK_NTSC || sequence->pal_count>=5 ||
+       sequence->paused>1 || sequence->dac_enabled>1 || sequence->speed_up>1 ||
+       sequence->fade>=64 || sequence->fault_cue)return 0;
+    if(id) {
+        if(!stock_bank)return 0;
+        if(id==0xFA) {
+            if(sequence->pcm_position>S2_SEGA_PCM_BYTES)return 0;
+        } else if(id<0x81 || id>0x80+S2_PCM_SLOTS ||
+                  sequence->pcm_position>stock_bank->samples[id-0x81].bytes)return 0;
+    }
+    for(unsigned ch=0;ch<S2_SEQUENCE_TRACKS;++ch) {
+        if(!stock_track_valid(&sequence->music[ch],ch,0))return 0;
+        if(saved && !stock_track_valid(&sequence->saved[ch],ch,0))return 0;
+    }
+    for(unsigned ch=0;ch<S2_TONE_CHANNELS;++ch)
+        if(!stock_track_valid(&sequence->effect[ch],ch,1))return 0;
+    return 1;
+}
+
+void s2_sound_sequence_state(S2StateIO *io)
+{
+    if(io->data && io->mode) {
+        S2SoundSequence candidate;
+        if(io->pos>io->size || sizeof candidate>io->size-io->pos) {io->ok=0;return;}
+        memcpy(&candidate,io->data+io->pos,sizeof candidate);
+        if(!stock_sequence_valid(&candidate)) {io->ok=0;return;}
+    }
+    S2_STATE(io,stock_sequence);
+}
+
 int s2_sound_state_valid(const void *data)
 {
     uint8_t expected[S2_SOUND_STATE_BYTES];s2_sound_state_save(expected);

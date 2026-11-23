@@ -183,6 +183,19 @@ S2StockSound *s2_sound_decode_stock(const uint8_t *rom,size_t rom_size,char *err
     }
 
     failure="The ROM's sound data could not be decoded.";
+    /* The pitch tables come from the verified retail driver data. Its
+     * normalized PSG cues are transposed up one octave. The high-period
+     * sentinel follows the final retail tone in the normalized table. */
+    for(unsigned i=0;i<S2_FM_PITCHES;++i)
+        assets->fm_pitch[i]=(uint16_t)le(z80,0x534+2*i);
+    for(unsigned i=0;i<12;++i)assets->psg_pitch[i]=0x3FF;
+    /* Stock uses a seven-bit table index even for the high noise pitches
+     * whose reads cross the nominal note table boundary. */
+    for(unsigned i=12;i<S2_PSG_PITCHES;++i)
+        assets->psg_pitch[i]=(uint16_t)le(z80,0x359+2*(i-12));
+    assets->psg_pitch[81]=0x10;
+    assets->psg_pitch[82]=0;
+    assets->sega_rate=16000;
     for(unsigned i=0;i<S2_MUSIC_CUES;++i) {
         unsigned meta=z80[0x11F5+i],bank=meta&128?0xF8000:0xF0000;
         unsigned offset=le(rom,bank+(meta&31)*2)&32767;
@@ -212,6 +225,16 @@ S2StockSound *s2_sound_decode_stock(const uint8_t *rom,size_t rom_size,char *err
         assets->sfx_bytes[i]=(uint16_t)bytes;
         assets->sfx_priority[i]=z80[0xFD8+i];
     }
+    /* The save-menu warp shares the special-stage entry instrument and
+     * stream. Apply its alternate modulation in the host cue allocation. */
+    enum { SPECIAL_ENTRY_INDEX=0xCA-0xA0 };
+    assets->save_warp_bytes=assets->sfx_bytes[SPECIAL_ENTRY_INDEX];
+    memcpy(assets->save_warp,assets->sfx[SPECIAL_ENTRY_INDEX],assets->save_warp_bytes);
+    unsigned stream=(unsigned)assets->save_warp[6]<<8|assets->save_warp[7];
+    if(stream+8>assets->save_warp_bytes || assets->save_warp[stream+3]!=0xFF ||
+       assets->save_warp[stream+4]!=0x0E)goto discard;
+    assets->save_warp[stream+4]=0x21;
+    assets->save_warp[stream+7]=0x50;
     for(unsigned i=0;i<S2_PSG_ENVELOPES;++i) {
         unsigned source=le(z80,0x1029+2*i),j;
         for(j=0;j<256 && source+j<zsize;++j) {

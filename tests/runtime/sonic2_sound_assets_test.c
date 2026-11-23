@@ -1,5 +1,6 @@
 #include "sonic2_sound_assets.h"
 #include "sha256.h"
+#include "sonic2_sound_sequence.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,98 @@ static void ehz_tempo_contract(const uint8_t *song,unsigned bytes)
     }
     assert(volume_changes>0);
 }
+typedef struct ChipTrace {
+    uint32_t hash, last_pcm_cycle;
+    unsigned fm[2], psg, dac, key_on, dac_enabled;
+} ChipTrace;
+
+static void chip_write(void *context,uint32_t cycle,uint8_t chip,uint8_t reg,uint8_t value)
+{
+    ChipTrace *trace=context;
+    assert(chip<=S2_CHIP_PSG && cycle<127841);
+    trace->hash=(trace->hash^cycle)*16777619u;
+    trace->hash=(trace->hash^((unsigned)chip<<16|reg<<8|value))*16777619u;
+    if(chip==S2_CHIP_PSG)++trace->psg;
+    else ++trace->fm[chip];
+    if(chip!=S2_CHIP_FM1)return;
+    if(reg==0x28 && (value&0xF0))++trace->key_on;
+    if(reg==0x2B)trace->dac_enabled=value!=0;
+    if(reg==0x2A) {
+        assert(trace->dac_enabled && cycle>=trace->last_pcm_cycle);
+        ++trace->dac;
+        trace->last_pcm_cycle=cycle;
+    }
+}
+
+static void frame(S2SoundSequence *sequence,const S2StockSound *bank,
+                  uint8_t queue[5],ChipTrace *trace,unsigned tick)
+{
+    trace->last_pcm_cycle=0;
+    if(!s2_sequence_frame(sequence,bank,queue,0,7670454,127841,chip_write,trace)) {
+        fprintf(stderr,"Native sequencer failed at frame %u with cue $%02X channel %u offset $%04X\n",
+                tick,sequence->fault_cue,sequence->fault_channel,sequence->fault_offset);
+        exit(1);
+    }
+}
+
+static void sequence_contract(const S2StockSound *bank)
+{
+    S2SoundSequence state;
+    uint8_t queue[5];
+    ChipTrace trace;
+    for(unsigned id=0x81;id<=0xF0;++id) {
+        memset(queue,0,sizeof queue);
+        memset(&trace,0,sizeof trace);
+        s2_sequence_reset(&state);
+        queue[id<0xA0?0:1]=(uint8_t)id;
+        for(unsigned tick=0;tick<(id<0xA0?1050u:320u);++tick)
+            frame(&state,bank,queue,&trace,tick);
+        assert(!queue[0] && !queue[1]);
+        if(id==0x82)assert(trace.fm[0] && trace.fm[1] && trace.key_on && trace.psg && trace.dac);
+        if(id==0xE5)assert(trace.psg);
+    }
+
+    memset(queue,0,sizeof queue);
+    memset(&trace,0,sizeof trace);
+    s2_sequence_reset(&state);
+    queue[0]=0x82;queue[4]=0x81;
+    frame(&state,bank,queue,&trace,0);
+    assert(!queue[0] && queue[4]==0x81 && state.music_cue==0x82);
+    queue[4]=0;
+    for(unsigned tick=0;tick<173;++tick)frame(&state,bank,queue,&trace,tick);
+
+    S2SoundSequence saved=state;
+    queue[0]=0xFE;
+    frame(&state,bank,queue,&trace,0);
+    assert(state.paused && !memcmp(state.music,saved.music,sizeof state.music));
+    ChipTrace muted=trace;
+    frame(&state,bank,queue,&trace,1);
+    assert(trace.hash==muted.hash && !memcmp(state.music,saved.music,sizeof state.music));
+    queue[0]=0xFF;
+    frame(&state,bank,queue,&trace,2);
+    assert(!state.paused);
+    saved=state;
+    ChipTrace first={.dac_enabled=state.dac_enabled},second=first;
+    for(unsigned tick=0;tick<87;++tick)frame(&state,bank,queue,&first,tick);
+    S2SoundSequence end=state;
+    state=saved;
+    for(unsigned tick=0;tick<87;++tick)frame(&state,bank,queue,&second,tick);
+    assert(!memcmp(&first,&second,sizeof first) && !memcmp(&end,&state,sizeof state));
+    trace.dac_enabled=state.dac_enabled;
+    queue[0]=0x98;
+    frame(&state,bank,queue,&trace,0);
+    assert(state.saved_cue==0x82 && state.music_cue==0x98);
+    for(unsigned tick=0;tick<300;++tick)frame(&state,bank,queue,&trace,tick);
+    assert(!state.saved_cue && state.music_cue==0x82);
+
+    s2_sequence_reset(&state);
+    memset(&trace,0,sizeof trace);
+    queue[0]=0xFA;
+    for(unsigned tick=0;tick<120;++tick)frame(&state,bank,queue,&trace,tick);
+    assert(!state.pcm_id && !trace.dac_enabled && trace.dac==S2_SEGA_PCM_BYTES+1);
+    puts("Native playback processed stock music and effect cues, timed DAC, pause, 1-UP and restored state");
+}
+
 int main(int argc,char **argv)
 {
     enum { ROM_BYTES=0x100000 };
@@ -102,6 +195,7 @@ int main(int argc,char **argv)
         banks|=1u<<sample->bank;
     }
     assert(banks==(1u<<S2_PCM_BANKS)-1);
+    sequence_contract(assets);
     free(assets);
     puts("Sonic 2 sound bank: immutable ROM, 31 music cues, 81 SFX, 13 envelopes and 17 drum pitches passed");
     return 0;

@@ -627,10 +627,12 @@ static void sound_state(S2StateIO *io)
     if(io->data && io->mode && (io->pos>io->size || sizeof expected>io->size-io->pos ||
        !s2_sound_state_valid(io->data+io->pos))) {io->ok=0;return;}
     s2_state_bytes(io,expected,sizeof expected);
+    s2_sound_sequence_state(io);
 }
 static void runtime_state(S2StateIO *io)
 {
     sound_state(io);
+    if(!io->ok && io->data)return;
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
@@ -2166,6 +2168,7 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
 static void rb_all(S2StateIO *io)
 {
     sound_state(io);
+    if(!io->ok && io->data)return;
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif

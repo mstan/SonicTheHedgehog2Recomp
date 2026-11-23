@@ -204,6 +204,7 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_driver.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_mods.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_assets.c"
+    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_sequence.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_mods.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_import.c"
