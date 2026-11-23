@@ -73,7 +73,7 @@ static uint8_t displayed_tails;
  * INSIDE a hook (any bus access may yield to the raster scheduler), so at a
  * tick boundary any of these may legitimately be 1. */
 static int s_inside_spring, s_inside_palette, s_reward, s_checking_death,
-           s_transforming, s_combat;
+           s_transforming, s_combat, s_departing_objects;
 static int amy_available(void) { return s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY); }
 static int knuckles_available(void) { return s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK); }
 static int knuckles_lead_available(void)
@@ -151,7 +151,7 @@ static void prepare_native_bank(unsigned k)
 static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_AMY || kind((unsigned)actor)==S2_CHAR_KNUCKLES || kind((unsigned)actor)==S2_CHAR_SHADOW); }
 void s2_runtime_load(void)
 {
-    active=inside_player=0; actor=-1;
+    active=inside_player=s_departing_objects=0; actor=-1;
     input_poll_serial=0;
     ss_return_zone=ss_return_rings=0;
     ss_return_post=ss_return_lives=ss_return_pending=0;
@@ -432,7 +432,11 @@ const char *s2_runtime_state_unavailable_reason(void)
 #endif
     return NULL;
 }
-static int level(void) { return active && ((g_ram[0xF600]&0x7F)==12); }
+static int level(void)
+{
+    unsigned mode=g_ram[0xF600]&127;
+    return active && (mode==12 || (mode==4 && s_departing_objects));
+}
 static int presented_level(void)
 {
     unsigned mode=g_ram[0xF600]&127;
@@ -655,6 +659,7 @@ static void runtime_state(S2StateIO *io)
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
     }
     S2_STATE(io,header); S2_STATE(io,active);
+    S2_STATE(io,s_departing_objects);
     S2_STATE(io,previous_input); S2_STATE(io,input_poll_serial);
     S2_STATE(io,ss_return_zone); S2_STATE(io,ss_return_rings);
     S2_STATE(io,ss_return_post); S2_STATE(io,ss_return_lives); S2_STATE(io,ss_return_pending);
@@ -1131,6 +1136,14 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if(pc==0x437A || pc==0x4380) {
+        /* Pause can select Title before Level_MainLoop's last RunObjects.
+         * Keep the custom controller and companion context for this exact
+         * native call. The title's own object list uses its ordinary path. */
+        s_departing_objects=pc==0x437A && active && !word(0xFFD8) &&
+            (g_ram[0xF600]&127)==4 && s2_video_outgoing_level();
+        return 0;
+    }
     if(pc==0x9C7C) {
         if(knuckles_ending()) {
             s2_character_reset(&characters[0],S2_CHAR_KNUCKLES);displayed[0]=0;
@@ -2121,27 +2134,6 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
     runtime_overlay_frame(v,line,out,width,f,NULL,0,1);
     f->left=left;f->top=top;
 }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                    unsigned *actors)
-{
-    if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
-    int wrap=(a->world[0xF600]&127)==12 && (b->world[0xF600]&127)==12;
-    *actors=0;
-    for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
-        const PartySprite *p=&a->sprites[i],*q=&b->sprites[i];
-        int dy=p->y-q->y;
-        if(wrap)dy=actor_delta_y(dy);
-        if(p->visible!=q->visible || (q->visible &&
-           (p->art!=q->art || abs(p->x-q->x)>48 || abs(dy)>48))) {
-            if(!i)return 0;
-            /* A companion can blink or catch up without breaking the
-             * camera/leader pair. Draw its completed pose at the new root. */
-            continue;
-        }
-        if(q->visible)*actors|=1u<<i;
-    }
-    return 1;
-}
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
                                 unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
 { runtime_overlay_frame(v,line,out,width,b,a,actors,phase); }
@@ -2195,7 +2187,8 @@ static void rb_all(S2StateIO *io)
         RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible); RB(io,ps->wet);
     }
     RB(io,displayed_tails);
-    int32_t g[6]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,s_transforming,s_combat};
+    int32_t g[7]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,
+                  s_transforming,s_combat,s_departing_objects};
     RB(io,g);
     /* Online campaign rendering can become active after the cold snapshot
      * and inactive before a rematch restore. Always carry its simulation
@@ -2215,7 +2208,7 @@ static void rb_all(S2StateIO *io)
     if (io->mode==2) {
         active=a; inside_player=ip; actor=ac; inside_companion_cpu=icc; inside_solid=is;
         s_inside_spring=g[0]; s_inside_palette=g[1]; s_reward=g[2];
-        s_checking_death=g[3]; s_transforming=g[4]; s_combat=g[5];
+        s_checking_death=g[3]; s_transforming=g[4]; s_combat=g[5]; s_departing_objects=g[6];
     }
     if (io->mode==1 && count!=s2_character_count()) io->ok=0;   /* registry is fixed after init */
 }

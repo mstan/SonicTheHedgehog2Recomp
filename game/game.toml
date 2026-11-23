@@ -237,6 +237,12 @@ kind = "game_hook"
 
 # Additive roster page: verified stock REV01 routine entry points. These
 [[widescreen_site]]
+addr = 0x437A # Level_MainLoop: before its RunObjects call
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x4380 # Level_MainLoop: after its RunObjects call
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x15F9C # RunObjects: track native solid slot generations
 kind = "game_hook"
 [[widescreen_site]]

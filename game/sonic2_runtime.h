@@ -26,8 +26,6 @@ typedef struct S2RuntimePresentation {
     uint16_t card_color;
 } S2RuntimePresentation;
 void s2_runtime_presentation_capture(S2RuntimePresentation *out);
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                    unsigned *actors);
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
                                 unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width);
 size_t s2_runtime_state_size(void);

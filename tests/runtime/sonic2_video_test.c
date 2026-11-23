@@ -75,9 +75,6 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
 static const uint32_t *test_native_row(void *ctx) { return ctx; }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { memset(out,0,sizeof *out); }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                    unsigned *actors)
-{ (void)a;(void)b;*actors=0;return 1; }
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
                                 unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
 { (void)a;(void)b;(void)actors;(void)phase;(void)v;(void)line;(void)out;(void)width; }
@@ -2778,6 +2775,43 @@ static void native_interpolation_test(void)
     CHECK(interpolate(.5,fraction,320,224));
     CHECK(fraction[40*320+22]==0xFFFF0000 && fraction[40*320+104]==0xFFFF0000);
     --current->scene.count;
+
+    /* Imported character art priority and blink phases can change while
+     * their root is continuous. These are pose changes, not scene cuts. */
+    S2RuntimePresentation *older=&s_present[s_present_front^1].party;
+    S2RuntimePresentation *newer=&current->party;
+    older->sprites[0]=(S2RuntimeSprite){.x=20,.y=40,.art=0x78,.visible=1};
+    newer->sprites[0]=(S2RuntimeSprite){.x=24,.y=40,.art=0x8078,.visible=1};
+    older->sprites[1]=(S2RuntimeSprite){.x=40,.y=40,.visible=1};
+    newer->sprites[1]=(S2RuntimeSprite){.x=180,.y=40,.visible=1};
+    unsigned matched_actors=0;
+    CHECK(match_presentation_actors(older,newer,&matched_actors) && matched_actors==1);
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000);
+    older->sprites[0].visible=0;
+    CHECK(match_presentation_actors(older,newer,&matched_actors) && !matched_actors);
+    CHECK(interpolate(.5,fraction,320,224));
+    older->sprites[0].visible=1;
+    newer->sprites[0].x+=100;
+    CHECK(!interpolate(.5,fraction,320,224));
+    memset(older->sprites,0,sizeof older->sprites);
+    memset(newer->sprites,0,sizeof newer->sprites);
+
+    /* Scanline buckets preserve original publication order. A low-priority
+     * pose still owns its sprite pixel before a later high-priority pose. */
+    const unsigned first_piece=current->scene.count++;
+    current->scene.sprites[first_piece]=(SceneSprite){120,55,4,0,0};
+    current->keys[first_piece]=0xC4000100u;
+    const unsigned second_piece=current->scene.count++;
+    current->scene.sprites[second_piece]=(SceneSprite){120,55,0x8005,0,0};
+    current->keys[second_piece]=0xC4400100u;
+    memset(current->render.video_frame.vram+5*32,0x22,32);
+    for(unsigned row=55;row<63;++row)current->cram[row][2]=0xE00;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[55*320+120]==0xFFFF0000 && fraction[62*320+127]==0xFFFF0000);
+    CHECK(fraction[54*320+120]==0xFF000000 && fraction[63*320+120]==0xFF000000);
+    CHECK(s_fractional_row_offset[56]-s_fractional_row_offset[55]>=2);
+    current->scene.count=first_piece;
 
     /* Actor animation identities may change; replacing the actor or
      * teleporting its camera still repeats an ordinary picture. */
