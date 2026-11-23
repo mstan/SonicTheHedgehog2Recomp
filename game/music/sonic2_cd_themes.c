@@ -1,10 +1,9 @@
-/* Native stereo CD event playback. Clone owns the cartridge queues and SFX;
- * a silent music entry gives the selected CD recording the music channels.
- * Only sample positions, pause and fade clocks belong in execution snapshots. */
+/* Host music follows the cartridge queues. An inaudible native sequence
+ * retains channel ownership while the CD or VGM source supplies the music. */
 #include "sonic2_cd_themes.h"
 #include "sonic2_music.h"
 #include "sonic2_custom_music.h"
-#include <gme/gme.h>
+#include "sonic2_vgm.h"
 #include "sonic2_state_io.h"
 #include "audio.h"
 #include "sha256.h"
@@ -14,12 +13,15 @@
 
 typedef struct Song {
  uint8_t *pcm;uint32_t frames,gain,loop;uint8_t hash[32];
- Music_Emu *vgm,*psg;int mute,psg_solo;unsigned voices[11],voice_count;
- uint32_t cache_at[2];short cache[2][4096*2];
+ S2Vgm *vgm;unsigned voices[11],voice_count;
 } Song;
 static Song songs[S2_MUSIC_COUNT];
 static unsigned audition_track,audition_solo;static int audition_stopped;
-typedef struct CDClock {uint64_t position;uint32_t theme,active,paused,volume,fade;} CDClock;
+enum { ONEUP_FADE_STEPS=40, ONEUP_FADE_TICKS=3 };
+typedef struct CDClock {
+    uint64_t position;
+    uint32_t theme,active,paused,volume,fade,oneup_hold,resume_ticks;
+} CDClock;
 static CDClock clock_state;
 static CDClock render_clock,backup_clock;
 static unsigned custom_oneup;
@@ -93,21 +95,8 @@ static int manifest_read(const char *path,unsigned donor,int wanted,Song *out,ui
 uint32_t s2_cd_donor_available(const char *manifest,unsigned donor)
 {uint32_t available=0;return manifest_read(manifest,donor,-1,NULL,&available)?available:0;}
 int s2_cd_donor_verify(const char *manifest,unsigned donor){return s2_cd_donor_available(manifest,donor)!=0;}
-static int32_t sample(Song *s,uint32_t frame,unsigned channel)
-{
- if(!s->vgm)return (int16_t)le16(s->pcm+(size_t)frame*4+channel*2);
- Music_Emu *emu=s->psg_solo?s->psg:s->vgm;
- unsigned block=frame/4096,slot=block&1u,start=block*4096;
- if(s->cache_at[slot]!=start){
-  if(gme_tell_samples(emu)!=(int)(start*2)&&gme_seek_samples(emu,(int)(start*2)))return 0;
-  if(gme_play(emu,4096*2,s->cache[slot]))return 0;
-  s->cache_at[slot]=start;
- }
- int32_t value=s->cache[slot][(frame-start)*2+channel];
- /* GME's mixed Genesis path gives PSG 0.135 * 3 gain; its PSG-only path
-  * uses unity. Preserve that balance when auditioning an isolated PSG. */
- return s->psg_solo?value*405/1000:value;
-}
+static int32_t sample(Song *song,uint32_t position,unsigned channel)
+{return (int16_t)le16(song->pcm+(size_t)position*4+channel*2);}
 int s2_cd_theme_native_channels(unsigned t)
 {return t<S2_MUSIC_COUNT&&!songs[t].vgm&&!songs[t].pcm;}
 unsigned s2_cd_theme_channel_count(unsigned t)
@@ -120,21 +109,36 @@ const char *s2_cd_theme_channel_name(unsigned t,unsigned solo)
 void s2_cd_theme_audition(unsigned t,unsigned solo,int stopped)
 {
  audition_track=t;audition_solo=solo;audition_stopped=stopped;
- for(unsigned i=0;i<S2_MUSIC_COUNT;i++)if(songs[i].vgm){
-  Song *s=&songs[i];unsigned voice=i==t&&solo&&solo<=s->voice_count?s->voices[solo-1]:~0u;
-  int psg=voice>=7&&voice<=10&&s->psg!=NULL;
-  int mask=voice==~0u?0:~(1<<(voice>=7?voice-7:voice));
-  if(mask!=s->mute||psg!=s->psg_solo){
-   gme_mute_voices(psg?s->psg:s->vgm,mask);s->mute=mask;s->psg_solo=psg;s->cache_at[0]=s->cache_at[1]=~0u;
-  }
- }
+}
+static unsigned audition_mask(unsigned track,const Song *song)
+{
+    if(track==audition_track && audition_solo && audition_solo<=song->voice_count)
+        return 1u<<song->voices[audition_solo-1];
+    return 0x7ff;
+}
+static unsigned music_volume(const CDClock *clock)
+{
+    /* The cartridge loses one 0.75 dB attenuation step every third update
+     * when the 1-UP sequence restores the previous song. */
+    static const uint32_t attenuation[ONEUP_FADE_STEPS+1]={
+        65536,60115,55142,50580,46396,42558,39037,35808,
+        32846,30129,27636,25350,23253,21329,19565,17947,
+        16462,15100,13851,12705,11654,10690,9806,8995,
+        8250,7568,6942,6368,5841,5358,4915,4508,
+        4135,3793,3479,3191,2927,2685,2463,2259,
+        2072
+    };
+    unsigned steps=(clock->resume_ticks+ONEUP_FADE_TICKS-1)/ONEUP_FADE_TICKS;
+    return (unsigned)((uint64_t)clock->volume*attenuation[steps]/65536);
 }
 static void mix(int16_t *out,size_t frames,double rate)
 {
     CDClock clock=render_clock;
     if(!clock.active||clock.paused||clock.theme>=S2_MUSIC_COUNT||rate<1||rate>384000)return;
     Song *s=&songs[clock.theme];if((!s->pcm&&!s->vgm)||!s->frames||audition_stopped)return;
-    if(s->pcm&&audition_solo&&audition_track==clock.theme)return;
+    unsigned volume=music_volume(&clock);
+    if(s->vgm){s2_vgm_mix(out,frames,rate,volume);return;}
+    if(audition_solo&&audition_track==clock.theme)return;
     uint64_t step=(uint64_t)(44100.0*4294967296.0/rate+0.5);
     for(size_t i=0;i<frames;i++){
         uint32_t at=(uint32_t)(clock.position>>32);
@@ -147,7 +151,7 @@ static void mix(int16_t *out,size_t frames,double rate)
         for(unsigned ch=0;ch<2;ch++){
             int64_t a=sample(s,at,ch),b=sample(s,next,ch);
             int64_t value=a+(((b-a)*fraction)>>16);
-            value=(value*clock.volume*s->gain)/4294967296LL;
+            value=(value*volume*s->gain)/4294967296LL;
             value+=out[i*2+ch];out[i*2+ch]=(int16_t)(value>32767?32767:value<-32768?-32768:value);
         }
         clock.position+=step;
@@ -156,7 +160,8 @@ static void mix(int16_t *out,size_t frames,double rate)
 void s2_cd_themes_reset(void)
 {
     audio_set_extra_source(NULL);
-    for(unsigned t=0;t<S2_MUSIC_COUNT;t++){if(songs[t].vgm)gme_delete(songs[t].vgm);if(songs[t].psg)gme_delete(songs[t].psg);free(songs[t].pcm);memset(&songs[t],0,sizeof songs[t]);}
+    s2_vgm_reset();
+    for(unsigned t=0;t<S2_MUSIC_COUNT;t++){s2_vgm_close(songs[t].vgm);free(songs[t].pcm);memset(&songs[t],0,sizeof songs[t]);}
     memset(&clock_state,0,sizeof clock_state);
     memset(&render_clock,0,sizeof render_clock);memset(&backup_clock,0,sizeof backup_clock);custom_oneup=0;
     audition_solo=audition_stopped=0;audition_track=~0u;
@@ -191,24 +196,51 @@ void s2_cd_theme_request(unsigned native)
 {
     if(native==0x18){
         if(!songs[0].pcm&&!songs[0].vgm)return;
-        if(!custom_oneup)backup_clock=clock_state;custom_oneup=1;
-        memset(&clock_state,0,sizeof clock_state);clock_state.active=1;clock_state.volume=65536;return;
+        if(!custom_oneup) {
+            backup_clock=clock_state;
+            if(clock_state.active && songs[clock_state.theme].vgm)s2_vgm_suspend();
+        }
+        custom_oneup=1;
+        memset(&clock_state,0,sizeof clock_state);
+        clock_state.active=1;clock_state.volume=65536;
+        if(songs[0].vgm)s2_vgm_start(0);
+        else s2_vgm_stop();
+        return;
     }
     if(native>=1&&native<=0x1F){
+        s2_vgm_stop();s2_vgm_discard_suspended();
         for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(native==s2_music_target(t)&&(songs[t].pcm||songs[t].vgm)){
             custom_oneup=0;
-            memset(&clock_state,0,sizeof clock_state);clock_state.theme=t;clock_state.active=1;clock_state.volume=65536;return;
+            memset(&clock_state,0,sizeof clock_state);
+            clock_state.theme=t;clock_state.active=1;clock_state.volume=65536;
+            if(songs[t].vgm)s2_vgm_start(t);
+            return;
         }
         clock_state.active=0;custom_oneup=0;
     }else if(native==0xFB)clock_state.fade=1;
-    else if(native==0xFC||native==0xFF){clock_state.active=0;custom_oneup=0;memset(&backup_clock,0,sizeof backup_clock);}
+    else if(native==0xFC||native==0xFF){
+        clock_state.active=0;custom_oneup=0;memset(&backup_clock,0,sizeof backup_clock);
+        s2_vgm_stop();s2_vgm_discard_suspended();
+    }
 }
 void s2_cd_theme_frame(int paused,int oneup)
 {
-    if(custom_oneup&&!oneup){clock_state=backup_clock;custom_oneup=0;}
+    if(custom_oneup&&!oneup){
+        clock_state=backup_clock;custom_oneup=0;
+        if(clock_state.active && songs[clock_state.theme].vgm)s2_vgm_resume();
+        else s2_vgm_stop();
+        clock_state.oneup_hold=1;
+    }
+    if(oneup&&!custom_oneup)clock_state.oneup_hold=1;
+    if(!oneup && clock_state.oneup_hold) {
+        clock_state.oneup_hold=0;
+        clock_state.resume_ticks=ONEUP_FADE_STEPS*ONEUP_FADE_TICKS;
+    }
     clock_state.paused=paused||(oneup&&!custom_oneup);
     if(clock_state.active&&clock_state.fade&&!clock_state.paused){
-        if(clock_state.volume<=1457){clock_state.volume=0;clock_state.active=0;}else clock_state.volume-=1457;
+        if(clock_state.volume<=1457){
+            clock_state.volume=0;clock_state.active=0;s2_vgm_stop();
+        }else clock_state.volume-=1457;
     }
 }
 void s2_cd_theme_tick(uint64_t tick)
@@ -216,6 +248,8 @@ void s2_cd_theme_tick(uint64_t tick)
     (void)tick;render_clock=clock_state;
     if(!clock_state.active||clock_state.paused)return;
     const Song *s=&songs[clock_state.theme];
+    if(s->vgm)s2_vgm_frame(s->vgm,audition_mask(clock_state.theme,s));
+    if(clock_state.resume_ticks)--clock_state.resume_ticks;
     /* One sealed NTSC tick is 895780 master clocks. Advance outside the
      * presentation mixer so rollback and muted/core replay share this clock.
      * Quotient/remainder arithmetic keeps the Q32 product within uint64_t. */
@@ -230,7 +264,8 @@ void s2_cd_theme_tick(uint64_t tick)
 }
 static int clock_valid(const CDClock *clock)
 {
-    if(clock->theme>=S2_MUSIC_COUNT||clock->active>1||clock->paused>1||clock->volume>65536||clock->fade>1)return 0;
+    if(clock->theme>=S2_MUSIC_COUNT||clock->active>1||clock->paused>1||clock->volume>65536||clock->fade>1||clock->oneup_hold>1||
+       clock->resume_ticks>ONEUP_FADE_STEPS*ONEUP_FADE_TICKS)return 0;
     const Song *song=&songs[clock->theme];
     return !clock->active||((song->pcm||song->vgm)&&song->frames&&clock->position<((uint64_t)song->frames<<32));
 }
@@ -245,8 +280,20 @@ void s2_cd_theme_state(struct S2StateIO *io)
         memcpy(&oneup,io->data+io->pos+sizeof incoming+sizeof backup,sizeof oneup);
     }
     if(!clock_valid(&incoming)||!clock_valid(&backup)||oneup>1){io->ok=0;return;}
-    S2_STATE(io,clock_state);S2_STATE(io,backup_clock);S2_STATE(io,custom_oneup);
-    if(io->mode==2&&io->ok)render_clock=clock_state;
+    size_t clock_bytes=sizeof incoming+sizeof backup+sizeof oneup;
+    if(io->mode)io->pos+=clock_bytes;
+    else {S2_STATE(io,clock_state);S2_STATE(io,backup_clock);S2_STATE(io,custom_oneup);}
+    const S2Vgm *tracks[S2_MUSIC_COUNT];
+    for(unsigned t=0;t<S2_MUSIC_COUNT;t++)tracks[t]=songs[t].vgm;
+    unsigned active_track=tracks[incoming.theme]?incoming.theme:~0u;
+    if(!incoming.active && incoming.position!=((uint64_t)songs[incoming.theme].frames<<32))
+        active_track=~0u;
+    unsigned suspended_track=oneup&&backup.active&&tracks[backup.theme]?backup.theme:~0u;
+    s2_vgm_state(io,tracks,active_track,suspended_track);
+    if(io->mode==2&&io->ok) {
+        clock_state=incoming;backup_clock=backup;custom_oneup=oneup;
+        render_clock=clock_state;
+    }
 }
 void s2_cd_theme_identity(uint8_t out[32])
 {
@@ -267,24 +314,12 @@ int s2_cd_custom_build(unsigned t,unsigned kind,const uint8_t *data,size_t bytes
  Song song={0};song.frames=frames;song.gain=65536;memcpy(song.hash,hash,32);song.loop=~0u;
  if(kind==S2_CUSTOM_PCM){song.pcm=malloc(bytes);if(!song.pcm)return 0;memcpy(song.pcm,data,bytes);if(loop&&loop<=frames)song.loop=loop-1;else if(custom_loops(t))song.loop=0;}
  else if(kind==S2_CUSTOM_VGM){
-  if(gme_open_data(data,(long)bytes,&song.vgm,44100))goto fail;
-  gme_ignore_silence(song.vgm,1);gme_set_autoload_playback_limit(song.vgm,0);
-  if(gme_start_track(song.vgm,0))goto fail;
-  uint32_t voices=s2_custom_vgm_channels(data,bytes,NULL);
+  int looping=loop&&loop<=frames&&custom_loops(t);
+  song.vgm=s2_vgm_open(data,bytes,looping);
+  if(!song.vgm)goto fail;
+  uint32_t voices=s2_custom_vgm_channels(data,bytes);
   for(unsigned i=0;i<11;i++)if(voices&(1u<<i))song.voices[song.voice_count++]=i;
-  if((voices&0x780u)&&gme_voice_count(song.vgm)>4){
-   uint8_t *psg=malloc(bytes);if(!psg)goto fail;
-   int ok=s2_custom_vgm_channels(data,bytes,psg)!=0&&!gme_open_data(psg,(long)bytes,&song.psg,44100);free(psg);if(!ok)goto fail;
-   gme_ignore_silence(song.psg,1);gme_set_autoload_playback_limit(song.psg,0);
-   if(gme_start_track(song.psg,0))goto fail;
-  }
-  song.cache_at[0]=song.cache_at[1]=~0u;
-  if(loop&&loop<=frames&&custom_loops(t)){
-   /* GME already follows the file's intro/loop. Keep its timeline advancing
-    * so every loop does not seek/re-emulate the intro on the audio thread.
-    * Bound the counter below GME's signed stereo-sample API limit. */
-   song.loop=0;song.frames=0x3fffffffu;
-  }
+  if(looping)song.loop=loop-1;
  }else return 0;
  unsigned ticks=(unsigned)(((uint64_t)frames*53693175u+44100ULL*895780u-1)/(44100ULL*895780u));
  unsigned rests=(ticks+126)/127;size_t sequence=song.loop==~0u?54+rests*2+2:60,length=sequence+25;
@@ -296,7 +331,7 @@ int s2_cd_custom_build(unsigned t,unsigned kind,const uint8_t *data,size_t bytes
  else{for(unsigned i=0;i<rests;i++){p[54+i*2]=0x80;unsigned duration=ticks>127?127:ticks;p[55+i*2]=(uint8_t)duration;ticks-=duration;}p[sequence-2]=0xFF;p[sequence-1]=t==S2_THEME_LIFE?0x04:0x10;}
  silent_voice(p+sequence);
  be32(bank+l->music_index-0x2A0000+(s2_music_target(t)-1)*4,0x01000000u|(0x2A0000u+dest));*used=dest+(uint32_t)length;
- if(songs[t].vgm)gme_delete(songs[t].vgm);if(songs[t].psg)gme_delete(songs[t].psg);free(songs[t].pcm);songs[t]=song;audio_set_extra_source(mix);return 1;
+ s2_vgm_close(songs[t].vgm);free(songs[t].pcm);songs[t]=song;audio_set_extra_source(mix);return 1;
 fail:
- if(song.vgm)gme_delete(song.vgm);if(song.psg)gme_delete(song.psg);free(song.pcm);if(error&&capacity)snprintf(error,capacity,"Unable to prepare the custom recording.");return 0;
+ s2_vgm_close(song.vgm);free(song.pcm);if(error&&capacity)snprintf(error,capacity,"Unable to prepare the custom recording.");return 0;
 }

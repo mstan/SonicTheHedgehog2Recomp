@@ -3,7 +3,7 @@
 enum { S2_CUSTOM_SMPS=1,S2_CUSTOM_PCM,S2_CUSTOM_VGM };
 /* FM1..6, DAC, PSG1..3 and noise, in that order. Optional copy receives
  * the same timeline with FM writes removed for separate PSG audition. */
-uint32_t s2_custom_vgm_channels(const uint8_t *data,size_t bytes,uint8_t *psg_copy);
+uint32_t s2_custom_vgm_channels(const uint8_t *data,size_t bytes);
 void s2_custom_load(const char *settings);
 int s2_custom_ready(unsigned track);
 const char *s2_custom_path(unsigned track);

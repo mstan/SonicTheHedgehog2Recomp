@@ -36,8 +36,13 @@ PSG3/noise isolation. VGM offers the channels used by the imported song,
 including individual PSG tones and noise. Stereo WAV/CD recordings offer All Channels.
 Music Player is local-only. Closing it restores all channels and Options music.
 
-VGM playback uses Game_Music_Emu 0.6.5, LGPL 2.1 or later, with its Nuked OPN2
-backend. DAC writes go through the chip's stereo routing and voice controls. The dynamically linked library can be replaced. Exact source commit:
+VGM playback uses the same YM2612 and PSG implementations as the game, with
+independent chip state for the imported song. Channel selection and rewind
+preserve the song's position without replaying from the start. Music resumes
+with the original fade after the 1-UP jingle.
+
+Import validation uses Game_Music_Emu 0.6.5, LGPL 2.1 or later, with its Nuked
+OPN2 backend. The dynamically linked library can be replaced. Exact source commit:
 `9e23d10f9fd2a6a2f33b10912dd8dc7153258995`, from
 <https://github.com/libgme/game-music-emu>. The package includes the source and
 license in `docs/libgme-source`. To rebuild that library:
