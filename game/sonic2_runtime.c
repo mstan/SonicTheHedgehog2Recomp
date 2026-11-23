@@ -83,21 +83,17 @@ static const S2Character knuckles={"knuckles","KNUCKLES",1,knuckles_available};
 /* Keep derived campaign banks outside both executable sound images and the
  * converted sound-asset arena. Validate generated image sizes at build time. */
 #ifdef SONIC2_CLONE_DRIVER
-_Static_assert(S2_CLONE_LOAD_ADDRESS+S2_CLONE_PAYLOAD_SIZE<=S2_STAGE_LAYOUT_ROM,
-               "Clone Driver overlaps the campaign bank");
+_Static_assert(S2_CLONE_LOAD_ADDRESS+S2_CLONE_PAYLOAD_SIZE<=S2_KNUCKLES_ENDING_ROM,
+               "Clone Driver overlaps the campaign ending bank");
 #endif
-_Static_assert(S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES<=S2_KNUCKLES_ENDING_ROM,
-               "Campaign object and ending banks overlap");
 _Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_SOUND_MUSIC_BASE,
                "Campaign banks overlap converted sound assets");
 #ifdef SONIC2_MUSIC_DRIVER
 _Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_MUSIC_CLONE_LOAD_ADDRESS,
                "Campaign banks overlap the music driver");
 #endif
-void s2_runtime_prepare_stages(void)
+void s2_runtime_prepare_ending(void)
 {
-    const S2StageLayouts *stages=s2_resource_knuckles_stages();
-    if(stages) memcpy(g_rom+S2_STAGE_LAYOUT_ROM,stages->data,stages->size);
     const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
     if(ending) memcpy(g_rom+S2_KNUCKLES_ENDING_ROM,ending->data,ending->size);
 }
@@ -120,11 +116,11 @@ uint16_t s2_runtime_title_card_ink(void)
  }
  return 0;
 }
-uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act)
+S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act)
 {
     if((g_ram[0xF600]&127)!=12 || g_ram[0xFFD8] || g_ram[0xFFD9] || kind(0)!=S2_CHAR_KNUCKLES ||
-       !knuckles_available() || !knuckles_lead_available()) return 0;
-    return s2_stage_layout_address(s2_resource_knuckles_stages(),zone,act);
+       !knuckles_available() || !knuckles_lead_available()) return (S2StagePlacementView){0};
+    return s2_stage_layout_view(s2_resource_knuckles_stages(),zone,act);
 }
 static int knuckles_ending(void)
 {
@@ -1198,13 +1194,6 @@ int s2_runtime_hook(uint32_t pc)
             }
             if(pc==0x1B848)return 1;
         }
-    }
-    if(pc==0x17AF0) {
-        /* After native layout selection, before all four scrolling cursors
-         * are initialized. The native loader owns loading and respawning. */
-        uint32_t address=s2_runtime_stage_layout(g_ram[0xFE10],g_ram[0xFE11]);
-        if(address) g_cpu.A[0]=address;
-        return 0;
     }
     if (pc==0x41C3A) {
         /* Debug_SpawnObject copies the cursor's on-screen flag before the

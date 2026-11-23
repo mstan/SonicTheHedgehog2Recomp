@@ -905,7 +905,7 @@ void s2_video_vblank(void)
     was_active=active;last_tick=tick;last_zone=zone;last_serial=s_serial;
 }
 static unsigned s_visible_objects[144], s_visible_count;
-typedef struct { unsigned address; uint16_t x, y,slot; uint8_t id, subtype, state, loaded; } Placement;
+typedef struct { uint16_t x, y,slot; uint8_t id, subtype, state, loaded; } Placement;
 static Placement s_placements[SCENE_PLACEMENTS];
 static unsigned s_placement_count, s_placement_base;
 static int s_loader_active;
@@ -1808,21 +1808,28 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
     }
 }
 
-static void load_placements(void)
+static void load_placements(S2StagePlacementView campaign)
 {
-    unsigned zone=ram16(0xFE10),index=((zone>>8)*4u)+((zone&1u)*2u);
-    unsigned base=0xE6800u+(int16_t)scene_read16(0xE6800u+index);
-    if (competition() && g_ram[0xFE10]==12) base=(zone&1)?0x18492:0x1802A;
-    unsigned campaign=s2_runtime_stage_layout(zone>>8,zone&255u);
-    if(campaign) base=campaign;
+    unsigned zone=ram16(0xFE10),base;
+    if(campaign.data) {
+        base=0x80000000u|zone; /* Host cache identity for the campaign stage. */
+    } else {
+        unsigned index=((zone>>8)*4u)+((zone&1u)*2u);
+        base=0xE6800u+(int16_t)scene_read16(0xE6800u+index);
+        if(competition() && g_ram[0xFE10]==12) base=(zone&1)?0x18492:0x1802A;
+    }
     if(base==s_placement_base && s_placement_count)return;
     s_placement_base=base;s_placement_count=0;unsigned state=1;
-    unsigned limit=campaign?S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES:0x100000u;
-    for(unsigned p=base;p+6<=limit && s_placement_count<SCENE_PLACEMENTS;p+=6) {
-        unsigned x=scene_read16(p);if(x==65535u)break;
+    if(!campaign.data && base>=0x100000u)return;
+    const uint8_t *records=campaign.data?campaign.data:g_rom+base;
+    size_t bytes=campaign.data?campaign.bytes:0x100000u-base;
+    for(size_t p=0;p+6<=bytes && s_placement_count<SCENE_PLACEMENTS;p+=6) {
+        const uint8_t *record=records+p;
+        unsigned x=(unsigned)record[0]<<8|record[1];
+        if(x==65535u)break;
         Placement *q=&s_placements[s_placement_count++];
-        q->address=p;q->x=(uint16_t)x;q->y=scene_read16(p+2);
-        q->id=scene_read8(p+4);q->subtype=scene_read8(p+5);
+        q->x=(uint16_t)x;q->y=(uint16_t)(record[2]<<8|record[3]);
+        q->id=record[4];q->subtype=record[5];
         q->state=(uint8_t)((q->y&0x8000)?state++:0);q->loaded=0;q->slot=0;
     }
 }
@@ -1835,10 +1842,10 @@ static int placement_alive(Placement *p)
     }
     return 0;
 }
-static void spawn_scene(void)
+static void spawn_scene_from_layout(S2StagePlacementView campaign)
 {
     if (competition()) activation_bounds(ram16(0xEE20),enabled()?s_requested_width:320,&s_vs_other_lo,&s_vs_other_hi);
-    load_placements();s_loader_active=1;
+    load_placements(campaign);s_loader_active=1;
     if (competition()) {
         /* Replace the native six fixed object blocks with the same bounded
          * global pool used by expanded single-player worlds. Both viewports
@@ -1891,9 +1898,14 @@ static void spawn_scene(void)
     unsigned r=0,l=0,rs=1,ls=1;
     while(r<s_placement_count && s_placements[r].x<(unsigned)((camera&~127)+640)){rs+=s_placements[r].state!=0;++r;}
     while(l<s_placement_count && (int)s_placements[l].x<((camera-128)&~127)){ls+=s_placements[l].state!=0;++l;}
-    write32(0xF770,s_placement_base+r*6);write32(0xF774,s_placement_base+l*6);
+    unsigned base=campaign.data?0:s_placement_base;
+    write32(0xF770,base+r*6);write32(0xF774,base+l*6);
     write8(0xFC00,rs);write8(0xFC01,ls);write16(0xF76E,camera&0xFF80);
     write16(0xF7DA,(camera-128)&0xFF80);
+}
+static void spawn_scene(void)
+{
+    spawn_scene_from_layout((S2StagePlacementView){0});
 }
 static unsigned rings_end(void)
 {
@@ -2634,6 +2646,15 @@ int s2_video_hook(uint32_t pc)
         if(presented_competition()?(pc==0x16B90 || pc==0x16B98):
                                   (pc==0x16712 || pc==0x1671A))publish_sprites();
         return 0;
+    }
+    if(pc==0x17AA4) {
+        S2StagePlacementView campaign=s2_runtime_stage_layout(g_ram[0xFE10],g_ram[0xFE11]);
+        if(campaign.data) {
+            if(!g_ram[0xF76C]) s2_stage_layout_prepare(campaign,g_ram);
+            if(gameplay() && (enabled() || s_loader_active)) spawn_scene_from_layout(campaign);
+            else s2_stage_layout_stream(campaign,g_ram);
+            return 1;
+        }
     }
     /* Attract inputs target the original object timing and fixed 2P pools.
      * Keep wide presentation, but let the native loaders/cullers run. */

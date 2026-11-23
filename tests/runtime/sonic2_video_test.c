@@ -3,7 +3,9 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
-uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act) { (void)zone;(void)act;return 0; }
+static S2StagePlacementView campaign_test_layout;
+S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act)
+{ return zone==12 && act==0?campaign_test_layout:(S2StagePlacementView){0}; }
 #if OWN_BACKEND
 GenesisMachine g_machine;
 #endif
@@ -3533,6 +3535,28 @@ int main(void)
     CHECK(s_loader_active && !g_ram[0xB400] && !(g_ram[0xFC03]&128));
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
+    /* A Knuckles campaign consumes the same bounded host list in either
+     * viewport. The stock ROM has no fixture for these object records. */
+    static const uint8_t campaign_records[]={
+        0x00,0x20,0x80,0x20,0x41,0x06,
+        0x01,0x70,0x00,0x30,0x19,0x02,
+        0xFF,0xFF,0x00,0x00,0x00,0x00
+    };
+    campaign_test_layout=(S2StagePlacementView){campaign_records,sizeof campaign_records};
+    clear_guest();g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xB000]=1;
+    CHECK(sonic2_video.configure("off"));
+    CHECK(s2_video_hook(0x17AA4)==1 && g_ram[0xF76C]==2 && !s_loader_active);
+    CHECK(g_ram[0xB400]==0x41 && g_ram[0xB440]==0x19 && g_ram[0xFC03]==128);
+    CHECK(scene_read32(0xFFF770)==12);
+
+    clear_guest();g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xB000]=1;
+    CHECK(sonic2_video.configure("32:9"));
+    CHECK(sonic2_video.width(1,1,320,224)==796);
+    CHECK(s2_video_hook(0x17AA4)==1 && g_ram[0xF76C]==2 && s_loader_active);
+    CHECK(g_ram[0xB400]==0x41 && g_ram[0xB440]==0x19 && g_ram[0xFC03]==128);
+    CHECK(scene_read32(0xFFF770)==12);
+    campaign_test_layout=(S2StagePlacementView){0};
+    clear_guest();
     clamped_background_interpolation_test();
     cpz_interpolation_band_test();
     ooz_interpolation_band_test();
