@@ -210,18 +210,18 @@ static int competition(void)
     int mode=g_ram[0xF600]&127;
     return ram16(0xFFD8) && (mode==8 || mode==12);
 }
-static int outgoing_level(void)
+int s2_video_outgoing_level(void)
 {
     int mode=g_ram[0xF600]&127;
     return (mode==0 || mode==4) && g_ram[0xF711] &&
         (g_ram[0xB000]==1 || g_ram[0xB000]==2);
 }
 static int presented_competition(void)
-{ return competition() || (outgoing_level() && ram16(0xFFD8)); }
+{ return competition() || (s2_video_outgoing_level() && ram16(0xFFD8)); }
 static int presented_gameplay(void)
-{ return gameplay() || (outgoing_level() && !ram16(0xFFD8)); }
+{ return gameplay() || (s2_video_outgoing_level() && !ram16(0xFFD8)); }
 static int native_demo(void)
-{ return (g_ram[0xF600]&127)==8 || (outgoing_level() && ram16(0xFFF0)); }
+{ return (g_ram[0xF600]&127)==8 || (s2_video_outgoing_level() && ram16(0xFFF0)); }
 static int slot_theme(unsigned role)
 {
     return !native_demo() && (s2_video_level_zone()>>8)==12 && g_ram[0xF711] &&
@@ -470,7 +470,7 @@ static int source_background_scroll(const S2RenderContext *r,int camera,int line
         if(by<112)return -(c+scroll_floor((int64_t)(by<0?0:by/16)*(scroll_floor(c,8)-c),8));
         return -scroll_floor(c,by<144?16:8);
     case 10: { /* OOZ emits from the bottom: factory, clouds, heat haze. */
-        int bg=scroll_background_x(r,c,0,8192),y=223-line;
+        int bg=scroll_background_x(r,c,0,8192),y=223-(by-r->frame_bg_y);
         int factory=r->frame_bg_y<80?48:r->frame_bg_y>=256?224:r->frame_bg_y-32;
         if(y<factory)return -bg;
         y-=factory;
@@ -2482,7 +2482,7 @@ static void capture_objects(void)
 {
     /* Expanded presentation must not mark offscreen demo objects visible:
      * that bit also controls native AI and the outgoing display queue. */
-    int read_only=native_demo() || outgoing_level();
+    int read_only=native_demo() || s2_video_outgoing_level();
     if(read_only)s_visible_count=0;
     capture_objects_into(&s_build,s_requested_width,read_only,
         s_interpolation_enabled && !competition()?s_build_keys:NULL);
@@ -2629,7 +2629,7 @@ int s2_video_hook(uint32_t pc)
     /* The native demo fade changes mode before continuing RunObjects and
      * BuildSprites for sixty ticks. Keep its displayed mapping format and
      * publication alive, while all loading and CPU timing remain native. */
-    if(enabled() && outgoing_level()) {
+    if(enabled() && s2_video_outgoing_level()) {
         if(pc==0x16604)capture_objects();
         if(presented_competition()?(pc==0x16B90 || pc==0x16B98):
                                   (pc==0x16712 || pc==0x1671A))publish_sprites();
@@ -3069,7 +3069,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         memcpy(&s_video_frame,v,sizeof s_video_frame);
         slot_patterns(&s_video_frame,line);
         memcpy(s_world_frame,g_ram,sizeof s_world_frame);
-        int outgoing=outgoing_level();
+        int outgoing=s2_video_outgoing_level();
         s_frame_vs=competition() || (outgoing && ram16(0xFFD8));
         s_vs_ready=g_ram[0xF711]!=0;s_vs_world=s_vs_ready || ram16(0xB0BE)!=0;
         if (s_frame_vs) for (unsigned p=0;p<2;++p) {
@@ -3242,7 +3242,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
              * camera. Apply that rounding after interpolation. */
             bg_base=normal_htz && line<128?-scroll_floor(-s_left,8):interpolation_background_base(line,by);
         }
-    } else if(s_interpolating && bg_world && s_frame_zone==13)
+    } else if(s_interpolating && bg_world && (s_frame_zone==10 || s_frame_zone==13))
         bg_base=interpolation_background_base(line,by);
     const uint8_t *mountains=normal_htz && rebase_background?htz_mountain_table(s_left):NULL;
     int background_x=bg_base;
@@ -3624,7 +3624,7 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     if(r->frame_campaign_view)
         by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
     int extra=0;
-    if(r->frame_zone==15 || r->frame_zone==13) {
+    if(r->frame_zone==15 || r->frame_zone==13 || r->frame_zone==10) {
         /* These parallax bands follow the background world, not screen rows.
          * At the CPZ ripple edge, neighboring rows can sample different
          * cameras. Blend the same world row from both completed frames. */
@@ -3672,13 +3672,14 @@ static void interpolation_sprite(unsigned index,int *x,int *y)
 static int interpolate(double phase,uint32_t *image,int stride,int height)
 {
     const PresentationFrame *b=&s_present[s_present_front],*a=&s_present[s_present_front^1];
+    unsigned party_actors;
     if(!s_interpolation_enabled || !image || height!=224 || !(phase>=0 && phase<=1) ||
        !a->valid || !b->valid || a->lines!=224 || b->lines!=224 ||
        a->width!=b->width || stride<b->width || a->zone!=b->zone ||
        (uint16_t)(b->tick-a->tick)>2 ||
        abs(a->render.frame_fg_x-b->render.frame_fg_x)>128 ||
        abs(a->render.frame_fg_y-b->render.frame_fg_y)>128 ||
-       !s2_runtime_presentation_matches(&a->party,&b->party))return 0;
+       !s2_runtime_presentation_matches(&a->party,&b->party,&party_actors))return 0;
     /* Mapping pieces keep their object/piece identity when neighboring objects
      * enter, retire or change animation. Unmatched pieces use their completed
      * position while stable pieces and the camera continue to interpolate. */
@@ -3706,12 +3707,15 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
             unsigned role=q->actor-1;
             int dy=((a->scene.actors.y[role]-b->scene.actors.y[role]+1024)&2047)-1024;
             if(a->scene.actors.object[role]!=b->scene.actors.object[role] ||
-               abs(a->scene.actors.x[role]-b->scene.actors.x[role])>48 || abs(dy)>48)return 0;
+               abs(a->scene.actors.x[role]-b->scene.actors.x[role])>48 || abs(dy)>48) {
+                if(!role)return 0;
+                s_lerp_sprite[i]=-1;continue;
+            }
             /* Keep the new native pose, interpolate its shared actor root.
              * Animation may add/remove/rearrange mapping pieces freely. */
             s_lerp_sprite[i]=-2;continue;
         }
-        int player=(key>>16)==0xB000 || (key>>16)==0xB040;
+        int player=(key>>16)==0xB000;
         if(previous<0) {
             if(player)return 0;
             s_lerp_sprite[i]=-1;continue;
@@ -3756,7 +3760,7 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
         }
         render_scanline(&fractional.video_frame,y,b->image+(size_t)y*b->width,320,
                         image+(size_t)y*stride,b->width,NULL,NULL);
-        s2_runtime_presentation_row(&a->party,&b->party,phase,&fractional.video_frame,
+        s2_runtime_presentation_row(&a->party,&b->party,party_actors,phase,&fractional.video_frame,
                                     y,image+(size_t)y*stride,b->width);
     }
     s_interpolating=0;s_display=saved_display;s_render=saved_render;

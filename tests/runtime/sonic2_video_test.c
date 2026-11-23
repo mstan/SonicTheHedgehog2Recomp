@@ -73,11 +73,12 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
 static const uint32_t *test_native_row(void *ctx) { return ctx; }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { memset(out,0,sizeof *out); }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
-{ (void)a;(void)b;return 1; }
+int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                    unsigned *actors)
+{ (void)a;(void)b;*actors=0;return 1; }
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                double phase,const GVDP *v,int line,uint32_t *out,int width)
-{ (void)a;(void)b;(void)phase;(void)v;(void)line;(void)out;(void)width; }
+                                unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ (void)a;(void)b;(void)actors;(void)phase;(void)v;(void)line;(void)out;(void)width; }
 void glue_poke8(uint32_t a,uint8_t v){g_ram[a&65535]=v;}
 void glue_poke16(uint32_t a,uint16_t v){glue_poke8(a,v>>8);glue_poke8(a+1,v);}
 void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);}
@@ -2601,6 +2602,31 @@ static void cpz_interpolation_band_test(void)
     f.width=398;f.render.left=3321;
     CHECK(captured_background_base(&f,154,304)==1644);
 }
+static void ooz_interpolation_band_test(void)
+{
+    static PresentationFrame early,late;
+    PresentationFrame *ends[]={&early,&late};
+    for(unsigned i=0;i<2;++i) {
+        PresentationFrame *f=ends[i];
+        f->width=320;
+        f->render.frame_zone=10;
+        f->render.frame_bg_y=90+(int)i;
+        f->render.frame_fg_x=800;
+        f->render.frame_bg_x[0]=100*65536;
+        for(int line=164;line<=166;++line) {
+            f->vscroll[line][1]=(uint16_t)f->render.frame_bg_y;
+            f->hscroll[line][0]=(uint16_t)-800;
+            f->hscroll[line][1]=(uint16_t)(line+f->render.frame_bg_y<256?-13:-100);
+        }
+        /* The native sky and factory have different horizontal scroll.
+         * A one-row camera shift must not blend these adjacent bands. */
+        CHECK(captured_background_base(f,165,255)==13);
+        CHECK(captured_background_base(f,165,256)==100);
+        f->width=398;f->render.left=761;
+        CHECK(captured_background_base(f,165,255)==12);
+        CHECK(captured_background_base(f,165,256)==95);
+    }
+}
 static void native_interpolation_test(void)
 {
     static GVDP v;
@@ -2737,6 +2763,18 @@ static void native_interpolation_test(void)
     CHECK(fraction[40*320+100]==0xFFFF0000);
     current->scene.sprites[0]=current->scene.sprites[added];
     current->keys[0]=current->keys[added];
+    --current->scene.count;
+
+    /* The sidekick's newly published root can be discontinuous without
+     * snapping the leader or disabling the entire fractional picture. */
+    added=current->scene.count++;
+    current->scene.sprites[added]=(SceneSprite){.x=104,.y=40,.attr=0x8004,.actor=2};
+    current->keys[added]=0xB0400100u;
+    current->scene.actors.object[1]=0xB040;
+    current->scene.actors.x[1]=104;
+    current->scene.actors.y[1]=40;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000 && fraction[40*320+104]==0xFFFF0000);
     --current->scene.count;
 
     /* Actor animation identities may change; replacing the actor or
@@ -3087,10 +3125,10 @@ int main(void)
     for(unsigned destination=0;destination<=4;destination+=4) {
         clear_guest();g_ram[0xF600]=(uint8_t)destination;
         g_ram[0xB000]=1;g_ram[0xF711]=1;
-        CHECK(outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
-        word(g_ram,0xFFD8,1);CHECK(outgoing_level() && !gameplay() && !competition());
-        g_ram[0xF711]=0;CHECK(!outgoing_level());
-        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!outgoing_level());
+        CHECK(s2_video_outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
+        word(g_ram,0xFFD8,1);CHECK(s2_video_outgoing_level() && !gameplay() && !competition());
+        g_ram[0xF711]=0;CHECK(!s2_video_outgoing_level());
+        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!s2_video_outgoing_level());
     }
     clear_guest();
     CHECK(sonic2_video.configure("off"));
@@ -3497,6 +3535,7 @@ int main(void)
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
     clamped_background_interpolation_test();
     cpz_interpolation_band_test();
+    ooz_interpolation_band_test();
     arz_background_stream_limit_test();
     native_interpolation_test();
     scene_scroll_phase_test();

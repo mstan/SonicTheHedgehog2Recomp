@@ -440,10 +440,10 @@ static int level(void) { return active && ((g_ram[0xF600]&0x7F)==12); }
 static int presented_level(void)
 {
     unsigned mode=g_ram[0xF600]&127;
-    /* SpecialStage changes mode before fading the still-displayed level.
-     * Its initialization retires the native player object only after white. */
-    return level() || (active && mode==16 &&
-        (g_ram[0xB000]==1 || g_ram[0xB000]==2) && g_ram[0xF711]);
+    /* Both the title return and Special Stage change mode before the
+     * current level's palette fade. The outgoing scene still owns its actors. */
+    return level() || (active && (s2_video_outgoing_level() || (mode==16 &&
+        (g_ram[0xB000]==1 || g_ram[0xB000]==2) && g_ram[0xF711])));
 }
 int s2_runtime_knuckles_item(unsigned o)
 {
@@ -1520,7 +1520,12 @@ int s2_runtime_hook(uint32_t pc)
         putword(0xEEFE,word(0xEECE));
         s_checking_death=1; native_helper(0x1CC6C); s_checking_death=0;
         putword(0xEEFE,max_y); g_ram[0xEEBF]=scroll_lock;
-        if (companion_recovering() && native_id((unsigned)actor)!=2) g_ram[(g_cpu.A[0]&0xFFFF)+0x1C]=2;
+        unsigned o=g_cpu.A[0]&0xFFFF;
+        /* Catch-up can still be marked active when a companion dies. Keep
+         * the native death animation until CheckGameOver releases the
+         * object into the ordinary recovery routine. */
+        if (g_ram[o+0x24]==2 && companion_recovering() && native_id((unsigned)actor)!=2)
+            g_ram[o+0x1C]=2;
         return 1;
     }
     if (pc==0x1ABA6 || pc==0x1AB38) {
@@ -1683,10 +1688,8 @@ void s2_runtime_capture(void)
     /* BuildSprites runs after the complete object tick. Rendering live actor
      * RAM per scanline could use one pose for a head and the next for its body,
      * or observe displayed[] while an actor was being updated. */
-    /* A starpost can switch mode during RunObjects, before this final
-     * BuildSprites. Keep the last displayed donor actors while the native
-     * level SAT is held through the entry fade. Incoming SS objects retire
-     * that publication after the level objects have actually been cleared. */
+    /* When the displayed level is fading out, keep its final actor
+     * publication with the native SAT until the incoming scene replaces it. */
     int native_only=!active && g_ram[0xF711] && !word(0xFFD8) &&
         (g_ram[0xB000]==1 || g_ram[0xB000]==2);
     if (!level() && (presented_level() || (native_only && (g_ram[0xF600]&127)!=12))) return;
@@ -1950,7 +1953,8 @@ static int actor_lerp(int a,int b,double phase)
 static int actor_delta_y(int difference)
 { return ((difference+1024)&2047)-1024; }
 static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width,
-                                  const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,double phase)
+                                  const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,
+                                  unsigned actors,double phase)
 {
     const GVDP *visibility=previous?v:&picture->vdp;
     if (picture->green_card && (v->reg[1]&64)) green_title_card(visibility,line,out,width,picture->card_color);
@@ -1996,7 +2000,7 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
          * wrapped positive coordinate. Subtracting them directly loses the
          * entire donor body despite valid movement and display submission. */
         if(wrap)y=actor_delta_y(y);
-        if(previous) {
+        if(previous && (actors&(1u<<index))) {
             const PartySprite *old=&previous->sprites[index];
             x=actor_lerp(old->x,s->x,phase)-origin_x;
             if(wrap)y+=actor_lerp(actor_delta_y(old->y-s->y),0,phase);
@@ -2116,7 +2120,7 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
             }
         }
     }
-    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+    runtime_overlay_frame(v,line,out,width,f,NULL,0,1);
 }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { *out=s_overlay_frame; }
@@ -2125,24 +2129,33 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
     S2RuntimePresentation *f=&s_overlay_frame;
     int left=f->left,top=f->top;
     s2_video_actor_origin(v,line,width,&f->left,&f->top);
-    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+    runtime_overlay_frame(v,line,out,width,f,NULL,0,1);
     f->left=left;f->top=top;
 }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
+int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                    unsigned *actors)
 {
     if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
+    int wrap=(a->world[0xF600]&127)==12 && (b->world[0xF600]&127)==12;
+    *actors=0;
     for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
         const PartySprite *p=&a->sprites[i],*q=&b->sprites[i];
         int dy=p->y-q->y;
-        if((a->world[0xF600]&127)==12 && (b->world[0xF600]&127)==12)dy=actor_delta_y(dy);
+        if(wrap)dy=actor_delta_y(dy);
         if(p->visible!=q->visible || (q->visible &&
-           (p->art!=q->art || abs(p->x-q->x)>48 || abs(dy)>48)))return 0;
+           (p->art!=q->art || abs(p->x-q->x)>48 || abs(dy)>48))) {
+            if(!i)return 0;
+            /* A companion can blink or catch up without breaking the
+             * camera/leader pair. Draw its completed pose at the new root. */
+            continue;
+        }
+        if(q->visible)*actors|=1u<<i;
     }
     return 1;
 }
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                double phase,const GVDP *v,int line,uint32_t *out,int width)
-{ runtime_overlay_frame(v,line,out,width,b,a,phase); }
+                                unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ runtime_overlay_frame(v,line,out,width,b,a,actors,phase); }
 
 /* ---- rollback state (GameSpec rb_state_save/load) --------------------------
  * Everything this adapter keeps outside guest RAM that a tick reads, at ANY

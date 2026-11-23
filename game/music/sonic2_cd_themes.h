@@ -20,4 +20,6 @@ int s2_cd_custom_build(unsigned track,unsigned kind,const uint8_t *data,size_t b
 void s2_cd_theme_audition(unsigned track,unsigned solo,int stopped);
 int s2_cd_theme_native_channels(unsigned track);
 unsigned s2_cd_theme_channel_count(unsigned track);
+/* Zero is All. FM 1..6, DAC, PSG 1..3 and PSG Noise use IDs 1..11. */
+unsigned s2_cd_theme_channel_id(unsigned track,unsigned index);
 const char *s2_cd_theme_channel_name(unsigned track,unsigned solo);

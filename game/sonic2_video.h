@@ -4,6 +4,7 @@ void s2_video_rb_state(S2StateIO *io);
 void s2_video_state(S2StateIO *io);
 unsigned s2_video_main_cpu_divisor(void);
 unsigned s2_video_level_zone(void);
+int s2_video_outgoing_level(void);
 void s2_video_vblank(void);
 #include "game_video.h"
 extern const GameVideo sonic2_video;

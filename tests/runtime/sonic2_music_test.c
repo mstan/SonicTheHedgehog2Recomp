@@ -224,10 +224,13 @@ int main(int argc,char **argv)
    free(bytes);s2_cd_themes_reset();free(rom);return 0;
   }
   if(!strcmp(argv[1],"--vgm-voices")){
-   static const char *names[]={"ALL CHANNELS","FM1","PSG1","PSG2","PSG3","PSG NOISE"};
+   static const char *names[]={"ALL CHANNELS","FM 1","PSG 1","PSG 2","PSG 3","PSG NOISE"};
+   static const unsigned ids[]={0,1,8,9,10,11};
    int16_t voices[6][2048]={{0}},restored[2048]={0};assert(extra&&s2_cd_theme_channel_count(t)==6&&!s2_cd_theme_native_channels(t));
    for(unsigned solo=0;solo<6;solo++){
-    assert(!strcmp(s2_cd_theme_channel_name(t,solo),names[solo]));s2_cd_theme_audition(t,solo,0);
+    assert(!strcmp(s2_cd_theme_channel_name(t,solo),names[solo]));
+    assert(s2_cd_theme_channel_id(t,solo)==ids[solo]);
+    s2_cd_theme_audition(t,solo,0);
     s2_cd_theme_request(s2_music_target(t));s2_cd_theme_frame(0,0);s2_cd_theme_tick(0);extra(voices[solo],1024,44100);
     int nonzero=0;for(unsigned i=0;i<2048;i++)nonzero|=voices[solo][i];assert(nonzero);
     for(unsigned i=0;i<solo;i++)assert(memcmp(voices[i],voices[solo],sizeof voices[solo]));

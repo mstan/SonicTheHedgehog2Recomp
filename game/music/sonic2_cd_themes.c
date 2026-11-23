@@ -101,9 +101,14 @@ int s2_cd_theme_native_channels(unsigned t)
 {return t<S2_MUSIC_COUNT&&!songs[t].vgm&&!songs[t].pcm;}
 unsigned s2_cd_theme_channel_count(unsigned t)
 {return t>=S2_MUSIC_COUNT?1:songs[t].vgm?1+songs[t].voice_count:songs[t].pcm?1:11;}
+unsigned s2_cd_theme_channel_id(unsigned t,unsigned index)
+{
+ if(index>=s2_cd_theme_channel_count(t))return 0;
+ return index&&songs[t].vgm?songs[t].voices[index-1]+1:index;
+}
 const char *s2_cd_theme_channel_name(unsigned t,unsigned solo)
 {
- static const char *names[]={"FM1","FM2","FM3","FM4","FM5","FM6","DAC","PSG1","PSG2","PSG3","PSG NOISE"};
+ static const char *names[]={"FM 1","FM 2","FM 3","FM 4","FM 5","FM 6","DAC","PSG 1","PSG 2","PSG 3","PSG NOISE"};
  return !solo?"ALL CHANNELS":t<S2_MUSIC_COUNT&&songs[t].vgm&&solo<=songs[t].voice_count?names[songs[t].voices[solo-1]]:"";
 }
 void s2_cd_theme_audition(unsigned t,unsigned solo,int stopped)
