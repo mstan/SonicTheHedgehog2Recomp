@@ -6,6 +6,8 @@ M68KState g_cpu;
 static S2StagePlacementView campaign_test_layout;
 S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act)
 { return zone==12 && act==0?campaign_test_layout:(S2StagePlacementView){0}; }
+const S2EndingFrame *s2_runtime_ending_frame(unsigned map,unsigned frame)
+{ (void)map;(void)frame;return NULL; }
 #if OWN_BACKEND
 GenesisMachine g_machine;
 #endif

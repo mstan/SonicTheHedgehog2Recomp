@@ -937,6 +937,9 @@ extra = [
                 # Needed as a dispatch entry so save-state loads can resume
                 # the special stage moment-in-time (GameSpec save_resume_pc).
     0x005250,   # SS started loop: s2.asm line 6695, after SpecStageBombs PLC.
+    0x009E20,   # Resume after the ending palette copy.
+    0x013334,   # Resume the ending fade controller after the palette copy.
+    0x0166EC,   # Publish the display flag and continue the native sprite list.
 ]
 
 # ---------------------------------------------------------------------------
@@ -1067,7 +1070,7 @@ addr = 0xA554 # original Knuckles pose on the ending plane
 kind = "game_hook"
 
 [[widescreen_site]]
-addr = 0x1331C # original Knuckles ending palette in the native fade controller
+addr = 0x1332E # ending fade palette copy
 kind = "game_hook"
 
 [[widescreen_site]]
@@ -1075,6 +1078,9 @@ addr = 0x9E14 # ending palette source
 kind = "game_hook"
 [[widescreen_site]]
 addr = 0xABE2 # ending character artwork
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x166CC # ending jump sprite mapping
 kind = "game_hook"
 [[widescreen_site]]
 addr = 0xAC30 # ending bird selection

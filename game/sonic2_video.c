@@ -983,7 +983,7 @@ static void video_state(S2StateIO *io, int rollback)
 static uint8_t scene_read8(unsigned a)
 {
     a &= 0xFFFFFFu;
-    return a < S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
+    return a < 0x100000u ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
 }
 static uint16_t scene_read16(unsigned a) { return (uint16_t)((scene_read8(a)<<8)|scene_read8(a+1)); }
 static uint32_t scene_read32(unsigned a) { return ((uint32_t)scene_read16(a)<<16)|scene_read16(a+2); }
@@ -1744,16 +1744,21 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
 {
     unsigned p=map;int count=1;
     const NativeObjectArt *binding=native_object_binding(owner>>16,map,gfx);
-    if(!static_mapping) {
+    const S2EndingFrame *ending=map==S2_ENDING_JUMP_MAP ? s2_runtime_ending_frame(map,frame) : NULL;
+    if(ending) {
+        count=(int)ending->count;
+    } else if(!static_mapping) {
         p+=(int16_t)scene_read16(p+(frame&255u)*2u);
         count=scene_read16(p);p+=2;
     }
     if(count>1024)return;
     for(int n=0;n<count && dst->count<SCENE_SPRITES;++n,p+=8) {
-        int dy=(int8_t)scene_read8(p),size=scene_read8(p+1)&15;
-        int dx=(int16_t)scene_read16(p+6);
+        const S2EndingPiece *piece=ending ? &ending->pieces[n] : NULL;
+        int dy=piece ? piece->y : (int8_t)scene_read8(p);
+        int size=piece ? piece->size : scene_read8(p+1)&15;
+        int dx=piece ? piece->x : (int16_t)scene_read16(p+6);
         int vs=presented_competition();
-        uint16_t attr=(uint16_t)(scene_read16(p+(vs?4:2))+gfx);
+        uint16_t attr=(uint16_t)((piece ? piece->attr : scene_read16(p+(vs?4:2)))+gfx);
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
         if(!(flags&0x4000) && !vs && !s2_runtime_campaign_independent() &&
@@ -1761,10 +1766,10 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys) {
             /* Asteron's lit frame inserts an eye before the same two body
              * pieces. Keep their identities across the animation change. */
-            unsigned piece=(unsigned)n;
+            unsigned piece_index=(unsigned)n;
             if(map==0x38A96 && (frame&255u)==1 && !static_mapping)
-                piece=n?(unsigned)n-1u:2u;
-            keys[dst->count]=owner|piece;
+                piece_index=n?(unsigned)n-1u:2u;
+            keys[dst->count]=owner|piece_index;
         }
         SceneSprite *q=&dst->sprites[dst->count++];
         memset(q,0,sizeof *q); /* Serialized padding must be deterministic. */

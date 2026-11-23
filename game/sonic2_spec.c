@@ -56,7 +56,6 @@ extern void func_000F54(void);   /* HBlank IRQ4   ($000F54) */
 
 static void s2_call_entry_point(void) {
     s2_sound_post_reset();
-    s2_runtime_prepare_ending();
     recomp_call_addr(0x000206u);
 }
 static void s2_call_resume(uint32_t pc) {
@@ -64,7 +63,6 @@ static void s2_call_resume(uint32_t pc) {
      * Rebuild only immutable ROM-derived banks here; restored sequencer and
      * Z80 state already belong to the snapshot and must stay intact. */
     s2_sound_post_reset();
-    s2_runtime_prepare_ending();
     recomp_call_addr(pc);
 }
 static void s2_call_vblank(void)      { s2_video_vblank(); recomp_call_addr(0x000408u); }
@@ -260,7 +258,7 @@ static int s2_instruction_hook(uint32_t pc)
     switch (pc) {
     case 0x111C: /* ReadJoypads: physical-controller generation */
     case 0x9C7C: case 0x9E14: case 0xABE2: case 0xAC30:
-    case 0x3AC56: case 0x3AB46: case 0xA554: case 0x1331C:
+    case 0x3AC56: case 0x3AB46: case 0xA554: case 0x1332E: case 0x166CC:
     case 0x1B248: case 0x1CCA6: case 0x1DAAC:
     case 0x40DEA: case 0x40F22: case 0x40F62: case 0x40F9A:
     case 0x157C4:

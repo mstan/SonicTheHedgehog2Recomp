@@ -89,6 +89,7 @@ enum { S2_NATIVE_SIGNPOST, S2_NATIVE_CAPSULE, S2_NATIVE_EHZ_CAR, S2_NATIVE_CPZ_P
  * Returns decoded bytes; the guest's VRAM and load queue remain unchanged. */
 unsigned s2_native_sprite_art_decode(const uint8_t *rom,size_t size,unsigned asset,
                                     uint8_t *out,size_t capacity);
+int s2_nemesis_decode(const uint8_t *data,size_t size,uint8_t *out,size_t capacity);
 /* Exact original lock-on artwork; shares the existing bounded Nemesis codec. */
 int s2_knuckles_art_decode(const uint8_t *rom,size_t size,S2KnucklesArt *out);
 /* Match a displayed native slot window, including partial scrolling rows.

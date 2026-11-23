@@ -5,13 +5,6 @@
  * callbacks adapt player roles only, never replay a level or enemy update. */
 #include "sonic2_runtime.h"
 #include "sonic2_sound_driver.h"
-#include "sonic2_sound_assets.h"
-#ifdef SONIC2_CLONE_DRIVER
-#include "sonic2_clone_metadata.h"
-#endif
-#ifdef SONIC2_MUSIC_DRIVER
-#include "sonic2_music_clone_metadata.h"
-#endif
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_character.h"
@@ -80,23 +73,6 @@ static int knuckles_lead_available(void)
 { return s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages()!=NULL; }
 static const S2Character amy={"amy","AMY",1,amy_available};
 static const S2Character knuckles={"knuckles","KNUCKLES",1,knuckles_available};
-/* Keep derived campaign banks outside both executable sound images and the
- * converted sound-asset arena. Validate generated image sizes at build time. */
-#ifdef SONIC2_CLONE_DRIVER
-_Static_assert(S2_CLONE_LOAD_ADDRESS+S2_CLONE_PAYLOAD_SIZE<=S2_KNUCKLES_ENDING_ROM,
-               "Clone Driver overlaps the campaign ending bank");
-#endif
-_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_SOUND_MUSIC_BASE,
-               "Campaign banks overlap converted sound assets");
-#ifdef SONIC2_MUSIC_DRIVER
-_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_MUSIC_CLONE_LOAD_ADDRESS,
-               "Campaign banks overlap the music driver");
-#endif
-void s2_runtime_prepare_ending(void)
-{
-    const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
-    if(ending) memcpy(g_rom+S2_KNUCKLES_ENDING_ROM,ending->data,ending->size);
-}
 static unsigned kind(unsigned p)
 {
     const char *id=s2_party.roster.character[p];
@@ -126,6 +102,11 @@ static int knuckles_ending(void)
 {
     return (g_ram[0xF600]&127)==0x20 && kind(0)==S2_CHAR_KNUCKLES &&
         knuckles_available() && s2_resource_knuckles_ending()!=NULL;
+}
+const S2EndingFrame *s2_runtime_ending_frame(unsigned map,unsigned frame)
+{
+    if(map!=S2_ENDING_JUMP_MAP || frame>=S2_ENDING_FRAMES || !knuckles_ending())return NULL;
+    return &s2_resource_knuckles_ending()->frames[frame];
 }
 static const S2DonorBank *bank(unsigned p)
 {
@@ -1160,11 +1141,27 @@ int s2_runtime_hook(uint32_t pc)
         if(pc==0xABE2) {
             /* KiS2 uses its ordinary ending for either emerald outcome. */
             putword(0xF750,0);
-            m68k_write32(0xC00004,0x43200000); /* ArtTile_EndingCharacter=$19 */
-            g_cpu.A[0]=e->art;recomp_tail_call(0x14DE);return 1;
+            glue_poke32(0xC00004,0x43200000); /* ArtTile_EndingCharacter=$19 */
+            for(size_t i=0;i<e->tile_bytes;i+=2)
+                glue_poke16(0xC00000,(uint16_t)(e->tiles[i]<<8|e->tiles[i+1]));
+            return 1;
         }
-        if(pc==0x9E14) {g_cpu.A[1]=e->palette;return 0;}
-        if(pc==0x1331C && g_cpu.A[2]==0xAC7E) {g_cpu.A[2]=e->palette;return 0;}
+        if(pc==0x9E14) {
+            memcpy(g_ram+0xFB80,e->palette,sizeof e->palette);
+            g_cpu.A[1]+=sizeof e->palette;
+            g_cpu.A[2]=0xFFFFFC00u;
+            g_cpu.D[0]=0xFFFF;
+            recomp_tail_call(0x9E20);return 1;
+        }
+        if(pc==0x1332E && g_cpu.A[2]==0xAC7E) {
+            unsigned bytes=((g_cpu.D[0]&65535u)+1)*2, dest=g_cpu.A[3]&65535u;
+            if(bytes<=sizeof e->palette && dest>=0xFB80 && dest+bytes<=0xFC00) {
+                memcpy(g_ram+dest,e->palette,bytes);
+                g_cpu.A[2]+=bytes;g_cpu.A[3]+=bytes;
+                g_cpu.D[0]|=0xFFFFu;
+                recomp_tail_call(0x13334);return 1;
+            }
+        }
         if(pc==0x213E) {
             /* Original KiS2 cycle: three shades at palette entries 2,3,5.
              * Both the native large jump sprite and the host body use CRAM. */
@@ -1196,9 +1193,16 @@ int s2_runtime_hook(uint32_t pc)
             putword(0xB01C,0x0500);characters[0].animation=0;
             return 0;
         }
-        if(pc==0x164F4 && o>=0xB000 && o<0xD400 &&
-           ((uint32_t)word(o+4)<<16|word(o+6))==0xADA2)
-            putfixed(o+4,(int32_t)e->mappings);
+        if(pc==0x166CC && o>=0xB000 && o<0xD400 && word(o+4)==0 && word(o+6)==S2_ENDING_JUMP_MAP) {
+            unsigned frame=g_ram[o+0x1A],count=g_cpu.D[5]&255u;
+            if(frame<S2_ENDING_FRAMES && count<80) {
+                unsigned added=s2_ending_draw_sat(&e->frames[frame],g_ram+(g_cpu.A[2]&65535u),count,
+                    word(o+2),g_cpu.D[4]&3u,(int16_t)g_cpu.D[3],(int16_t)g_cpu.D[2]);
+                g_cpu.A[2]+=added*8;
+                g_cpu.D[5]=(g_cpu.D[5]&~255u)|(count+added);
+            }
+            recomp_tail_call(0x166EC);return 1;
+        }
         if(o==0xB000) {
             if(pc==0x164F4) {displayed[0]=1;return 1;}
             if(pc==0x1B350) {
