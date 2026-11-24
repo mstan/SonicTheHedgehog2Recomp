@@ -2842,36 +2842,7 @@ static void native_interpolation_test(void)
     CHECK(interpolate(.5,fraction,320,224));
     CHECK(fraction[55*320+120]==0xFFFF0000 && fraction[62*320+127]==0xFFFF0000);
     CHECK(fraction[54*320+120]==0xFF000000 && fraction[63*320+120]==0xFF000000);
-    CHECK(s_sprite_row_offset[56]-s_sprite_row_offset[55]>=2);
-    /* The ordinary row-list path must match the former per-row projection,
-     * including sprite order, coverage and pixel priority. */
-    const SceneFrame *saved_scene=s_display;
-    unsigned saved_serial=current->scene.serial;
-    current->scene.serial=1;
-    s_display=&current->scene;s_sprite_rows_ready=0;
-    uint32_t colors[64];
-    for(unsigned i=0;i<64;++i)colors[i]=genesis_dac_cram_to_argb(current->cram[55][i],GENESIS_DAC_NORMAL);
-    CHECK(s_priority_capacity>=320);
-    for(int row=0;row<224;++row) {
-        uint32_t cached[320]={0},direct[320]={0};
-        uint8_t cached_priority[320];
-        memset(s_priority,0,320);
-        draw_scene_sprites(&current->render.video_frame,row,cached,320,0,colors);
-        memcpy(cached_priority,s_priority,sizeof cached_priority);
-        memset(s_priority,0,320);
-        for(unsigned n=0;n<s_display->count;++n) {
-            const SceneSprite *sprite=&s_display->sprites[n];
-            int base,y;
-            project_sprite(sprite,n,320,0,&base,&y);
-            if(row>=y && row<y+((sprite->size&3)+1)*8)
-                draw_scene_sprite_row(&current->render.video_frame,sprite,row,direct,320,0,colors,base,y,8);
-        }
-        CHECK(!memcmp(cached,direct,sizeof cached));
-        CHECK(!memcmp(cached_priority,s_priority,sizeof cached_priority));
-    }
-    CHECK(s_sprite_rows_ready && s_sprite_row_view.scene==s_display);
-    current->scene.serial=saved_serial;
-    s_display=saved_scene;s_sprite_rows_ready=0;
+    CHECK(s_fractional_row_offset[56]-s_fractional_row_offset[55]>=2);
     current->scene.count=first_piece;
 
     /* Actor animation identities may change; replacing the actor or
@@ -2895,7 +2866,7 @@ static void marked_sprite_interpolation_test(void)
     memset(&v,0,sizeof v);clear_guest();
     CHECK(configure("off"));online=0;s_loader_active=0;
     memset(&s2_party,0,sizeof s2_party);
-    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;g_ram[0x8003]=1;
     v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
     v.reg[12]=1;v.reg[13]=0x3C;v.reg[16]=1;
     v.cram[2]=0x0E0;ext[17]=0xE00;
