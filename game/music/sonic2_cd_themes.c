@@ -25,16 +25,36 @@ typedef struct CDClock {
 static CDClock clock_state;
 static CDClock render_clock,backup_clock;
 static unsigned custom_oneup;
-static const unsigned events[S2_MUSIC_COUNT]={[S2_THEME_LIFE]=0x18,[S2_THEME_OVER]=0x1B,
- [S2_THEME_CONTINUE]=0x1C,[S2_THEME_CLEAR]=0x1A,[S2_THEME_INVINCIBLE]=0x17,[S2_MUSIC_BOSS]=0x13,[S2_MUSIC_FINAL_BOSS]=0x14};
 static unsigned le16(const uint8_t *p){return p[0]|((unsigned)p[1]<<8);}
 static uint32_t le32(const uint8_t *p){return le16(p)|((uint32_t)le16(p+2)<<16);}
 static void be32(uint8_t *p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
-/* Music voices restored after a borrowed SFX channel must stay silent. */
-static void silent_voice(uint8_t *voice)
+/* Sustain the music clock while the host mixer supplies the actual audio.
+ * A single silent track is sufficient to preserve queue and 1-UP ownership. */
+static int silent_cue(unsigned track,const Song *song,S2MusicCue *cue)
 {
-    memset(voice,0,25);
-    for(unsigned i=0;i<4;i++){voice[5+i]=0x7F;voice[21+i]=0x0F;}
+    unsigned ticks=(unsigned)(((uint64_t)song->frames*53693175u+44100ULL*895780u-1)/(44100ULL*895780u));
+    unsigned rests=(ticks+126)/127;
+    int looping=song->loop!=~0u;
+    unsigned bytes=looping?18:14+2*rests;
+    if(bytes>UINT16_MAX)return 0;
+    uint8_t *p=calloc(bytes,1);
+    if(!p)return 0;
+    p[0]=(uint8_t)(bytes>>8);p[1]=(uint8_t)bytes;
+    p[2]=1;p[6]=p[7]=1;p[9]=12;
+    if(looping) {
+        p[12]=0x80;p[13]=1;p[14]=0xFF;p[15]=0x14;p[16]=0xFF;p[17]=0xFB;
+    } else {
+        for(unsigned i=0;i<rests;++i) {
+            p[12+i*2]=0x80;
+            unsigned duration=ticks>127?127:ticks;
+            p[13+i*2]=(uint8_t)duration;
+            ticks-=duration;
+        }
+        p[bytes-2]=0xFF;
+        p[bytes-1]=track==S2_THEME_LIFE?4:16;
+    }
+    *cue=(S2MusicCue){p,NULL,(uint16_t)bytes,1,0};
+    return 1;
 }
 static int cd_event(unsigned t){return t==S2_THEME_OVER||t==S2_THEME_CLEAR||t==S2_THEME_INVINCIBLE||t==S2_MUSIC_BOSS;}
 static int hex(const char *p,size_t n)
@@ -171,30 +191,25 @@ void s2_cd_themes_reset(void)
     memset(&render_clock,0,sizeof render_clock);memset(&backup_clock,0,sizeof backup_clock);custom_oneup=0;
     audition_solo=audition_stopped=0;audition_track=~0u;
 }
-int s2_cd_theme_build(unsigned t,unsigned donor,const char *manifest,const S3SoundLayout *l,
-                      uint8_t *bank,size_t cap,uint32_t *used,char *error,size_t error_size)
+int s2_cd_theme_prepare(unsigned t,unsigned donor,const char *manifest,S2MusicCue *cue,
+                        char *error,size_t error_size)
 {
-    uint32_t dest=used&&*used<=cap?(*used+1)&~1u:0;
     /* Both cartridge boss queues use the same verified CD boss recording.
      * Reuse existing libraries without a duplicate file or another import. */
     unsigned source=t==S2_MUSIC_FINAL_BOSS?S2_MUSIC_BOSS:t;
-    if(!cd_event(source)||!l||!bank||!used||cap>0x400000u||*used>cap||dest>cap||cap-dest<86||!manifest_read(manifest,donor,(int)source,&songs[t],NULL)){
+    Song song={0};
+    if(t>=S2_MUSIC_COUNT || !cue || !cd_event(source) ||
+       !manifest_read(manifest,donor,(int)source,&song,NULL)){
         if(error&&error_size)snprintf(error,error_size,"Provide the matching Sonic CD disc with audio tracks");return 0;
     }
-    uint8_t *p=bank+dest;memset(p,0,86);p[1]=60;p[2]=7;p[3]=3;p[6]=p[7]=1;
-    for(unsigned i=0;i<10;i++){unsigned off=i<7?8+i*4:8+7*4+(i-7)*6;p[off+1]=54;}
-    /* Keep a live, silent music entry for native music/1-UP ownership. Every
-     * channel rests; the relative jump repeats without keying an instrument. */
-    p[54]=0x80;p[55]=1;p[56]=0xFF;p[57]=0x14;p[58]=0xFF;p[59]=0xFB;
-    /* SFX restore this music voice after key-off. Keep all operators muted
-     * and release them promptly instead of reviving the borrowed SFX tail. */
-    silent_voice(p+60);
     /* Fixed Q16 mixer levels, calibrated from the supported US recordings
      * against the existing CD campaign's -24.2 LUFS music reference. No cold
      * analysis or floating-point gain enters playback or snapshots. */
-    songs[t].loop=t==S2_THEME_INVINCIBLE||source==S2_MUSIC_BOSS?0:~0u;
-    songs[t].gain=t==S2_THEME_OVER?23795u:t==S2_THEME_CLEAR?15541u:source==S2_MUSIC_BOSS?19565u:17437u;
-    be32(bank+l->music_index-0x2A0000+(events[t]-1)*4,0x01000000u|(0x2A0000u+dest));*used=dest+86;
+    song.loop=t==S2_THEME_INVINCIBLE||source==S2_MUSIC_BOSS?0:~0u;
+    song.gain=t==S2_THEME_OVER?23795u:t==S2_THEME_CLEAR?15541u:source==S2_MUSIC_BOSS?19565u:17437u;
+    if(!silent_cue(t,&song,cue)) {free(song.pcm);return 0;}
+    free(songs[t].pcm);
+    songs[t]=song;
     audio_set_extra_source(mix);return 1;
 }
 void s2_cd_theme_request(unsigned native)
@@ -313,9 +328,10 @@ static int custom_loops(unsigned t)
  const char *id=s2_theme_ids[t];
  return strcmp(id,"extra-life")&&strcmp(id,"game-over")&&strcmp(id,"continue")&&strcmp(id,"act-clear")&&strcmp(id,"title")&&strcmp(id,"credits")&&strcmp(id,"emerald")&&strcmp(id,"drowning");
 }
-int s2_cd_custom_build(unsigned t,unsigned kind,const uint8_t *data,size_t bytes,unsigned frames,unsigned loop,const uint8_t hash[32],const S3SoundLayout *l,uint8_t *bank,size_t cap,uint32_t *used,char *error,size_t capacity)
+int s2_cd_custom_prepare(unsigned t,unsigned kind,const uint8_t *data,size_t bytes,unsigned frames,
+                          unsigned loop,const uint8_t hash[32],S2MusicCue *cue,char *error,size_t capacity)
 {
- if(t>=S2_MUSIC_COUNT||!frames||!used||*used>cap||!data||!bytes)return 0;
+ if(t>=S2_MUSIC_COUNT||!frames||!cue||!data||!bytes)return 0;
  Song song={0};song.frames=frames;song.gain=65536;memcpy(song.hash,hash,32);song.loop=~0u;
  if(kind==S2_CUSTOM_PCM){song.pcm=malloc(bytes);if(!song.pcm)return 0;memcpy(song.pcm,data,bytes);if(loop&&loop<=frames)song.loop=loop-1;else if(custom_loops(t))song.loop=0;}
  else if(kind==S2_CUSTOM_VGM){
@@ -326,16 +342,7 @@ int s2_cd_custom_build(unsigned t,unsigned kind,const uint8_t *data,size_t bytes
   for(unsigned i=0;i<11;i++)if(voices&(1u<<i))song.voices[song.voice_count++]=i;
   if(looping)song.loop=loop-1;
  }else return 0;
- unsigned ticks=(unsigned)(((uint64_t)frames*53693175u+44100ULL*895780u-1)/(44100ULL*895780u));
- unsigned rests=(ticks+126)/127;size_t sequence=song.loop==~0u?54+rests*2+2:60,length=sequence+25;
- uint32_t dest=(*used+1)&~1u;if(dest>cap||length>cap-dest)goto fail;
- uint8_t *p=bank+dest;memset(p,0,length);p[2]=7;p[3]=3;p[6]=p[7]=1;
- unsigned end=(unsigned)sequence;p[0]=(uint8_t)(end>>8);p[1]=(uint8_t)end;
- for(unsigned i=0;i<10;i++){unsigned at=i<7?8+i*4:36+(i-7)*6;p[at+1]=54;}
- if(song.loop!=~0u){p[54]=0x80;p[55]=1;p[56]=0xFF;p[57]=0x14;p[58]=0xFF;p[59]=0xFB;}
- else{for(unsigned i=0;i<rests;i++){p[54+i*2]=0x80;unsigned duration=ticks>127?127:ticks;p[55+i*2]=(uint8_t)duration;ticks-=duration;}p[sequence-2]=0xFF;p[sequence-1]=t==S2_THEME_LIFE?0x04:0x10;}
- silent_voice(p+sequence);
- be32(bank+l->music_index-0x2A0000+(s2_music_target(t)-1)*4,0x01000000u|(0x2A0000u+dest));*used=dest+(uint32_t)length;
+ if(!silent_cue(t,&song,cue))goto fail;
  s2_vgm_close(songs[t].vgm);free(songs[t].pcm);songs[t]=song;audio_set_extra_source(mix);return 1;
 fail:
  s2_vgm_close(song.vgm);free(song.pcm);if(error&&capacity)snprintf(error,capacity,"Unable to prepare the custom recording.");return 0;

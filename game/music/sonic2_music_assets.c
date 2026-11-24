@@ -2,70 +2,68 @@
 #include "sonic2_custom_music.h"
 #include "sonic2_cd_themes.h"
 #include "sonic3_sound_assets.h"
-#include "sha256.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef SONIC2_MUSIC_DRIVER
-#include "sonic2_music_clone_metadata.h"
-#include "sonic2_music_clone_program.h"
-#endif
-int s2_music_prepare(uint8_t *rom,size_t size,uint32_t music,uint32_t sfx,uint32_t psg,uint32_t samples,char *error,size_t error_size)
+
+void s2_music_release(S2StockSound *stock,S2MusicLibrary *library)
 {
-#ifdef SONIC2_MUSIC_DRIVER
- enum { BASE=0x2A0000,CAPACITY=0x400000-BASE };
- if(!rom||size<0x400000||sizeof s2_music_clone_program>CAPACITY)return 0;
- uint8_t *bank=rom+BASE;
- memset(bank,0,CAPACITY);memcpy(bank,s2_music_clone_program,sizeof s2_music_clone_program);
- const S3SoundLayout l={sizeof s2_music_clone_program,S2_MUSIC_CLONE_MUSIC_INDEX,S2_MUSIC_CLONE_SOUND_INDEX,S2_MUSIC_CLONE_PSG_INDEX,S2_MUSIC_CLONE_MODENV_INDEX};
- const S3SoundPCMLayout pcm={S2_MUSIC_CLONE_SAMPLE_TABLE,S2_MUSIC_CLONE_DAC_MAP_S3,S2_MUSIC_CLONE_DAC_MAP_SK,S2_MUSIC_CLONE_SEGA_ID,S2_MUSIC_CLONE_SAMPLE_COUNT};
- memcpy(rom+l.music_index,rom+music,31*4);
- memcpy(rom+l.sound_index,rom+sfx,81*4);
- memcpy(rom+l.psg_index,rom+psg,13*4);
- /* Original Sonic 2 notes and logo keep their exact PCM descriptors. New
-  * donor notes use separate slots, preserving native effects and volume. */
- memcpy(rom+pcm.sample_table,rom+samples,17*10);
- memcpy(rom+pcm.sample_table+(pcm.sega_id-0x81)*10,rom+samples+17*10,10);
- s2_cd_themes_reset();
- S3SoundMusicCache cache={0};uint8_t *inputs[S2_ROM_DONOR_COUNT]={0};
- /* Only the seventeen native drum notes and the separate SEGA slot are
-  * occupied. Converted donors remap every drum, so the intervening template
-  * slots need not be reserved and can hold independently selected tracks. */
- size_t sizes[S2_ROM_DONOR_COUNT]={0};uint32_t used=sizeof s2_music_clone_program;unsigned next=17;int ok=1;
- for(unsigned t=0;t<S2_MUSIC_COUNT&&ok;t++)if(s2_music_active(t)){
-  const S2MusicChoice *choice=s2_theme_choice(t,(unsigned)s2_themes[t].choice);
-  unsigned d=choice->donor,target=s2_music_target(t);
-  if(s2_music_native_choice(t)){
-   /* Retail CNZ 2P is the retained August Oil Ocean arrangement. Reuse the
-    * native converted entry without requiring an external prototype ROM. */
-   memcpy(rom+l.music_index+(target-1)*4,rom+music+choice->song*4,4);
-  }
-  else if(d==S2_DONOR_CUSTOM)ok=s2_custom_build(t,&l,bank,CAPACITY,&used,error,error_size);
-  else if(d==S2_DONOR_CD_US)ok=s2_cd_theme_build(t,d,s2_donor_path(d),&l,bank,CAPACITY,&used,error,error_size);
-  else{
-   if(!inputs[d])inputs[d]=s2_donor_read(d,&sizes[d]);
-   ok=inputs[d]&&s3_sound_build_track(inputs[d],sizes[d],d,choice->song,target,&l,&pcm,
-          s2_music_clone_program,bank,CAPACITY,&used,&next,&cache,error,error_size);
-  }
-  if(ok){
-   uint8_t *entry=rom+l.music_index+(target-1)*4;
-   uint32_t address=(((uint32_t)entry[1]<<16)|((uint32_t)entry[2]<<8)|entry[3])&0xFFFFFEu;
-   uint32_t end=address+((unsigned)rom[address]<<8)+rom[address+1];
-   fprintf(stderr,"[music] %s: %s; native=$%02X data=$%06X..$%06X\n",s2_theme_names[t],choice->label,target+0x80,address,end);
-  }
-  else if(error&&error_size&&!*error)snprintf(error,error_size,"Unable to prepare %s.",s2_theme_names[t]);
- }
- for(unsigned d=0;d<S2_ROM_DONOR_COUNT;d++)free(inputs[d]);
- s3_sound_music_cache_free(&cache);
- if(ok){
-  uint8_t digest[32];char hex[65];recompui_sha256_compute(bank,used,digest);
-  for(unsigned i=0;i<32;i++)snprintf(hex+2*i,3,"%02x",digest[i]);
-  fprintf(stderr,"[music] Prepared immutable bank: %u bytes, %u sample slots, SHA256 %s\n",used,next,hex);
- }
- return ok;
-#else
- (void)rom;(void)size;(void)music;(void)sfx;(void)psg;(void)samples;
- if(error&&error_size)snprintf(error,error_size,"Music customization is unavailable in this build.");
- return 0;
-#endif
+    s2_cd_themes_reset();
+    if(stock)for(unsigned i=0;i<S2_MUSIC_CUES;++i) {
+        free((void *)stock->selected_music[i].data);
+        stock->selected_music[i]=(S2MusicCue){0};
+    }
+    for(unsigned d=0;d<S2_ROM_DONOR_COUNT;++d) {
+        S2DonorSound *sound=library->donors[d];
+        if(!sound)continue;
+        for(unsigned n=0;n<S2_DONOR_PCM_SLOTS;++n)free(sound->pcm[n].data);
+        free(sound);
+        library->donors[d]=NULL;
+    }
+}
+
+int s2_music_prepare(S2StockSound *stock,S2MusicLibrary *library,char *error,size_t error_size)
+{
+    if(!stock || !library)return 0;
+    if(error && error_size)*error=0;
+    s2_music_release(stock,library);
+    uint8_t *roms[S2_ROM_DONOR_COUNT]={0};
+    size_t sizes[S2_ROM_DONOR_COUNT]={0};
+    S3SoundSource sources[S2_ROM_DONOR_COUNT]={0};
+    int ok=1;
+    for(unsigned t=0;t<S2_MUSIC_COUNT && ok;++t) {
+        if(!s2_music_active(t))continue;
+        const S2MusicChoice *choice=s2_theme_choice(t,(unsigned)s2_themes[t].choice);
+        unsigned target=s2_music_target(t),donor=choice->donor;
+        S2MusicCue *cue=&stock->selected_music[target-1];
+        if(s2_music_native_choice(t)) {
+            /* The alternative Oil Ocean arrangement already exists in the
+             * stock 2P catalogue. Copy only its decoded cue. */
+            unsigned i=choice->song;
+            uint8_t *data=malloc(stock->music_bytes[i]);
+            ok=data!=NULL;
+            if(ok) {
+                memcpy(data,stock->music[i],stock->music_bytes[i]);
+                *cue=(S2MusicCue){data,NULL,stock->music_bytes[i],stock->music_tempo[i],stock->music_pal[i]};
+            }
+        } else if(donor==S2_DONOR_CUSTOM) {
+            ok=s2_custom_prepare(t,cue,error,error_size);
+        } else if(donor==S2_DONOR_CD_US) {
+            ok=s2_cd_theme_prepare(t,donor,s2_donor_path(donor),cue,error,error_size);
+        } else {
+            if(!roms[donor]) {
+                roms[donor]=s2_donor_read(donor,&sizes[donor]);
+                library->donors[donor]=calloc(1,sizeof(S2DonorSound));
+            }
+            ok=roms[donor] && library->donors[donor] &&
+               s3_sound_prepare_cue(roms[donor],sizes[donor],donor,choice->song,
+                                    &sources[donor],library->donors[donor],cue,error,error_size);
+        }
+        if(ok && target==0x1F)cue->force_pal=1;
+        if(!ok && error && error_size && !*error)
+            snprintf(error,error_size,"Unable to prepare %s.",s2_theme_names[t]);
+    }
+    for(unsigned d=0;d<S2_ROM_DONOR_COUNT;++d)free(roms[d]);
+    if(!ok)s2_music_release(stock,library);
+    return ok;
 }

@@ -54,7 +54,7 @@ static int feature_get(void *c,int i,RecompLauncherCModFeature *o)
     int g=group_at(i);if(g<0||!o)return 0;memset(o,0,sizeof *o);
     COPY(o->id,group_ids[g]);COPY(o->package_id,package);COPY(o->package_name,"Music Customization");COPY(o->package_version,"0.2.0");
     COPY(o->name,group_names[g]);COPY(o->group,"Sound");COPY(o->author,"SonicTheHedgehog2Recomp contributors");
-    COPY(o->description,"Choose each track independently. Stock keeps the original music. Custom music accepts your WAV, VGM or SMPS file; donor arrangements use matching ROMs shared across compatible choices. A ready replacement enables this section and Clone Driver. Disable to restore stock music while keeping your choices. Restart to apply; local play only.");
+    COPY(o->description,"Choose each track independently. Custom music accepts WAV, VGM or SMPS files. Donor arrangements use matching ROMs shared across compatible choices. Disable to restore stock music while keeping your choices. Restart to apply. Local play only.");
     o->enabled=s2_music_group_enabled((unsigned)g);
     while(track_at(g,o->option_count)>=0)++o->option_count;
     int ready=1;for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_group(t)==(unsigned)g&&s2_music_available(t)&&s2_themes[t].enabled&&!s2_theme_ready(t))ready=0;
@@ -141,6 +141,12 @@ static int resource_set(void *c,const char *p,const char *f,const char *r,const 
 }
 static int commit(void *c,const char *image)
 {(void)c;if(!s2_themes_validate())return 0;if(base&&base->commit&&!base->commit(base->ctx,image))return 0;return s2_themes_save();}
+static int commit_netplay(void *c,const char *image)
+{
+    (void)c;
+    if(!s2_themes_validate_netplay())return 0;
+    return !base || !base->commit_netplay || base->commit_netplay(base->ctx,image);
+}
 static const char *last_error(void *c)
 {(void)c;return *s2_themes_error()?s2_themes_error():base&&base->last_error?base->last_error(base->ctx):"";}
 const RecompLauncherCModProvider *s2_music_mods(const RecompLauncherCModProvider *common)
@@ -150,7 +156,7 @@ const RecompLauncherCModProvider *s2_music_mods(const RecompLauncherCModProvider
     p.feature_option_get=option_get;p.feature_choice_get=choice_get;p.feature_set_option=set_option;
     p.feature_resource_count=resource_count;p.feature_resource_get=resource_get;p.feature_resource_set_path=resource_set;p.feature_resource_import=resource_import;
     p.try_commit=NULL;p.preparation_revision=NULL;p.commit_worker_safe=0;
-    p.commit=commit;p.last_error=last_error;return &p;
+    p.commit=commit;p.commit_netplay=commit_netplay;p.last_error=last_error;return &p;
 }
 #else
 const struct RecompLauncherCModProvider *s2_music_mods(const struct RecompLauncherCModProvider *base){return base;}

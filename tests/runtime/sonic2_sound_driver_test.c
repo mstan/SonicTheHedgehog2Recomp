@@ -43,8 +43,8 @@ int main(int argc,char **argv)
     uint8_t before[32],after[32];
     recompui_sha256_compute(g_rom,sizeof g_rom,before);
     s2_sound_load_settings(argv[2]);
-    CHECK(!s2_sound_selected() && !s2_sound_active() && s2_sound_netplay_allowed());
-    CHECK(!s2_sound_hook(0x1400) && !s2_sound_dispatch_miss(0x100000));
+    CHECK(s2_sound_netplay_allowed());
+    CHECK(!s2_sound_hook(0x1400));
     s2_sound_post_reset();
     g_cpu.D[0]=0xCAFE;
     g_cpu.SR=0x2704;

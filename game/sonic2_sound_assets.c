@@ -19,7 +19,6 @@ static unsigned rw(Convert *c,unsigned p) { return rb(c,p)|(rb(c,p+1)<<8); }
 static unsigned pointer(Convert *c,unsigned p)
 { unsigned v=rw(c,p);if(v<c->base || v-c->base>=c->size)c->bad=1;return v-c->base; }
 static void ww(uint8_t *m,unsigned p,unsigned v) { m[p]=(uint8_t)(v>>8);m[p+1]=(uint8_t)v; }
-static void wl(uint8_t *m,unsigned p,unsigned v) { ww(m,p,v>>16);ww(m,p+2,v); }
 static unsigned le(const uint8_t *m,unsigned p) { return m[p]|(m[p+1]<<8); }
 
 /* Both stock decompressors use the same 4 KiB dictionary, initially zero.
@@ -274,42 +273,34 @@ fail:
 
 /* Compatibility writer for the older generated driver. The HLE decoder
  * never needs this representation or an address in the cartridge. */
-int s2_sound_build_assets(const uint8_t *rom,size_t rom_size,uint8_t *memory,size_t memory_size,
-                         const S2SoundAssetLayout *layout,char *error,size_t error_size)
+S2MusicCue s2_sound_music_cue(const S2StockSound *bank,unsigned id)
 {
-    if(!memory || !layout || memory_size<S2_SOUND_ASSETS_END)goto invalid;
-    unsigned tables[]={layout->music_index,layout->sfx_index,layout->special_index,layout->psg_index,layout->sample_table};
-    for(unsigned i=0;i<5;i++)if(tables[i]<ROM_SIZE || tables[i]>S2_SOUND_MUSIC_BASE-1024)goto invalid;
-    S2StockSound *assets=s2_sound_decode_stock(rom,rom_size,error,error_size);
-    if(!assets)return 0;
-    memset(memory+S2_SOUND_MUSIC_BASE,0,S2_SOUND_ASSETS_END-S2_SOUND_MUSIC_BASE);
-    for(unsigned i=0;i<S2_MUSIC_CUES;++i) {
-        unsigned dest=S2_SOUND_MUSIC_BASE+i*S2_SOUND_MUSIC_STRIDE;
-        memcpy(memory+dest,assets->music[i],assets->music_bytes[i]);
-        wl(memory,layout->music_index+4*i,((uint32_t)assets->music_tempo[i]<<24)|dest|assets->music_pal[i]);
+    if(!bank || id<0x81 || id>0x9F)return (S2MusicCue){0};
+    unsigned i=id-0x81;
+    if(bank->selected_music[i].data)return bank->selected_music[i];
+    return (S2MusicCue){bank->music[i],NULL,bank->music_bytes[i],bank->music_tempo[i],bank->music_pal[i]};
+}
+
+const uint8_t *s2_sound_pcm_view(const S2StockSound *bank,unsigned cue,unsigned id,
+                                uint32_t *bytes,uint32_t *rate)
+{
+    if(!bank)return NULL;
+    if(!cue && id==0xFA) {
+        *bytes=sizeof bank->sega;
+        *rate=bank->sega_rate;
+        return bank->sega;
     }
-    for(unsigned i=0;i<S2_SFX_CUES;++i) {
-        unsigned dest=S2_SOUND_SFX_BASE+i*S2_SOUND_SFX_STRIDE;
-        memcpy(memory+dest,assets->sfx[i],assets->sfx_bytes[i]);
-        wl(memory,layout->sfx_index+4*i,((uint32_t)assets->sfx_priority[i]<<24)|dest);
+    if(id<0x81)return NULL;
+    unsigned slot=id-0x81;
+    const S2DonorSound *donor=s2_sound_music_cue(bank,cue).donor;
+    if(donor) {
+        if(slot>=S2_DONOR_PCM_SLOTS || !donor->pcm[slot].data)return NULL;
+        *bytes=donor->pcm[slot].bytes;
+        *rate=donor->pcm[slot].rate;
+        return donor->pcm[slot].data;
     }
-    for(unsigned i=0;i<S2_PSG_ENVELOPES;++i) {
-        unsigned dest=S2_SOUND_PSG_BASE+256*i;
-        memcpy(memory+dest,assets->envelope[i],256);
-        wl(memory,layout->psg_index+4*i,dest);
-    }
-    memcpy(memory+S2_SOUND_PCM_BASE,assets->pcm,sizeof assets->pcm);
-    memcpy(memory+S2_SOUND_SEGA_BASE,assets->sega,sizeof assets->sega);
-    for(unsigned i=0;i<S2_PCM_SLOTS;++i) {
-        const S2SoundSample *s=&assets->samples[i];
-        unsigned dest=S2_SOUND_PCM_BASE+S2_PCM_BYTES*s->bank;
-        unsigned record=layout->sample_table+10*i;
-        memory[record]=0x12;memory[record+1]=(uint8_t)(s->rate*256u/25208);
-        wl(memory,record+2,dest);wl(memory,record+6,dest+s->bytes);
-    }
-    free(assets);
-    return 1;
-invalid:
-    if(error_size)snprintf(error,error_size,"Invalid legacy sound bank destination.");
-    return 0;
+    if(slot>=S2_PCM_SLOTS)return NULL;
+    *bytes=bank->samples[slot].bytes;
+    *rate=bank->samples[slot].rate;
+    return bank->pcm[bank->samples[slot].bank];
 }

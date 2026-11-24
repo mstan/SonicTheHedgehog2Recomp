@@ -12,6 +12,7 @@ enum {
 
 typedef struct Cue {
     const uint8_t *data;
+    const S2DonorSound *donor;
     unsigned end, bytes;
 } Cue;
 
@@ -36,8 +37,10 @@ static Cue get_cue(const S2StockSound *bank,unsigned id)
         cue.data=bank->save_warp;
         cue.bytes=bank->save_warp_bytes;
     } else if(music_id(asset)) {
-        cue.data=bank->music[asset-0x81];
-        cue.bytes=bank->music_bytes[asset-0x81];
+        S2MusicCue music=s2_sound_music_cue(bank,asset);
+        cue.data=music.data;
+        cue.bytes=music.bytes;
+        cue.donor=music.donor;
     } else if(effect_id(asset)) {
         cue.data=bank->sfx[asset-0xA0];
         cue.bytes=bank->sfx_bytes[asset-0xA0];
@@ -107,6 +110,7 @@ static void stop_effects(S2SoundSequence *s)
 static int start_music(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
 {
     Cue cue=get_cue(bank,id);
+    if(cue.bytes<8)return 0;
     unsigned fm=cue.data[2],psg=cue.data[3],header=8+fm*4+psg*6;
     if(!fm || fm>7 || psg>3 || cue.end<header || cue.end>cue.bytes)return 0;
     if(id==ONE_UP && s->music_cue!=ONE_UP) {
@@ -114,6 +118,8 @@ static int start_music(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
         s->saved_cue=s->music_cue;
         s->saved_tempo=s->tempo;
         s->saved_accumulator=s->tempo_accumulator;
+        s->saved_speed_count=s->speed_count;
+        s->saved_pal_count=s->pal_count;
         stop_effects(s);
     } else if(id!=ONE_UP) {
         s->saved_cue=0;
@@ -122,7 +128,8 @@ static int start_music(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
     stop_music(s);
     s->music_cue=(uint8_t)id;
     s->tempo=cue.data[7];
-    s->tempo_accumulator=0;
+    s->tempo_accumulator=cue.data[5]&1u?s->tempo:0;
+    s->speed_count=0;
     s->pal_count=0;
     s->fade=0;
     for(unsigned i=0;i<fm+psg;++i) {
@@ -130,7 +137,7 @@ static int start_music(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
         const uint8_t *part=cue.data+8+(i<fm?i*4:fm*4+(i-fm)*6);
         init_track(&s->music[ch],id,ch,word(part),cue.data[6],part[2],part[3]);
         if(i>=fm) {
-            if(part[5]>S2_PSG_ENVELOPES)return 0;
+            if(part[5]>(cue.donor?S2_DONOR_PSG_ENVELOPES:S2_PSG_ENVELOPES))return 0;
             s->music[ch].voice=part[5];
         }
     }
@@ -182,13 +189,17 @@ static void restore_music(S2SoundSequence *s)
     s->music_cue=s->saved_cue;
     s->tempo=s->saved_tempo;
     s->tempo_accumulator=s->saved_accumulator;
+    s->speed_count=s->saved_speed_count;
+    s->pal_count=s->saved_pal_count;
     s->saved_cue=0;
     s->fade_in=24;
 }
 
-static void pcm_start(S2SoundSequence *s,unsigned id)
+static void pcm_start(S2SoundSequence *s,unsigned cue,unsigned id,unsigned pan)
 {
     s->pcm_id=(uint8_t)id;
+    s->pcm_cue=(uint8_t)cue;
+    s->pcm_pan=(uint8_t)pan;
     s->pcm_position=0;
     s->pcm_phase=0;
 }
@@ -201,9 +212,9 @@ static int request(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
     switch(id) {
     case STOP_EFFECTS:stop_effects(s);break;
     case FADE_MUSIC:s->fade=1;s->fade_clock=0;stop_effects(s);break;
-    case SEGA_SAMPLE:stop_music(s);stop_effects(s);pcm_start(s,SEGA_SAMPLE);break;
+    case SEGA_SAMPLE:stop_music(s);stop_effects(s);pcm_start(s,0,SEGA_SAMPLE,0xC0);break;
     case SPEED_UP:s->speed_up=1;break;
-    case SLOW_DOWN:s->speed_up=0;break;
+    case SLOW_DOWN:s->speed_up=0;s->speed_count=s->saved_speed_count=0;break;
     case STOP_ALL:stop_music(s);stop_effects(s);s->saved_cue=0;s->pcm_id=0;s->fade=s->fade_in=0;break;
     case PAUSE:s->paused=1;break;
     case RESUME:
@@ -232,7 +243,10 @@ static int command(S2SoundSequence *s,S2SoundTrack *t,Cue cue,const S2StockSound
     const uint8_t *p=cue.data+t->pc;
     t->pc+=widths[code];
     switch(code) {
-    case 0:t->pan=(t->pan&0x37)|p[0];t->dirty|=DIRTY_PAN;break;
+    case 0:
+        t->pan=(t->pan&0x37)|p[0];t->dirty|=DIRTY_PAN;
+        if(t->channel==S2_DAC_CHANNEL && s->pcm_id)s->pcm_pan=t->pan&0xC0u;
+        break;
     case 1:t->detune=p[0];t->dirty|=DIRTY_PITCH;break;
     case 2:s->communication=p[0];break;
     case 3:
@@ -267,7 +281,7 @@ static int command(S2SoundSequence *s,S2SoundTrack *t,Cue cue,const S2StockSound
     case 17:t->noise=p[0];t->dirty|=DIRTY_NOISE|DIRTY_VOLUME;break;
     case 18:t->mod_mode=0;t->modulation=0;t->dirty|=DIRTY_PITCH;break;
     case 19:
-        if(p[0]>S2_PSG_ENVELOPES)return 0;
+        if(p[0]>(cue.donor?S2_DONOR_PSG_ENVELOPES:S2_PSG_ENVELOPES))return 0;
         t->voice=p[0];
         break;
     case 20:case 21:case 22: {
@@ -294,15 +308,33 @@ static int command(S2SoundSequence *s,S2SoundTrack *t,Cue cue,const S2StockSound
             t->raw_value[t->raw_count++]=p[1];
         }
         break;
-    case 25:
-        if(p[0]>REST && p[0]<=REST+S2_PCM_SLOTS)pcm_start(s,p[0]);
+    case 25: {
+        uint32_t bytes,rate;
+        unsigned source=cue.donor?t->cue:0;
+        if(s2_sound_pcm_view(bank,source,p[0],&bytes,&rate))pcm_start(s,source,p[0],s->music[S2_DAC_CHANNEL].pan);
         break;
+    }
     case 26:
         if(!request(s,bank,p[0]))return 0;
         break;
     case 27:t->transpose=p[0];break;
-    case 28:t->volume=p[0];t->dirty|=DIRTY_VOLUME;break;
+    case 28:
+        t->volume=cue.donor && (cue.data[5]&1u)?(~p[0]&(t->channel<S2_FM_CHANNELS?0x7F:0x78)):p[0];
+        t->dirty|=DIRTY_VOLUME;
+        break;
+    case 30: /* There is no continuous-effect loop while playing a music track. */
+        if(effect_id(t->cue))return 0;
+        break;
     case 31:s->push_playing=0;break;
+    case 34:
+        t->mod_envelope=p[0]&0x3F;
+        if(t->mod_envelope && (!cue.donor || t->mod_envelope>S2_DONOR_MOD_ENVELOPES))return 0;
+        if(!(p[0]&0x80))t->mod_mode=0;
+        t->mod_position=0;
+        t->mod_value=0;
+        t->mod_multiplier=0;
+        t->dirty|=DIRTY_PITCH;
+        break;
     default:return 0; /* an unimplemented opcode is an explicit fault */
     }
     return 1;
@@ -343,12 +375,55 @@ static void reset_modulation(S2SoundTrack *t)
     t->mod_direction=t->mod_delta;
     t->mod_remaining=t->mod_mode==1?t->mod_steps/2:t->mod_steps;
     t->modulation=0;
+    t->mod_position=0;
+    t->mod_value=0;
+    t->mod_multiplier=0;
+}
+
+static int update_envelope(S2SoundTrack *t,const S2SoundEnvelope *env,int modulation)
+{
+    uint16_t *position=modulation?&t->mod_position:&t->envelope_position;
+    for(unsigned count=0;count<env->bytes;++count) {
+        if(*position>=env->bytes)return 0;
+        unsigned value=env->data[*position];
+        if(value==0x80) {*position=0;continue;}
+        if(value==0x81 || (modulation && value==0x83))return 1;
+        if(value==0x82) {
+            if(*position+1u>=env->bytes)return 0;
+            *position=env->data[*position+1u];
+            continue;
+        }
+        if(value==0x83) {
+            t->gate=0;
+            t->dirty=(t->dirty&~KEY_ON)|KEY_OFF;
+            return 1;
+        }
+        if(modulation) {
+            if(value==0x84) {
+                if(*position+1u>=env->bytes)return 0;
+                t->mod_multiplier+=env->data[*position+1u];
+                *position+=2;
+                continue;
+            }
+            int16_t depth=(int16_t)((int8_t)value*(1+(int)t->mod_multiplier));
+            if(t->mod_value!=depth)t->dirty|=DIRTY_PITCH;
+            t->mod_value=depth;
+        } else {
+            uint8_t level=value&31u;
+            if(t->envelope_level!=level)t->dirty|=DIRTY_VOLUME;
+            t->envelope_level=level;
+        }
+        ++*position;
+        return 1;
+    }
+    return 0;
 }
 
 static int update_track(S2SoundSequence *s,const S2StockSound *bank,S2SoundTrack *t)
 {
     if(!t->active)return 1;
     Cue cue=get_cue(bank,t->cue);
+    int s3_music=cue.donor && (cue.data[5]&1u);
     if(!--t->remaining) {
         t->hold=0;
         unsigned limit=0;
@@ -365,27 +440,39 @@ static int update_track(S2SoundSequence *s,const S2StockSound *bank,S2SoundTrack
             }
             if(byte>=0xE0)return fault(s,t);
             if(byte>=REST) {
-                t->note=(uint8_t)byte;
+                /* S3 tone tracks keep pitch across a rest so a subsequent
+                 * duration-only event can re-use it. DAC retains its rest. */
+                if(byte!=REST || !s3_music || t->channel==S2_DAC_CHANNEL)t->note=(uint8_t)byte;
                 if(t->pc<cue.end && cue.data[t->pc]<REST)
                     t->duration=(uint8_t)(cue.data[t->pc++]*t->divider);
             } else t->duration=(uint8_t)(byte*t->divider);
             t->remaining=t->duration;
             if(t->channel==S2_DAC_CHANNEL) {
-                if(t->note>REST+S2_PCM_SLOTS)return fault(s,t);
-                if(t->note>REST)pcm_start(s,t->note);
+                if(t->note>REST) {
+                    uint32_t bytes,rate;
+                    unsigned source=cue.donor?t->cue:0;
+                    if(!s2_sound_pcm_view(bank,source,t->note,&bytes,&rate))return fault(s,t);
+                    pcm_start(s,source,t->note,t->pan&0xC0u);
+                }
                 return 1;
             }
-            if(t->note==REST) {
+            if(t->note==REST || byte==REST ||
+               (s3_music && t->channel>=S2_FM_CHANNELS && t->hold && !t->gate)) {
                 t->gate=0;
                 t->dirty=(t->dirty&~KEY_ON)|KEY_OFF;
                 return 1;
             }
             if(byte>=REST) {
                 if(t->channel<S2_FM_CHANNELS) {
-                    unsigned key=(t->note-REST+t->transpose)&127u;
-                    t->period=bank->fm_pitch[key];
+                    if(s3_music) {
+                        static const uint16_t octave[]={0x284,0x2AB,0x2D3,0x2FE,0x32D,0x35C,
+                            0x38F,0x3C5,0x3FF,0x43C,0x47C,0x4C0};
+                        unsigned key=(t->note-REST-1+t->transpose)&255u;
+                        t->period=(uint16_t)(octave[key%12]|((key/12)<<11));
+                    } else t->period=bank->fm_pitch[(t->note-REST+t->transpose)&127u];
                 } else {
                     unsigned key=(t->note-REST-1+t->transpose)&127u;
+                    if(cue.donor && (cue.data[5]&2u) && key==81)key=82;
                     t->period=bank->psg_pitch[key];
                 }
             }
@@ -406,8 +493,11 @@ static int update_track(S2SoundSequence *s,const S2StockSound *bank,S2SoundTrack
         }
         do_modulation(t);
     }
+    if(t->gate && t->mod_envelope &&
+       !update_envelope(t,&cue.donor->modulation[t->mod_envelope-1],1))return fault(s,t);
     if(t->channel>=S2_FM_CHANNELS && t->channel!=S2_DAC_CHANNEL && t->gate && t->voice) {
-        unsigned value=bank->envelope[t->voice-1][t->envelope_position];
+        if(cue.donor)return update_envelope(t,&cue.donor->envelope[t->voice-1],0)?1:fault(s,t);
+        unsigned value=bank->envelope[t->voice-1][t->envelope_position&255u];
         if(value<0x80) {
             if(t->envelope_level!=value)t->dirty|=DIRTY_VOLUME;
             t->envelope_level=(uint8_t)value;
@@ -468,7 +558,7 @@ static void render_track(S2SoundSequence *s,const S2StockSound *bank,S2SoundTrac
             else fm(out,channel,t->raw_register[i],t->raw_value[i]);
         }
         if(t->gate && (dirty&DIRTY_PITCH)) {
-            unsigned pitch=(t->period+(int8_t)t->detune+t->modulation)&0x3FFF;
+            unsigned pitch=(t->period+(int8_t)t->detune+t->modulation+t->mod_value)&0x3FFF;
             fm(out,channel,0xA4,pitch>>8);
             fm(out,channel,0xA0,pitch);
         }
@@ -481,7 +571,7 @@ static void render_track(S2SoundSequence *s,const S2StockSound *bank,S2SoundTrac
             if(t->noise)psg(out,0xDF);
         }
         if(t->gate && (dirty&DIRTY_PITCH)) {
-            unsigned pitch=(t->period+(int8_t)t->detune+t->modulation)&0x3FF;
+            unsigned pitch=(t->period+(int8_t)t->detune+t->modulation+t->mod_value)&0x3FF;
             psg(out,tone|(pitch&15));
             psg(out,pitch>>4);
         }
@@ -510,18 +600,8 @@ static void output_tracks(S2SoundSequence *s,const S2StockSound *bank,Output out
 
 static void render_pcm(S2SoundSequence *s,const S2StockSound *bank,uint32_t hz,uint32_t span,Output out)
 {
-    const uint8_t *sample=NULL;
-    unsigned length=0,rate=0;
-    if(s->pcm_id==SEGA_SAMPLE) {
-        sample=bank->sega;
-        length=sizeof bank->sega;
-        rate=bank->sega_rate;
-    } else if(s->pcm_id>REST && s->pcm_id<=REST+S2_PCM_SLOTS) {
-        const S2SoundSample *desc=&bank->samples[s->pcm_id-REST-1];
-        sample=bank->pcm[desc->bank];
-        length=desc->bytes;
-        rate=desc->rate;
-    }
+    uint32_t length=0,rate=0;
+    const uint8_t *sample=s2_sound_pcm_view(bank,s->pcm_cue,s->pcm_id,&length,&rate);
     if(!sample || !rate) {
         if(s->dac_enabled)out.write(out.context,0,S2_CHIP_FM1,0x2B,0);
         s->dac_enabled=0;
@@ -529,9 +609,13 @@ static void render_pcm(S2SoundSequence *s,const S2StockSound *bank,uint32_t hz,u
     }
     if(!s->dac_enabled) {
         key(out,5,0);
-        fm(out,5,0xB4,0xC0);
         out.write(out.context,0,S2_CHIP_FM1,0x2B,0x80);
         s->dac_enabled=1;
+        s->dac_pan=0xFF;
+    }
+    if(s->pcm_pan!=s->dac_pan) {
+        fm(out,5,0xB4,s->pcm_pan);
+        s->dac_pan=s->pcm_pan;
     }
     uint64_t phase=s->pcm_phase;
     uint64_t end=(uint64_t)span*rate;
@@ -575,13 +659,23 @@ int s2_sequence_frame(S2SoundSequence *s,const S2StockSound *bank,
         return 1;
     }
     unsigned ticks=1;
-    if(pal && s->music_cue && !bank->music_pal[s->music_cue-0x81] && ++s->pal_count==5) {
+    S2MusicCue music=s2_sound_music_cue(bank,s->music_cue);
+    if(pal && music.data && !music.force_pal && ++s->pal_count==5) {
         s->pal_count=0;
         ++ticks;
     }
+    if(s->speed_up && music.donor && (music.data[5]&1u)) {
+        if(s->speed_count<ticks) {
+            ++ticks;
+            s->speed_count+=9;
+        }
+        s->speed_count=(uint8_t)(s->speed_count-ticks);
+    }
     while(ticks--) {
-        unsigned tempo=s->speed_up && s->music_cue && s->music_cue!=ONE_UP?
-            bank->music_tempo[s->music_cue-0x81]:s->tempo;
+        music=s2_sound_music_cue(bank,s->music_cue);
+        unsigned tempo=s->tempo;
+        if(s->speed_up && s->music_cue && s->music_cue!=ONE_UP && !(music.donor && (music.data[5]&1u)))
+            tempo=music.fast_tempo;
         unsigned wait=s->tempo_accumulator+tempo;
         s->tempo_accumulator=(uint8_t)wait;
         if(wait>255)
