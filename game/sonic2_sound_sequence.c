@@ -648,6 +648,14 @@ static void mute(Output out)
     out.write(out.context,0,S2_CHIP_FM1,0x2B,0);
 }
 
+static void advance_music_tempo(S2SoundSequence *s,unsigned tempo)
+{
+    unsigned wait=s->tempo_accumulator+tempo;
+    s->tempo_accumulator=(uint8_t)wait;
+    if(wait>255)
+        for(unsigned ch=0;ch<S2_SEQUENCE_TRACKS;++ch)++s->music[ch].remaining;
+}
+
 int s2_sequence_frame(S2SoundSequence *s,const S2StockSound *bank,
                       uint8_t queue[5],int pal,uint32_t hz,uint32_t span,
                       S2SoundWrite write,void *context)
@@ -681,15 +689,18 @@ int s2_sequence_frame(S2SoundSequence *s,const S2StockSound *bank,
     }
     while(ticks--) {
         music=s2_sound_music_cue(bank,s->music_cue);
-        unsigned tempo=s->tempo;
-        if(s->speed_up && s->music_cue && s->music_cue!=ONE_UP && !(music.donor && (music.data[5]&1u)))
-            tempo=music.fast_tempo;
-        unsigned wait=s->tempo_accumulator+tempo;
-        s->tempo_accumulator=(uint8_t)wait;
-        if(wait>255)
-            for(unsigned ch=0;ch<S2_SEQUENCE_TRACKS;++ch)++s->music[ch].remaining;
+        int s3_tempo_order=music.donor && (music.data[5]&1u);
+        if(!s3_tempo_order) {
+            unsigned tempo=s->tempo;
+            if(s->speed_up && s->music_cue && s->music_cue!=ONE_UP)
+                tempo=music.fast_tempo;
+            advance_music_tempo(s,tempo);
+        }
         for(unsigned ch=0;ch<S2_SEQUENCE_TRACKS;++ch)
             if(!update_track(s,bank,&s->music[ch]))return 0;
+        /* On the converted S3 cadence, finish the current note update before
+         * applying the carry to the duration. An attack may land on this tick. */
+        if(s3_tempo_order)advance_music_tempo(s,s->tempo);
         if(!ticks)for(unsigned ch=0;ch<S2_TONE_CHANNELS;++ch)
             if(!update_track(s,bank,&s->effect[ch]))return 0;
         if(s->restore_pending || (s->music_cue==ONE_UP && !s2_sequence_playing(s))) {
