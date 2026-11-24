@@ -2927,7 +2927,7 @@ static void marked_sprite_interpolation_test(void)
             for(unsigned x=0;x<320;++x) {
                 unsigned c=indices[x];
                 ordinary[frame][row*320+x]=genesis_dac_cram_to_argb(
-                    c>=GVDP_HOST_PALETTE_BASE?gvdp_ext_color(row,1+(c-GVDP_HOST_PALETTE_BASE)/16,c&15):v.cram[c&63],
+                    c>=GVDP_HOST_PALETTE_BASE?gvdp_ext_color(row,1+(c-GVDP_HOST_PALETTE_BASE)/16,(c-GVDP_HOST_PALETTE_BASE)%16):v.cram[c&63],
                     GENESIS_DAC_NORMAL);
             }
             presentation_capture(&v,row,ordinary[frame]+row*320,320,320,NULL);
