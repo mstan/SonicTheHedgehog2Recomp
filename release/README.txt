@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v1.2.1
+SonicTheHedgehog2Recomp v1.2.2
 ===========================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis

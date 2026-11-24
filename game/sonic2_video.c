@@ -1772,6 +1772,11 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
             unsigned piece_index=(unsigned)n;
             if(map==0x38A96 && (frame&255u)==1 && !static_mapping)
                 piece_index=n?(unsigned)n-1u:2u;
+            /* Obj48 retracts and extends its pipe around the four ball
+             * quadrants. Across poses the piece ordinals are different
+             * geometry; only interpolate its camera and completed pose. */
+            if(map==0x254FE && frame<8 && !static_mapping)
+                piece_index=frame*16u+(unsigned)n;
             keys[dst->count]=owner|piece_index;
         }
         SceneSprite *q=&dst->sprites[dst->count++];
@@ -2827,11 +2832,16 @@ typedef struct {
     int x,y;
     uint8_t first,last;
 } SpriteProjection;
-enum { FRACTIONAL_ROWS=224, MAX_FRACTIONAL_SPRITE_ROWS=32 };
-static SpriteProjection s_fractional_projection[SCENE_SPRITES];
-static uint16_t s_fractional_row_sprite[SCENE_SPRITES*MAX_FRACTIONAL_SPRITE_ROWS];
-static unsigned s_fractional_row_offset[FRACTIONAL_ROWS+1];
-static int s_fractional_sprites_ready;
+enum { SCENE_SPRITE_ROWS=224, MAX_SPRITE_ROWS=32 };
+static SpriteProjection s_sprite_projection[SCENE_SPRITES];
+static uint16_t s_sprite_row_indices[SCENE_SPRITES*MAX_SPRITE_ROWS];
+static unsigned s_sprite_row_offset[SCENE_SPRITE_ROWS+1];
+static int s_sprite_rows_ready;
+static struct {
+    const SceneFrame *scene;
+    unsigned serial, count;
+    int width, origin, camera, camera_y, left;
+} s_sprite_row_view;
 static int s_fractional_background_width[16];
 
 static void project_sprite(const SceneSprite *sprite,unsigned index,int width,int origin,
@@ -2854,35 +2864,41 @@ static void project_sprite(const SceneSprite *sprite,unsigned index,int width,in
     } else *base=x+(anchor==1?0:anchor==2?(width-320)/2:origin);
 }
 
-static void prepare_fractional_sprites(int width,int origin)
+static void prepare_scene_sprite_rows(int width,int origin)
 {
-    /* H40 fractional pictures have at most four 8-line cells per sprite.
+    /* Normal H40 pictures have at most four 8-line cells per sprite.
      * Write row lists in publication order so native SAT priority survives. */
-    unsigned cursor[FRACTIONAL_ROWS]={0};
+    s_sprite_row_view.scene=s_display;
+    s_sprite_row_view.serial=s_display->serial;
+    s_sprite_row_view.count=s_display->count;
+    s_sprite_row_view.width=width;s_sprite_row_view.origin=origin;
+    s_sprite_row_view.camera=s_camera;s_sprite_row_view.camera_y=s_camera_y;
+    s_sprite_row_view.left=s_left;
+    unsigned cursor[SCENE_SPRITE_ROWS]={0};
     for(unsigned n=0;n<s_display->count;++n) {
         const SceneSprite *sprite=&s_display->sprites[n];
-        SpriteProjection *pose=&s_fractional_projection[n];
+        SpriteProjection *pose=&s_sprite_projection[n];
         project_sprite(sprite,n,width,origin,&pose->x,&pose->y);
         int bottom=pose->y+((sprite->size&3)+1)*8;
         pose->first=pose->last=0;
-        if(pose->y>=FRACTIONAL_ROWS || bottom<=0)continue;
+        if(pose->y>=SCENE_SPRITE_ROWS || bottom<=0)continue;
         pose->first=(uint8_t)(pose->y>0?pose->y:0);
-        pose->last=(uint8_t)(bottom<FRACTIONAL_ROWS?bottom:FRACTIONAL_ROWS);
+        pose->last=(uint8_t)(bottom<SCENE_SPRITE_ROWS?bottom:SCENE_SPRITE_ROWS);
         for(unsigned row=pose->first;row<pose->last;++row)++cursor[row];
     }
     unsigned used=0;
-    for(unsigned row=0;row<FRACTIONAL_ROWS;++row) {
-        s_fractional_row_offset[row]=used;
+    for(unsigned row=0;row<SCENE_SPRITE_ROWS;++row) {
+        s_sprite_row_offset[row]=used;
         used+=cursor[row];
-        cursor[row]=s_fractional_row_offset[row];
+        cursor[row]=s_sprite_row_offset[row];
     }
-    s_fractional_row_offset[FRACTIONAL_ROWS]=used;
+    s_sprite_row_offset[SCENE_SPRITE_ROWS]=used;
     for(unsigned n=0;n<s_display->count;++n) {
-        const SpriteProjection *pose=&s_fractional_projection[n];
+        const SpriteProjection *pose=&s_sprite_projection[n];
         for(unsigned row=pose->first;row<pose->last;++row)
-            s_fractional_row_sprite[cursor[row]++]=(uint16_t)n;
+            s_sprite_row_indices[cursor[row]++]=(uint16_t)n;
     }
-    s_fractional_sprites_ready=1;
+    s_sprite_rows_ready=1;
 }
 
 static void draw_scene_sprite_row(const GVDP *v,const SceneSprite *s,int line,
@@ -2970,17 +2986,26 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                                int origin,const uint32_t *palette)
 {
     if(!s_display)return;
-    if(s_interpolating) {
-        if(!s_fractional_sprites_ready)prepare_fractional_sprites(width,origin);
-        for(unsigned i=s_fractional_row_offset[line];i<s_fractional_row_offset[line+1];++i) {
-            unsigned n=s_fractional_row_sprite[i];
-            const SpriteProjection *pose=&s_fractional_projection[n];
+    int cell_height=(v->reg[12]&6)==6?16:8;
+    if(s_interpolating || (s_display->scene==1 && cell_height==8 &&
+                            !s_frame_campaign_view && line>=0 && line<SCENE_SPRITE_ROWS)) {
+        /* Ordinary gameplay keeps its source publication and camera fixed for
+         * the scanline pass. Rebuild on a view/publication change or at row 0. */
+        if(!s_sprite_rows_ready || (!s_interpolating &&
+           (line==0 || s_sprite_row_view.scene!=s_display ||
+            s_sprite_row_view.serial!=s_display->serial || s_sprite_row_view.count!=s_display->count ||
+            s_sprite_row_view.width!=width || s_sprite_row_view.origin!=origin ||
+            s_sprite_row_view.camera!=s_camera || s_sprite_row_view.camera_y!=s_camera_y ||
+            s_sprite_row_view.left!=s_left)))
+            prepare_scene_sprite_rows(width,origin);
+        for(unsigned i=s_sprite_row_offset[line];i<s_sprite_row_offset[line+1];++i) {
+            unsigned n=s_sprite_row_indices[i];
+            const SpriteProjection *pose=&s_sprite_projection[n];
             draw_scene_sprite_row(v,&s_display->sprites[n],line,out,width,origin,palette,
                                   pose->x,pose->y,8);
         }
         return;
     }
-    int cell_height=(v->reg[12]&6)==6?16:8;
     for(unsigned n=0;n<s_display->count;++n) {
         const SceneSprite *sprite=&s_display->sprites[n];
         int base,y;
@@ -3607,6 +3632,7 @@ static int s_lerp_sprite[SCENE_SPRITES];
 
 static void interpolation_reset(void)
 {
+    s_sprite_rows_ready=0;
     for(unsigned i=0;i<2;++i)s_present[i].valid=s_present[i].lines=0;
     for(unsigned i=0;i<3;++i) {
         s_native_history[i].serial=0;s_key_serial[i]=0;
@@ -3878,7 +3904,7 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     S2RenderContext *saved_render=s_render;
     const SceneFrame *saved_display=s_display;
     s_render=&fractional;s_display=&b->scene;s_interpolating=1;
-    s_fractional_sprites_ready=0;
+    s_sprite_rows_ready=0;
     for(unsigned row=0;row<16;++row)s_fractional_background_width[row]=-1;
     unsigned base=(fractional.video_frame.reg[13]&63u)<<10;
     int mode=fractional.video_frame.reg[11]&3;

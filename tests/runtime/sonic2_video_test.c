@@ -2729,6 +2729,36 @@ static void native_interpolation_test(void)
     }
     CHECK(!memcmp(original_ram,g_ram,sizeof g_ram));
 
+    /* Cannon pose transitions remove nozzle pieces before the ball body.
+     * Old piece ordinals must never slide one body row into another. */
+    static const uint8_t cannon_mapping[]={
+        0,4,0,30,
+        0,3, 0xE8,0,0,0,0,0,0xFF,0xF8,
+             0xF8,4,0,2,0,0,0xFF,0xF8,
+             0,4,0,4,0,0,0xFF,0xF8,
+        0,2, 0xF8,4,0,2,0,0,0xFF,0xF8,
+             0,4,0,4,0,0,0xFF,0xF8
+    };
+    memcpy(g_rom+0x254FE,cannon_mapping,sizeof cannon_mapping);
+    for(unsigned direction=0;direction<2;++direction) {
+        unsigned counts[2];
+        for(unsigned frame=0;frame<2;++frame) {
+            PresentationFrame *f=&s_present[s_present_front^(frame?0:1)];
+            counts[frame]=f->scene.count;
+            add_mapping(&f->scene,f->keys,0xB4000000u,0x254FE,frame^direction,
+                        0x8000,4,100,60,0,0);
+        }
+        CHECK(interpolate(.5,fraction,320,224));
+        const PresentationFrame *pose=&s_present[s_present_front];
+        for(unsigned n=counts[1];n<pose->scene.count;++n) {
+            int x=pose->scene.sprites[n].x,y=pose->scene.sprites[n].y;
+            interpolation_sprite(n,&x,&y);
+            CHECK(x==pose->scene.sprites[n].x && y==pose->scene.sprites[n].y);
+        }
+        for(unsigned frame=0;frame<2;++frame)
+            s_present[s_present_front^(frame?0:1)].scene.count=counts[frame];
+    }
+
     /* Keep the donor life icon on fractional pictures. The stock VRAM tile
      * intentionally has different ink, as it does in an imported campaign. */
     s2_party.s3k_enabled=1;
@@ -2812,7 +2842,33 @@ static void native_interpolation_test(void)
     CHECK(interpolate(.5,fraction,320,224));
     CHECK(fraction[55*320+120]==0xFFFF0000 && fraction[62*320+127]==0xFFFF0000);
     CHECK(fraction[54*320+120]==0xFF000000 && fraction[63*320+120]==0xFF000000);
-    CHECK(s_fractional_row_offset[56]-s_fractional_row_offset[55]>=2);
+    CHECK(s_sprite_row_offset[56]-s_sprite_row_offset[55]>=2);
+    /* The ordinary row-list path must match the former per-row projection,
+     * including sprite order, coverage and pixel priority. */
+    const SceneFrame *saved_scene=s_display;
+    s_display=&current->scene;s_sprite_rows_ready=0;
+    uint32_t colors[64];
+    for(unsigned i=0;i<64;++i)colors[i]=genesis_dac_cram_to_argb(current->cram[55][i],GENESIS_DAC_NORMAL);
+    CHECK(s_priority_capacity>=320);
+    for(int row=0;row<224;++row) {
+        uint32_t cached[320]={0},direct[320]={0};
+        uint8_t cached_priority[320];
+        memset(s_priority,0,320);
+        draw_scene_sprites(&current->render.video_frame,row,cached,320,0,colors);
+        memcpy(cached_priority,s_priority,sizeof cached_priority);
+        memset(s_priority,0,320);
+        for(unsigned n=0;n<s_display->count;++n) {
+            const SceneSprite *sprite=&s_display->sprites[n];
+            int base,y;
+            project_sprite(sprite,n,320,0,&base,&y);
+            if(row>=y && row<y+((sprite->size&3)+1)*8)
+                draw_scene_sprite_row(&current->render.video_frame,sprite,row,direct,320,0,colors,base,y,8);
+        }
+        CHECK(!memcmp(cached,direct,sizeof cached));
+        CHECK(!memcmp(cached_priority,s_priority,sizeof cached_priority));
+    }
+    CHECK(s_sprite_rows_ready && s_sprite_row_view.scene==s_display);
+    s_display=saved_scene;s_sprite_rows_ready=0;
     current->scene.count=first_piece;
 
     /* Actor animation identities may change; replacing the actor or
