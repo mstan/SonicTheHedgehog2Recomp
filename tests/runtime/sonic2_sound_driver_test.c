@@ -1,76 +1,86 @@
-/* Contract checks use native driver entry stubs; the built game qualifies
- * actual music execution and sample playback separately. */
+/* Exercise the title's real native sound hooks with the verified original
+ * image and the shared event queue interface. No game or audio device runs. */
 #include "sonic2_sound_driver.h"
-#ifdef SONIC2_CLONE_DRIVER
-#include "sonic2_clone_metadata.h"
-#endif
+#include "sonic2_sound_sequence.h"
+#include "sonic2_state_io.h"
 #include "genesis_runtime.h"
-#include "recomp_launcher.h"
+#include "audio/event_queue.h"
+#include "sha256.h"
+#include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);return 1;} } while(0)
 M68KState g_cpu;
 uint8_t g_ram[65536],g_rom[0x400000];
-static uint32_t called;
-void recomp_call_addr(uint32_t pc) { called=pc;g_cpu.D[0]=0xBAD;g_cpu.SR=0; }
-void m68k_write8(uint32_t p,uint8_t v) { g_ram[p&65535]=v; }
-void m68k_write16(uint32_t p,uint16_t v) { m68k_write8(p,(uint8_t)(v>>8));m68k_write8(p+1,(uint8_t)v); }
-uint16_t m68k_read16(uint32_t p) { return (uint16_t)((g_ram[p&65535]<<8)|g_ram[(p+1)&65535]); }
-static int context;
-static int count(void *ctx) { return ctx==&context; }
-static int package(void *ctx,int n,RecompLauncherCModPackage *out)
-{ if(ctx!=&context || n)return 0;memset(out,0,sizeof *out);strcpy(out->id,"common");return 1; }
+uint32_t g_audio_cycle_counter=13,g_68k_stamp_rebase=20;
+static unsigned writes, reset_calls, guest_calls;
+static uint32_t digest;
+uint8_t glue_peek8(uint32_t address) { assert(address==0xA10001u);return 0x80; }
+void glue_poke16(uint32_t address,uint16_t value)
+{ assert(address==0xA11200u && !value);++reset_calls; }
+void recomp_call_addr(uint32_t pc) { (void)pc;++guest_calls; }
+void m68k_write8(uint32_t address,uint8_t value) { g_ram[address&65535]=value; }
+void m68k_write16(uint32_t address,uint16_t value)
+{ m68k_write8(address,(uint8_t)(value>>8));m68k_write8(address+1,(uint8_t)value); }
+uint16_t m68k_read16(uint32_t address)
+{ return (uint16_t)((g_ram[address&65535]<<8)|g_ram[(address+1)&65535]); }
+void audio_event_push(uint32_t stamp,uint8_t port,uint8_t value)
+{
+    assert(stamp>=111 && stamp<111+895780 && port<=AUDIO_PORT_PSG);
+    ++writes;
+    digest=(digest^stamp)*16777619u;
+    digest=(digest^((unsigned)port<<8|value))*16777619u;
+}
+
 int main(int argc,char **argv)
 {
-    CHECK(argc==3);s2_sound_load_settings(argv[2]);CHECK(!s2_sound_selected() && !s2_sound_active());
-    uint8_t stock[S2_SOUND_STATE_BYTES],clone[S2_SOUND_STATE_BYTES];s2_sound_state_save(stock);
-    CHECK(!s2_sound_hook(0x1084));CHECK(s2_sound_state_valid(stock) && !s2_sound_state_valid(NULL));
-#if !defined(SONIC2_CLONE_DRIVER) || defined(GENESIS_Z80_RECOMP)
-    CHECK(!s2_sound_available());
-#ifndef SONIC2_CLONE_DRIVER
-    CHECK(!s2_sound_uses_rom());
-#endif
-    CHECK(!s2_sound_select(1) && !s2_sound_selected());
-    CHECK(s2_sound_select(0) && s2_sound_commit());
-    s2_sound_post_reset();CHECK(!s2_sound_active() && s2_sound_netplay_allowed());
-    CHECK(!s2_sound_hook(0xEC000) && !s2_sound_dispatch_miss(0x100000));
-    CHECK(s2_sound_state_valid(stock));
-    puts("PASS: stock-only build rejects alternate activation and retains original hooks, state and netplay");
+    CHECK(argc==3);
+    FILE *file=fopen(argv[1],"rb");
+    CHECK(file && fread(g_rom,1,0x100000,file)==0x100000 && fgetc(file)==EOF);
+    fclose(file);
+    uint8_t before[32],after[32];
+    recompui_sha256_compute(g_rom,sizeof g_rom,before);
+    s2_sound_load_settings(argv[2]);
+    CHECK(s2_sound_netplay_allowed());
+    CHECK(!s2_sound_hook(0x1400));
+    s2_sound_post_reset();
+    g_cpu.D[0]=0xCAFE;
+    g_cpu.SR=0x2704;
+    M68KState cpu=g_cpu;
+    CHECK(s2_sound_hook(0xEC000) && reset_calls==1 && !guest_calls);
+    CHECK(!s2_sound_music_playing() && !memcmp(&g_cpu,&cpu,sizeof cpu));
+    g_ram[0xFFE0]=0x82;g_ram[0xFFE4]=0x81;
+    CHECK(s2_sound_hook(0x1084) && !g_ram[0xFFE0] && g_ram[0xFFE4]==0x81);
+    CHECK(s2_sound_music_playing() && writes && !guest_calls && !memcmp(&g_cpu,&cpu,sizeof cpu));
+    g_ram[0xFFE4]=0;
+    for(unsigned tick=0;tick<100;++tick)CHECK(s2_sound_hook(0x1084));
+
+    uint8_t snapshot[sizeof(S2SoundSequence)];
+    S2StateIO state={snapshot,sizeof snapshot,0,0,1};
+    s2_sound_sequence_state(&state);
+    CHECK(state.ok && state.pos==sizeof snapshot);
+    S2SoundSequence invalid;
+    memcpy(&invalid,snapshot,sizeof invalid);
+    invalid.pcm_id=1;
+    S2StateIO bad={(uint8_t *)&invalid,sizeof invalid,0,1,1};
+    s2_sound_sequence_state(&bad);
+    CHECK(!bad.ok);
+
+    digest=writes=0;
+    for(unsigned tick=0;tick<72;++tick)CHECK(s2_sound_hook(0x1084));
+    uint32_t original=digest;
+    unsigned count=writes;
+    state.pos=0;state.mode=2;
+    s2_sound_sequence_state(&state);
+    CHECK(state.ok && state.pos==sizeof snapshot);
+    digest=writes=0;
+    for(unsigned tick=0;tick<72;++tick)CHECK(s2_sound_hook(0x1084));
+    CHECK(writes==count && digest==original);
+
+    recompui_sha256_compute(g_rom,sizeof g_rom,after);
+    CHECK(!memcmp(before,after,sizeof before) && !guest_calls);
+    puts("Native sound hooks, queue acknowledgment, event timing, snapshot replay and immutable image passed");
     return 0;
-#else
-    CHECK(s2_sound_available());FILE *f=fopen(argv[1],"rb");CHECK(f);
-    CHECK(fread(g_rom,1,0x100000,f)==0x100000);fclose(f);
-    RecompLauncherCModProvider base={0};base.ctx=&context;base.package_count=base.feature_count=count;base.package_get=package;
-    const RecompLauncherCModProvider *mods=s2_sound_mods(&base);RecompLauncherCModPackage p;
-    CHECK(mods->package_count(mods->ctx)==2 && mods->package_get(mods->ctx,1,&p) && !strcmp(p.id,"common"));
-    CHECK(mods->feature_enable(mods->ctx,"sonic2.audio.clone-driver","sound-driver",1));
-    CHECK(mods->commit(mods->ctx,"unused"));s2_sound_load_settings(argv[2]);CHECK(s2_sound_selected());
-    s2_sound_state_save(clone);CHECK(s2_sound_hook(0xEC000));CHECK(s2_sound_active() && s2_sound_state_valid(clone));
-    CHECK(!s2_sound_netplay_allowed() && !mods->commit_netplay(mods->ctx,"unused"));
-    CHECK(!memcmp(g_rom+0x100000,"S2CR",4));
-    g_ram[0xF100]=0x5A;g_ram[0xF1FF]=0xA5;g_ram[0xF600]=12;g_cpu.D[0]=123;g_cpu.SR=0x271F;
-    M68KState saved=g_cpu;
-    CHECK(s2_sound_hook(0xEC000) && called==S2_CLONE_INITIALISE);
-    CHECK(!memcmp(&g_cpu,&saved,sizeof saved) && g_ram[0xF100]==0x5A && g_ram[0xF1FF]==0xA5 && g_ram[0xF600]==12);
-    unsigned q=(S2_CLONE_RAM_ADDRESS+S2_CLONE_QUEUE_OFFSET)&65535;
-    for(unsigned slot=0;slot<4;slot++)for(unsigned id=1;id<256;id++) {
-        memset(g_ram+q,0,8);memset(g_ram+0xFFE0,0,5);
-        g_ram[0xFFE0+slot]=(uint8_t)id;g_cpu=saved;
-        CHECK(s2_sound_hook(0x1084) && called==S2_CLONE_GUARDED_UPDATE);
-        unsigned mapped=id>=0x81 && id<=0xF0?id-0x80:id>=0xF8 && id<=0xFD?id+2:0;
-        CHECK(!g_ram[0xFFE0+slot] && !memcmp(&saved,&g_cpu,sizeof saved));
-        CHECK(m68k_read16(q+slot*2)==mapped);
-        if(id>=0xFE)CHECK(g_ram[(S2_CLONE_RAM_ADDRESS+S2_CLONE_PAUSE_OFFSET)&65535]==(id==0xFE?1:128));
-    }
-    memset(g_ram+q,0,8);g_ram[0xFFE0]=0x82;g_ram[0xFFE4]=0x83;
-    CHECK(s2_sound_hook(0x1084));CHECK(m68k_read16(q)==2 && g_ram[0xFFE4]==0x83);
-    /* An occupied internal queue retains the pending native request. */
-    CHECK(s2_sound_hook(0x1084));CHECK(g_ram[0xFFE4]==0x83);
-    m68k_write16(q,0);CHECK(s2_sound_hook(0x1084));CHECK(!g_ram[0xFFE4] && m68k_read16(q)==3);
-    CHECK(s2_sound_select(0));CHECK(s2_sound_active() && s2_sound_state_valid(clone));
-    s2_sound_post_reset();CHECK(s2_sound_active());CHECK(s2_sound_commit());
-    s2_sound_load_settings(argv[2]);s2_sound_post_reset();CHECK(!s2_sound_active());
-    CHECK(s2_sound_state_valid(stock) && !s2_sound_state_valid(clone) && s2_sound_netplay_allowed());
-    puts("PASS: 256-ID ranges, four queues, pause, CPU/RAM isolation, snapshot identity, fixed boot selection, mod delegation and persistence");return 0;
-#endif
 }

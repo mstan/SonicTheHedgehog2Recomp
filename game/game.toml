@@ -237,6 +237,12 @@ kind = "game_hook"
 
 # Additive roster page: verified stock REV01 routine entry points. These
 [[widescreen_site]]
+addr = 0x437A # Level_MainLoop: before its RunObjects call
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x4380 # Level_MainLoop: after its RunObjects call
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x15F9C # RunObjects: track native solid slot generations
 kind = "game_hook"
 [[widescreen_site]]
@@ -244,6 +250,12 @@ addr = 0x41C3A # Debug_SpawnObject: defer display until the new object initializ
 kind = "game_hook"
 [[widescreen_site]]
 addr = 0x18888 # Obj41: native spring once, collision/launch for extra players
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x2ACE0 # Obj85_Up: include extra seats in the shared stroke
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x2AEC0 # Obj85_Diagonal: same after native seat contacts
 kind = "game_hook"
 [[widescreen_site]]
 addr = 0x3F5A0 # Touch_Loop: donor-defined grounded hammer attack extent
@@ -931,6 +943,9 @@ extra = [
                 # Needed as a dispatch entry so save-state loads can resume
                 # the special stage moment-in-time (GameSpec save_resume_pc).
     0x005250,   # SS started loop: s2.asm line 6695, after SpecStageBombs PLC.
+    0x009E20,   # Resume after the ending palette copy.
+    0x013334,   # Resume the ending fade controller after the palette copy.
+    0x0166EC,   # Publish the display flag and continue the native sprite list.
 ]
 
 # ---------------------------------------------------------------------------
@@ -1061,7 +1076,7 @@ addr = 0xA554 # original Knuckles pose on the ending plane
 kind = "game_hook"
 
 [[widescreen_site]]
-addr = 0x1331C # original Knuckles ending palette in the native fade controller
+addr = 0x1332E # ending fade palette copy
 kind = "game_hook"
 
 [[widescreen_site]]
@@ -1071,11 +1086,10 @@ kind = "game_hook"
 addr = 0xABE2 # ending character artwork
 kind = "game_hook"
 [[widescreen_site]]
-addr = 0xAC30 # ending bird selection
+addr = 0x166CC # ending jump sprite mapping
 kind = "game_hook"
-
 [[widescreen_site]]
-addr = 0x17AF0 # original object-manager cursor initialization
+addr = 0xAC30 # ending bird selection
 kind = "game_hook"
 
 [[widescreen_site]]

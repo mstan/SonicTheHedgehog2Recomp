@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 static int delegated;
-const RecompLauncherCModProvider *s2_sound_mods(const RecompLauncherCModProvider *base) { return base; }
 static int playback, online;
 int genesis_netplay_active(void) { return online; }
 int genesis_replay_playing(void) { return playback; }
@@ -181,27 +180,37 @@ int main(int argc, char **argv)
     if (argc==3) {
         assert(p->feature_resource_set_path(p->ctx,"sonic2.s3k","knuckles","original-knuckles-art",argv[2]));
         const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
-        assert(ending && ending->size>0x9F0 && ending->size<S2_KNUCKLES_ENDING_BYTES);
-        assert(ending->art==S2_KNUCKLES_ENDING_ROM && ending->palette==S2_KNUCKLES_ENDING_ROM+0x970);
-        assert(ending->mappings==S2_KNUCKLES_ENDING_ROM+0x9F0);
+        assert(ending && ending->tile_bytes && ending->tile_bytes<=sizeof ending->tiles);
         FILE *original=fopen(argv[2],"rb");assert(original);
         uint8_t source_art[0x970],source_palette[128];
         assert(!fseek(original,0xDEA00,SEEK_SET) && fread(source_art,1,sizeof source_art,original)==sizeof source_art);
         assert(!fseek(original,0x3090BC,SEEK_SET) && fread(source_palette,1,sizeof source_palette,original)==sizeof source_palette);
-        assert(!memcmp(source_art,ending->data,sizeof source_art) && !memcmp(source_palette,ending->data+0x970,sizeof source_palette));
+        unsigned tile_count=((unsigned)source_art[0]<<8|source_art[1])&0x7FFFu;
+        assert(ending->tile_bytes==tile_count*32u);
+        unsigned ink=0;
+        for(size_t i=0;i<ending->tile_bytes;++i)ink+=ending->tiles[i]!=0;
+        assert(ink>100 && !memcmp(source_palette,ending->palette,sizeof source_palette));
         uint8_t source_super[66];
         assert(!fseek(original,0x301EE0,SEEK_SET) && fread(source_super,1,sizeof source_super,original)==sizeof source_super);
         assert(!memcmp(source_super,ending->super_palette,sizeof source_super));
         uint8_t maps[0x400];assert(!fseek(original,0x3091E0,SEEK_SET) && fread(maps,1,sizeof maps,original)==sizeof maps);
-        unsigned table=ending->mappings-S2_KNUCKLES_ENDING_ROM;
-        for(unsigned n=0;n<26;++n) {
+        for(unsigned n=0;n<S2_ENDING_FRAMES;++n) {
             unsigned src=(unsigned)maps[n*2]<<8|maps[n*2+1];
-            unsigned dst=table+((unsigned)ending->data[table+n*2]<<8|ending->data[table+n*2+1]);
             unsigned pieces=(unsigned)maps[src]<<8|maps[src+1];
-            assert(dst+2+pieces*8<=ending->size && !memcmp(maps+src,ending->data+dst,2));
+            const S2EndingFrame *frame=&ending->frames[n];
+            assert(src+2+pieces*6<=sizeof maps && pieces==frame->count);
+            uint8_t sat[S2_ENDING_PIECES*8];
+            assert(s2_ending_draw_sat(frame,sat,4,0x8019,3,128,128)==pieces);
             for(unsigned i=0;i<pieces;++i) {
-                const uint8_t *s=maps+src+2+i*6,*d=ending->data+dst+2+i*8;
-                assert(!memcmp(s,d,4) && !memcmp(s+2,d+4,2) && !memcmp(s+4,d+6,2));
+                const uint8_t *s=maps+src+2+i*6,*d=sat+i*8;
+                const S2EndingPiece *piece=&frame->pieces[i];
+                assert(piece->size==(s[1]&15u) && piece->y==(int8_t)s[0]);
+                assert(piece->attr==((unsigned)s[2]<<8|s[3]) && piece->x==(int16_t)((unsigned)s[4]<<8|s[5]));
+                unsigned x=(128-piece->x-8*((s[1]>>2&3)+1))&511u;
+                unsigned y=(128-piece->y-8*((s[1]&3)+1))&65535u;
+                unsigned attr=((piece->attr+0x8019)^0x1800)&65535u;
+                assert(d[0]==(y>>8) && d[1]==(y&255u) && d[2]==piece->size && d[3]==5+i);
+                assert(d[4]==(attr>>8) && d[5]==(attr&255u) && ((unsigned)d[6]<<8|d[7])==(x?x:1));
             }
         }
         fclose(original);

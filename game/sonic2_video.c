@@ -210,18 +210,18 @@ static int competition(void)
     int mode=g_ram[0xF600]&127;
     return ram16(0xFFD8) && (mode==8 || mode==12);
 }
-static int outgoing_level(void)
+int s2_video_outgoing_level(void)
 {
     int mode=g_ram[0xF600]&127;
     return (mode==0 || mode==4) && g_ram[0xF711] &&
         (g_ram[0xB000]==1 || g_ram[0xB000]==2);
 }
 static int presented_competition(void)
-{ return competition() || (outgoing_level() && ram16(0xFFD8)); }
+{ return competition() || (s2_video_outgoing_level() && ram16(0xFFD8)); }
 static int presented_gameplay(void)
-{ return gameplay() || (outgoing_level() && !ram16(0xFFD8)); }
+{ return gameplay() || (s2_video_outgoing_level() && !ram16(0xFFD8)); }
 static int native_demo(void)
-{ return (g_ram[0xF600]&127)==8 || (outgoing_level() && ram16(0xFFF0)); }
+{ return (g_ram[0xF600]&127)==8 || (s2_video_outgoing_level() && ram16(0xFFF0)); }
 static int slot_theme(unsigned role)
 {
     return !native_demo() && (s2_video_level_zone()>>8)==12 && g_ram[0xF711] &&
@@ -303,10 +303,13 @@ unsigned s2_video_main_cpu_divisor(void)
 {
     /* Level_MainLoop ($4360) still waits for the real V-int every tick.
      * Expanded activation must not inherit the 7.67 MHz object's lag budget.
-     * Attract inputs also depend on the original sub-frame CPU timing.
-     * Loading, demos, special stages and opt-out retain that timing. */
+     * The departing card also runs the fully populated level before setting
+     * Level_started. Bring that loop onto the same budget when its leave
+     * flag is set. Loading and attract inputs retain their native timing. */
     int mode=g_ram[0xF600];
-    return enabled() && mode==12 && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
+    if (!enabled()) return 1;
+    if (mode==0x8C && g_ram[0xB080]==0x34 && ram16(0xB0BE)==0xFFFF && gameplay()) return 4;
+    return mode==12 && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
 }
 static int width(int dw, int dh, int nw, int nh)
 {
@@ -470,7 +473,7 @@ static int source_background_scroll(const S2RenderContext *r,int camera,int line
         if(by<112)return -(c+scroll_floor((int64_t)(by<0?0:by/16)*(scroll_floor(c,8)-c),8));
         return -scroll_floor(c,by<144?16:8);
     case 10: { /* OOZ emits from the bottom: factory, clouds, heat haze. */
-        int bg=scroll_background_x(r,c,0,8192),y=223-line;
+        int bg=scroll_background_x(r,c,0,8192),y=223-(by-r->frame_bg_y);
         int factory=r->frame_bg_y<80?48:r->frame_bg_y>=256?224:r->frame_bg_y-32;
         if(y<factory)return -bg;
         y-=factory;
@@ -905,7 +908,7 @@ void s2_video_vblank(void)
     was_active=active;last_tick=tick;last_zone=zone;last_serial=s_serial;
 }
 static unsigned s_visible_objects[144], s_visible_count;
-typedef struct { unsigned address; uint16_t x, y,slot; uint8_t id, subtype, state, loaded; } Placement;
+typedef struct { uint16_t x, y,slot; uint8_t id, subtype, state, loaded; } Placement;
 static Placement s_placements[SCENE_PLACEMENTS];
 static unsigned s_placement_count, s_placement_base;
 static int s_loader_active;
@@ -983,7 +986,7 @@ static void video_state(S2StateIO *io, int rollback)
 static uint8_t scene_read8(unsigned a)
 {
     a &= 0xFFFFFFu;
-    return a < S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
+    return a < 0x100000u ? g_rom[a] : a >= 0xFF0000u ? g_ram[a & 65535u] : 0;
 }
 static uint16_t scene_read16(unsigned a) { return (uint16_t)((scene_read8(a)<<8)|scene_read8(a+1)); }
 static uint32_t scene_read32(unsigned a) { return ((uint32_t)scene_read16(a)<<16)|scene_read16(a+2); }
@@ -1744,16 +1747,21 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
 {
     unsigned p=map;int count=1;
     const NativeObjectArt *binding=native_object_binding(owner>>16,map,gfx);
-    if(!static_mapping) {
+    const S2EndingFrame *ending=map==S2_ENDING_JUMP_MAP ? s2_runtime_ending_frame(map,frame) : NULL;
+    if(ending) {
+        count=(int)ending->count;
+    } else if(!static_mapping) {
         p+=(int16_t)scene_read16(p+(frame&255u)*2u);
         count=scene_read16(p);p+=2;
     }
     if(count>1024)return;
     for(int n=0;n<count && dst->count<SCENE_SPRITES;++n,p+=8) {
-        int dy=(int8_t)scene_read8(p),size=scene_read8(p+1)&15;
-        int dx=(int16_t)scene_read16(p+6);
+        const S2EndingPiece *piece=ending ? &ending->pieces[n] : NULL;
+        int dy=piece ? piece->y : (int8_t)scene_read8(p);
+        int size=piece ? piece->size : scene_read8(p+1)&15;
+        int dx=piece ? piece->x : (int16_t)scene_read16(p+6);
         int vs=presented_competition();
-        uint16_t attr=(uint16_t)(scene_read16(p+(vs?4:2))+gfx);
+        uint16_t attr=(uint16_t)((piece ? piece->attr : scene_read16(p+(vs?4:2)))+gfx);
         if(flags&1){dx=-dx-(((size>>2)&3)+1)*8;attr^=0x800;}
         if(flags&2){dy=-dy-((size&3)+1)*8;attr^=0x1000;}
         if(!(flags&0x4000) && !vs && !s2_runtime_campaign_independent() &&
@@ -1761,10 +1769,10 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
         if(keys) {
             /* Asteron's lit frame inserts an eye before the same two body
              * pieces. Keep their identities across the animation change. */
-            unsigned piece=(unsigned)n;
+            unsigned piece_index=(unsigned)n;
             if(map==0x38A96 && (frame&255u)==1 && !static_mapping)
-                piece=n?(unsigned)n-1u:2u;
-            keys[dst->count]=owner|piece;
+                piece_index=n?(unsigned)n-1u:2u;
+            keys[dst->count]=owner|piece_index;
         }
         SceneSprite *q=&dst->sprites[dst->count++];
         memset(q,0,sizeof *q); /* Serialized padding must be deterministic. */
@@ -1808,21 +1816,28 @@ static void add_mapping(SceneFrame *dst,uint32_t *keys,uint32_t owner,unsigned m
     }
 }
 
-static void load_placements(void)
+static void load_placements(S2StagePlacementView campaign)
 {
-    unsigned zone=ram16(0xFE10),index=((zone>>8)*4u)+((zone&1u)*2u);
-    unsigned base=0xE6800u+(int16_t)scene_read16(0xE6800u+index);
-    if (competition() && g_ram[0xFE10]==12) base=(zone&1)?0x18492:0x1802A;
-    unsigned campaign=s2_runtime_stage_layout(zone>>8,zone&255u);
-    if(campaign) base=campaign;
+    unsigned zone=ram16(0xFE10),base;
+    if(campaign.data) {
+        base=0x80000000u|zone; /* Host cache identity for the campaign stage. */
+    } else {
+        unsigned index=((zone>>8)*4u)+((zone&1u)*2u);
+        base=0xE6800u+(int16_t)scene_read16(0xE6800u+index);
+        if(competition() && g_ram[0xFE10]==12) base=(zone&1)?0x18492:0x1802A;
+    }
     if(base==s_placement_base && s_placement_count)return;
     s_placement_base=base;s_placement_count=0;unsigned state=1;
-    unsigned limit=campaign?S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES:0x100000u;
-    for(unsigned p=base;p+6<=limit && s_placement_count<SCENE_PLACEMENTS;p+=6) {
-        unsigned x=scene_read16(p);if(x==65535u)break;
+    if(!campaign.data && base>=0x100000u)return;
+    const uint8_t *records=campaign.data?campaign.data:g_rom+base;
+    size_t bytes=campaign.data?campaign.bytes:0x100000u-base;
+    for(size_t p=0;p+6<=bytes && s_placement_count<SCENE_PLACEMENTS;p+=6) {
+        const uint8_t *record=records+p;
+        unsigned x=(unsigned)record[0]<<8|record[1];
+        if(x==65535u)break;
         Placement *q=&s_placements[s_placement_count++];
-        q->address=p;q->x=(uint16_t)x;q->y=scene_read16(p+2);
-        q->id=scene_read8(p+4);q->subtype=scene_read8(p+5);
+        q->x=(uint16_t)x;q->y=(uint16_t)(record[2]<<8|record[3]);
+        q->id=record[4];q->subtype=record[5];
         q->state=(uint8_t)((q->y&0x8000)?state++:0);q->loaded=0;q->slot=0;
     }
 }
@@ -1835,10 +1850,10 @@ static int placement_alive(Placement *p)
     }
     return 0;
 }
-static void spawn_scene(void)
+static void spawn_scene_from_layout(S2StagePlacementView campaign)
 {
     if (competition()) activation_bounds(ram16(0xEE20),enabled()?s_requested_width:320,&s_vs_other_lo,&s_vs_other_hi);
-    load_placements();s_loader_active=1;
+    load_placements(campaign);s_loader_active=1;
     if (competition()) {
         /* Replace the native six fixed object blocks with the same bounded
          * global pool used by expanded single-player worlds. Both viewports
@@ -1891,9 +1906,14 @@ static void spawn_scene(void)
     unsigned r=0,l=0,rs=1,ls=1;
     while(r<s_placement_count && s_placements[r].x<(unsigned)((camera&~127)+640)){rs+=s_placements[r].state!=0;++r;}
     while(l<s_placement_count && (int)s_placements[l].x<((camera-128)&~127)){ls+=s_placements[l].state!=0;++l;}
-    write32(0xF770,s_placement_base+r*6);write32(0xF774,s_placement_base+l*6);
+    unsigned base=campaign.data?0:s_placement_base;
+    write32(0xF770,base+r*6);write32(0xF774,base+l*6);
     write8(0xFC00,rs);write8(0xFC01,ls);write16(0xF76E,camera&0xFF80);
     write16(0xF7DA,(camera-128)&0xFF80);
+}
+static void spawn_scene(void)
+{
+    spawn_scene_from_layout((S2StagePlacementView){0});
 }
 static unsigned rings_end(void)
 {
@@ -2482,7 +2502,7 @@ static void capture_objects(void)
 {
     /* Expanded presentation must not mark offscreen demo objects visible:
      * that bit also controls native AI and the outgoing display queue. */
-    int read_only=native_demo() || outgoing_level();
+    int read_only=native_demo() || s2_video_outgoing_level();
     if(read_only)s_visible_count=0;
     capture_objects_into(&s_build,s_requested_width,read_only,
         s_interpolation_enabled && !competition()?s_build_keys:NULL);
@@ -2629,11 +2649,20 @@ int s2_video_hook(uint32_t pc)
     /* The native demo fade changes mode before continuing RunObjects and
      * BuildSprites for sixty ticks. Keep its displayed mapping format and
      * publication alive, while all loading and CPU timing remain native. */
-    if(enabled() && outgoing_level()) {
+    if(enabled() && s2_video_outgoing_level()) {
         if(pc==0x16604)capture_objects();
         if(presented_competition()?(pc==0x16B90 || pc==0x16B98):
                                   (pc==0x16712 || pc==0x1671A))publish_sprites();
         return 0;
+    }
+    if(pc==0x17AA4) {
+        S2StagePlacementView campaign=s2_runtime_stage_layout(g_ram[0xFE10],g_ram[0xFE11]);
+        if(campaign.data) {
+            if(!g_ram[0xF76C]) s2_stage_layout_prepare(campaign,g_ram);
+            if(gameplay() && (enabled() || s_loader_active)) spawn_scene_from_layout(campaign);
+            else s2_stage_layout_stream(campaign,g_ram);
+            return 1;
+        }
     }
     /* Attract inputs target the original object timing and fixed 2P pools.
      * Keep wide presentation, but let the native loaders/cullers run. */
@@ -2794,102 +2823,170 @@ static void select_scene(const GVDP *v)
         s_display=&s_display_frame;
     }
 }
+typedef struct {
+    int x,y;
+    uint8_t first,last;
+} SpriteProjection;
+enum { FRACTIONAL_ROWS=224, MAX_FRACTIONAL_SPRITE_ROWS=32 };
+static SpriteProjection s_fractional_projection[SCENE_SPRITES];
+static uint16_t s_fractional_row_sprite[SCENE_SPRITES*MAX_FRACTIONAL_SPRITE_ROWS];
+static unsigned s_fractional_row_offset[FRACTIONAL_ROWS+1];
+static int s_fractional_sprites_ready;
+static int s_fractional_background_width[16];
+
+static void project_sprite(const SceneSprite *sprite,unsigned index,int width,int origin,
+                           int *base,int *y)
+{
+    unsigned anchor=sprite->hud&3u;
+    int foreground=(sprite->hud&SCENE_FOREGROUND_SCREEN)!=0;
+    int world=!foreground && !anchor && (s_display->scene==1 || s_display->scene==3);
+    int x=sprite->x;
+    *y=sprite->y;
+    if(world) {
+        if(s_interpolating)interpolation_sprite(index,&x,y);
+        x+=s_display->camera_x-s_camera;
+        *y+=s_display->camera_y-s_camera_y;
+    }
+    if(foreground) {
+        unsigned camera=(unsigned)(s_left+(width-320)/2)&1023;
+        *base=x+(width-320)/2-(int)((camera>>1)+(camera>>2));
+        *y-=(int)(((unsigned)s_camera_y>>1)&63);
+    } else *base=x+(anchor==1?0:anchor==2?(width-320)/2:origin);
+}
+
+static void prepare_fractional_sprites(int width,int origin)
+{
+    /* H40 fractional pictures have at most four 8-line cells per sprite.
+     * Write row lists in publication order so native SAT priority survives. */
+    unsigned cursor[FRACTIONAL_ROWS]={0};
+    for(unsigned n=0;n<s_display->count;++n) {
+        const SceneSprite *sprite=&s_display->sprites[n];
+        SpriteProjection *pose=&s_fractional_projection[n];
+        project_sprite(sprite,n,width,origin,&pose->x,&pose->y);
+        int bottom=pose->y+((sprite->size&3)+1)*8;
+        pose->first=pose->last=0;
+        if(pose->y>=FRACTIONAL_ROWS || bottom<=0)continue;
+        pose->first=(uint8_t)(pose->y>0?pose->y:0);
+        pose->last=(uint8_t)(bottom<FRACTIONAL_ROWS?bottom:FRACTIONAL_ROWS);
+        for(unsigned row=pose->first;row<pose->last;++row)++cursor[row];
+    }
+    unsigned used=0;
+    for(unsigned row=0;row<FRACTIONAL_ROWS;++row) {
+        s_fractional_row_offset[row]=used;
+        used+=cursor[row];
+        cursor[row]=s_fractional_row_offset[row];
+    }
+    s_fractional_row_offset[FRACTIONAL_ROWS]=used;
+    for(unsigned n=0;n<s_display->count;++n) {
+        const SpriteProjection *pose=&s_fractional_projection[n];
+        for(unsigned row=pose->first;row<pose->last;++row)
+            s_fractional_row_sprite[cursor[row]++]=(uint16_t)n;
+    }
+    s_fractional_sprites_ready=1;
+}
+
+static void draw_scene_sprite_row(const GVDP *v,const SceneSprite *s,int line,
+                                  uint32_t *out,int width,int origin,const uint32_t *palette,
+                                  int base,int y,int cell_height)
+{
+    int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
+    unsigned anchor=s->hud&3u;
+    int foreground=(s->hud&SCENE_FOREGROUND_SCREEN)!=0;
+    int world=!foreground && !anchor && (s_display->scene==1 || s_display->scene==3);
+    int repeat=foreground || ((s->hud&SCENE_WATER_REPEAT) && world &&
+        (width>320 || s_frame_campaign_view));
+    int period=foreground?768:384;
+    int iy=line-y;
+    if(s->attr&0x1000)iy=ch*cell_height-1-iy;
+    for(int i=0;i<cw*8;++i) {
+        int x=base+i;
+        /* Clip only the dormant story actor's added margins. The live
+         * viewport origin includes clamping and each campaign view, so
+         * even a partially entering body preserves its native center. */
+        if((s->art&SCENE_ART_NATIVE_VIEW) && (x<origin || x>=origin+320))continue;
+        if((s->art&SCENE_ART_MARGIN_VIEW) && (width<=320 || (x>=origin && x<origin+320)))continue;
+        if(repeat) {x%=period;if(x<0)x+=period;}
+        else if(x<0 || x>=width || (s_priority[x]&2))continue;
+        /* Stage objects may be queued before their title PLC finishes.
+         * Their native offscreen positions become visible only in added
+         * margins. Respect the displayed opaque card there, including
+         * high-priority Tornado pieces, without changing native pixels,
+         * screen-space card glyphs/HUD, or the revealed stage. */
+        int card_origin=(width-320)/2;
+        if(width>320 && !anchor && !foreground &&
+           (x<card_origin || x>=card_origin+320) && (s_priority[x]&ROW_CARD_COVERED))continue;
+        int ix=(s->attr&0x800)?cw*8-1-i:i;
+        uint16_t cell=(uint16_t)((s->attr&0xE000u)|
+            (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
+        uint32_t custom=0;
+        int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
+        uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
+        unsigned object_art=s->art&~(SCENE_ART_NATIVE_VIEW|SCENE_ART_MARGIN_VIEW);
+        if(!knux && object_art) {
+            unsigned asset=object_art-1;
+            const NativeObjectArt *binding=native_asset_binding(asset);
+            unsigned base=binding?binding->base:asset==S2_NATIVE_OOZ_BLOCK_VERT?0x332:
+                asset==S2_NATIVE_OOZ_BLOCK_HORIZ?0x3FF:asset==S2_NATIVE_CNZ_PLUNGER_VERT?0x422:
+                asset==S2_NATIVE_CNZ_PLUNGER_DIAG?0x402:asset==S2_NATIVE_ROBOTNIK_UPPER?0x500:
+                asset==S2_NATIVE_ROBOTNIK_LOWER?0x564:asset==S2_NATIVE_DEZ_WINDOW?0x378:
+                asset==S2_NATIVE_ENDING_TAILS_PILOT?0x7A0:asset==S2_NATIVE_ENDING_SONIC_PILOT?0x780:0x39D;
+            p=native_asset_pixel(v,asset,base,cell,ix,iy,width);
+        }
+        if (s->size&0x80) {
+            unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
+            unsigned at=(cell&2047)*((v->reg[12]&6)==6?64:32)+(iy&(((v->reg[12]&6)==6)?15:7))*4+(ix&7)/2;
+            if (patterns && at<bytes) p=(ix&1)?patterns[at]&15:patterns[at]>>4;
+            p=(uint8_t)((cell>>9&48)|p); /* native palette, including water/fades */
+            if (!(p&15)) p=0;
+        }
+        if(!p)continue;
+        /* This immutable native window is independent of character and
+         * special-stage pattern banks, including their palette maps. */
+        int extra=object_art==1+S2_NATIVE_DEZ_WINDOW?0:
+            gvdp_sprite_palette_line(s->size,cell&2047,(cell>>13)&3);
+        if (extra) {
+            custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
+            knux=1;
+        }
+        /* Native boss hits toggle palette1 ink1. Its capsule is normally
+         * outside that view; wider presentation retains its black ink. */
+        if((s->hud&SCENE_ART_MASK)==SCENE_ART_CAPSULE && p==17 && v->cram[17]==0xEEE) {
+            custom=genesis_dac_cram_to_argb(s2_video_donor_color(0),GENESIS_DAC_NORMAL);
+            knux=1;
+        }
+        for(;x<width;x+=period) {
+            if(!(s_priority[x]&2)) {
+                s_priority[x]|=2;
+                if(anchor || (s->attr&0x8000) || !(s_priority[x]&1))
+                    out[x]=knux?custom:palette[p];
+                if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
+            }
+            if(!repeat)break;
+        }
+    }
+}
+
 static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
                                int origin,const uint32_t *palette)
 {
     if(!s_display)return;
+    if(s_interpolating) {
+        if(!s_fractional_sprites_ready)prepare_fractional_sprites(width,origin);
+        for(unsigned i=s_fractional_row_offset[line];i<s_fractional_row_offset[line+1];++i) {
+            unsigned n=s_fractional_row_sprite[i];
+            const SpriteProjection *pose=&s_fractional_projection[n];
+            draw_scene_sprite_row(v,&s_display->sprites[n],line,out,width,origin,palette,
+                                  pose->x,pose->y,8);
+        }
+        return;
+    }
+    int cell_height=(v->reg[12]&6)==6?16:8;
     for(unsigned n=0;n<s_display->count;++n) {
-        const SceneSprite *s=&s_display->sprites[n];
-        int cw=((s->size>>2)&3)+1,ch=(s->size&3)+1;
-        unsigned anchor=s->hud&3u;
-        int foreground=!!(s->hud&SCENE_FOREGROUND_SCREEN);
-        int world=!foreground && !anchor && (s_display->scene==1 || s_display->scene==3);
-        int repeat=foreground || ((s->hud&SCENE_WATER_REPEAT) && world &&
-            (width>320 || s_frame_campaign_view));
-        int period=foreground?768:384;
-        int cell_height=(v->reg[12]&6)==6?16:8;
-        int sx=s->x,sy=s->y;
-        if(world && s_interpolating)interpolation_sprite(n,&sx,&sy);
-        int y=foreground?sy-(int)(((unsigned)s_camera_y>>1)&63):
-            sy+(world?s_display->camera_y-s_camera_y:0);
-        if(line<y || line>=y+ch*cell_height)continue;
-        int base=sx+(anchor==1?0:anchor==2?(width-320)/2:origin);
-        if(foreground) {
-            unsigned camera=(unsigned)(s_left+(width-320)/2)&1023;
-            base=sx+(width-320)/2-(int)((camera>>1)+(camera>>2));
-        }
-        /* Native camera scroll may advance while a completed host frame is
-         * retained. Reproject its world coordinates, not its old screen
-         * coordinates; otherwise stationary rings jitter with the camera. */
-        if(world)base+=s_display->camera_x-s_camera;
-        int iy=line-y;
-        if(s->attr&0x1000)iy=ch*cell_height-1-iy;
-        for(int i=0;i<cw*8;++i) {
-            int x=base+i;
-            /* Clip only the dormant story actor's added margins. The live
-             * viewport origin includes clamping and each campaign view, so
-             * even a partially entering body preserves its native center. */
-            if((s->art&SCENE_ART_NATIVE_VIEW) && (x<origin || x>=origin+320))continue;
-            if((s->art&SCENE_ART_MARGIN_VIEW) && (width<=320 || (x>=origin && x<origin+320)))continue;
-            if(repeat) {x%=period;if(x<0)x+=period;}
-            else if(x<0 || x>=width || (s_priority[x]&2))continue;
-            /* Stage objects may be queued before their title PLC finishes.
-             * Their native offscreen positions become visible only in added
-             * margins. Respect the displayed opaque card there, including
-             * high-priority Tornado pieces, without changing native pixels,
-             * screen-space card glyphs/HUD, or the revealed stage. */
-            int card_origin=(width-320)/2;
-            if(width>320 && !anchor && !foreground &&
-               (x<card_origin || x>=card_origin+320) && (s_priority[x]&ROW_CARD_COVERED))continue;
-            int ix=(s->attr&0x800)?cw*8-1-i:i;
-            uint16_t cell=(uint16_t)((s->attr&0xE000u)|
-                (((s->attr&2047u)+(unsigned)(ix/8*ch+iy/cell_height))&2047u));
-            uint32_t custom=0;
-            int knux=anchor==1 && s2_video_knuckles_hud_pixel(v,cell,ix,iy,&custom);
-            uint8_t p=knux?(custom!=0):native_scene_pixel(v,s->hud,cell,ix,iy,width);
-            unsigned object_art=s->art&~(SCENE_ART_NATIVE_VIEW|SCENE_ART_MARGIN_VIEW);
-            if(!knux && object_art) {
-                unsigned asset=object_art-1;
-                const NativeObjectArt *binding=native_asset_binding(asset);
-                unsigned base=binding?binding->base:asset==S2_NATIVE_OOZ_BLOCK_VERT?0x332:
-                    asset==S2_NATIVE_OOZ_BLOCK_HORIZ?0x3FF:asset==S2_NATIVE_CNZ_PLUNGER_VERT?0x422:
-                    asset==S2_NATIVE_CNZ_PLUNGER_DIAG?0x402:asset==S2_NATIVE_ROBOTNIK_UPPER?0x500:
-                    asset==S2_NATIVE_ROBOTNIK_LOWER?0x564:asset==S2_NATIVE_DEZ_WINDOW?0x378:
-                    asset==S2_NATIVE_ENDING_TAILS_PILOT?0x7A0:asset==S2_NATIVE_ENDING_SONIC_PILOT?0x780:0x39D;
-                p=native_asset_pixel(v,asset,base,cell,ix,iy,width);
-            }
-            if (s->size&0x80) {
-                unsigned bytes=0;const uint8_t *patterns=gvdp_sprite_patterns(s->size,&bytes);
-                unsigned at=(cell&2047)*((v->reg[12]&6)==6?64:32)+(iy&(((v->reg[12]&6)==6)?15:7))*4+(ix&7)/2;
-                if (patterns && at<bytes) p=(ix&1)?patterns[at]&15:patterns[at]>>4;
-                p=(uint8_t)((cell>>9&48)|p); /* native palette, including water/fades */
-                if (!(p&15)) p=0;
-            }
-            if(!p)continue;
-            /* This immutable native window is independent of character and
-             * special-stage pattern banks, including their palette maps. */
-            int extra=object_art==1+S2_NATIVE_DEZ_WINDOW?0:
-                gvdp_sprite_palette_line(s->size,cell&2047,(cell>>13)&3);
-            if (extra) {
-                custom=genesis_dac_cram_to_argb(gvdp_ext_color(line,extra,p&15),GENESIS_DAC_NORMAL);
-                knux=1;
-            }
-            /* Native boss hits toggle palette1 ink1. Its capsule is normally
-             * outside that view; wider presentation retains its black ink. */
-            if((s->hud&SCENE_ART_MASK)==SCENE_ART_CAPSULE && p==17 && v->cram[17]==0xEEE) {
-                custom=genesis_dac_cram_to_argb(s2_video_donor_color(0),GENESIS_DAC_NORMAL);
-                knux=1;
-            }
-            for(;x<width;x+=period) {
-                if(!(s_priority[x]&2)) {
-                    s_priority[x]|=2;
-                    if(anchor || (s->attr&0x8000) || !(s_priority[x]&1))
-                        out[x]=knux?custom:palette[p];
-                    if((s->hud&192) && s_front_rgb){s_priority[x]|=4;s_front_rgb[x]=out[x];}
-                }
-                if(!repeat)break;
-            }
-        }
+        const SceneSprite *sprite=&s_display->sprites[n];
+        int base,y;
+        project_sprite(sprite,n,width,origin,&base,&y);
+        if(line>=y && line<y+((sprite->size&3)+1)*cell_height)
+            draw_scene_sprite_row(v,sprite,line,out,width,origin,palette,base,y,cell_height);
     }
 }
 static int attributes_differ(const GVDP *v,uint16_t a,uint16_t b,int x,int y)
@@ -3069,7 +3166,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
         memcpy(&s_video_frame,v,sizeof s_video_frame);
         slot_patterns(&s_video_frame,line);
         memcpy(s_world_frame,g_ram,sizeof s_world_frame);
-        int outgoing=outgoing_level();
+        int outgoing=s2_video_outgoing_level();
         s_frame_vs=competition() || (outgoing && ram16(0xFFD8));
         s_vs_ready=g_ram[0xF711]!=0;s_vs_world=s_vs_ready || ram16(0xB0BE)!=0;
         if (s_frame_vs) for (unsigned p=0;p<2;++p) {
@@ -3224,8 +3321,17 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
     if(bg_world || ending_sky) {
         if(normal_htz)bg_width=512;
         else {
-            int row=((by>>7)&15)*256;
-            for(int col=0;col<128;++col)if(s_world_frame[0x8080+row+col])bg_width=(col+1)*128;
+            unsigned chunk_row=(by>>7)&15;
+            if(s_interpolating && s_fractional_background_width[chunk_row]>=0)
+                bg_width=s_fractional_background_width[chunk_row];
+            else {
+                const uint8_t *layout=s_world_frame+0x8080+chunk_row*256;
+                for(int col=127;col>=0;--col)if(layout[col]) {
+                    bg_width=(col+1)*128;
+                    break;
+                }
+                if(s_interpolating)s_fractional_background_width[chunk_row]=bg_width;
+            }
         }
     }
     uint16_t card_ink=s_frame_card?s2_runtime_title_card_ink():0;
@@ -3242,7 +3348,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
              * camera. Apply that rounding after interpolation. */
             bg_base=normal_htz && line<128?-scroll_floor(-s_left,8):interpolation_background_base(line,by);
         }
-    } else if(s_interpolating && bg_world && s_frame_zone==13)
+    } else if(s_interpolating && bg_world && (s_frame_zone==10 || s_frame_zone==13))
         bg_base=interpolation_background_base(line,by);
     const uint8_t *mountains=normal_htz && rebase_background?htz_mountain_table(s_left):NULL;
     int background_x=bg_base;
@@ -3366,7 +3472,7 @@ static void render_source_scanline(const GVDP *v, int line, const uint32_t *nati
          * determines shadow; native operator sprites remain in the center. */
         if(special && (v->reg[12]&8) && !s_priority[x])
             out[x]=shadow[p?p:v->reg[7]&63];
-        if(nx>=0 && nx<nw && !(x&7) && !missing_scroll && !s_frame_campaign_view) {
+        if(!s_interpolating && nx>=0 && nx<nw && !(x&7) && !missing_scroll && !s_frame_campaign_view) {
             if(level && !native_terrain_streamed(wy,s_frame_fg_y)) {
                 ++s_terrain_unstreamed;
             } else if(level) {
@@ -3624,7 +3730,7 @@ static int captured_background_base(const PresentationFrame *f,int line,int worl
     if(r->frame_campaign_view)
         by+=(r->frame_view_y-unwrap(f->vscroll[line][0],r->frame_fg_y))/4;
     int extra=0;
-    if(r->frame_zone==15 || r->frame_zone==13) {
+    if(r->frame_zone==15 || r->frame_zone==13 || r->frame_zone==10) {
         /* These parallax bands follow the background world, not screen rows.
          * At the CPZ ripple edge, neighboring rows can sample different
          * cameras. Blend the same world row from both completed frames. */
@@ -3669,49 +3775,80 @@ static void interpolation_sprite(unsigned index,int *x,int *y)
     *x=lerp_position(a->sprites[previous].x+a->camera_x,b->sprites[index].x+b->camera_x)-b->camera_x;
     *y=lerp_position(a->sprites[previous].y+a->camera_y,b->sprites[index].y+b->camera_y)-b->camera_y;
 }
+static int match_presentation_actors(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
+                                     unsigned *actors)
+{
+    if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
+    *actors=0;
+    for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
+        const S2RuntimeSprite *p=&a->sprites[i],*q=&b->sprites[i];
+        if(!p->visible || !q->visible)continue;
+        int dy=((p->y-q->y+1024)&2047)-1024;
+        if(abs(p->x-q->x)>48 || abs(dy)>48) {
+            if(!i)return 0;
+            continue;
+        }
+        /* Art, palette and visibility belong to the completed pose.
+         * The fractional picture interpolates only continuous positions. */
+        *actors|=1u<<i;
+    }
+    return 1;
+}
 static int interpolate(double phase,uint32_t *image,int stride,int height)
 {
     const PresentationFrame *b=&s_present[s_present_front],*a=&s_present[s_present_front^1];
+    unsigned party_actors;
     if(!s_interpolation_enabled || !image || height!=224 || !(phase>=0 && phase<=1) ||
        !a->valid || !b->valid || a->lines!=224 || b->lines!=224 ||
        a->width!=b->width || stride<b->width || a->zone!=b->zone ||
        (uint16_t)(b->tick-a->tick)>2 ||
        abs(a->render.frame_fg_x-b->render.frame_fg_x)>128 ||
        abs(a->render.frame_fg_y-b->render.frame_fg_y)>128 ||
-       !s2_runtime_presentation_matches(&a->party,&b->party))return 0;
+       !match_presentation_actors(&a->party,&b->party,&party_actors))return 0;
+    if(a->scene.actors.object[0]!=b->scene.actors.object[0])return 0;
+    if(a->scene.actors.object[0]) {
+        int dx=a->scene.actors.x[0]-b->scene.actors.x[0];
+        int dy=((a->scene.actors.y[0]-b->scene.actors.y[0]+1024)&2047)-1024;
+        if(abs(dx)>48 || abs(dy)>48)return 0;
+    }
     /* Mapping pieces keep their object/piece identity when neighboring objects
      * enter, retire or change animation. Unmatched pieces use their completed
      * position while stable pieces and the camera continue to interpolate. */
     enum { MATCH_SLOTS=SCENE_SPRITES*2 };
     static uint32_t match_keys[MATCH_SLOTS];
     static int match_indices[MATCH_SLOTS];
-    memset(match_indices,0xFF,sizeof match_indices);
+    unsigned slots=2,shift=31;
+    while(slots<a->scene.count*2) {slots<<=1;--shift;}
+    memset(match_indices,0xFF,slots*sizeof *match_indices);
     for(unsigned i=0;i<a->scene.count;++i) {
         uint32_t key=a->keys[i];
-        unsigned slot=(key*2654435761u)>>(32-16);
+        unsigned slot=(key*2654435761u)>>shift;
         while(match_indices[slot]!=-1 && match_keys[slot]!=key)
-            slot=(slot+1)&(MATCH_SLOTS-1);
+            slot=(slot+1)&(slots-1);
         if(match_indices[slot]==-1) {
             match_keys[slot]=key;match_indices[slot]=(int)i;
         } else match_indices[slot]=-2; /* Ambiguous sources retain their picture. */
     }
     for(unsigned i=0;i<b->scene.count;++i) {
         uint32_t key=b->keys[i];
-        unsigned slot=(key*2654435761u)>>(32-16);
+        unsigned slot=(key*2654435761u)>>shift;
         while(match_indices[slot]!=-1 && match_keys[slot]!=key)
-            slot=(slot+1)&(MATCH_SLOTS-1);
+            slot=(slot+1)&(slots-1);
         int previous=match_indices[slot];
         const SceneSprite *q=&b->scene.sprites[i];
         if(q->actor && q->actor<=S2_MAX_PLAYERS) {
             unsigned role=q->actor-1;
             int dy=((a->scene.actors.y[role]-b->scene.actors.y[role]+1024)&2047)-1024;
             if(a->scene.actors.object[role]!=b->scene.actors.object[role] ||
-               abs(a->scene.actors.x[role]-b->scene.actors.x[role])>48 || abs(dy)>48)return 0;
+               abs(a->scene.actors.x[role]-b->scene.actors.x[role])>48 || abs(dy)>48) {
+                if(!role)return 0;
+                s_lerp_sprite[i]=-1;continue;
+            }
             /* Keep the new native pose, interpolate its shared actor root.
              * Animation may add/remove/rearrange mapping pieces freely. */
             s_lerp_sprite[i]=-2;continue;
         }
-        int player=(key>>16)==0xB000 || (key>>16)==0xB040;
+        int player=(key>>16)==0xB000;
         if(previous<0) {
             if(player)return 0;
             s_lerp_sprite[i]=-1;continue;
@@ -3741,6 +3878,8 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
     S2RenderContext *saved_render=s_render;
     const SceneFrame *saved_display=s_display;
     s_render=&fractional;s_display=&b->scene;s_interpolating=1;
+    s_fractional_sprites_ready=0;
+    for(unsigned row=0;row<16;++row)s_fractional_background_width[row]=-1;
     unsigned base=(fractional.video_frame.reg[13]&63u)<<10;
     int mode=fractional.video_frame.reg[11]&3;
     for(int y=0;y<224;++y) {
@@ -3756,7 +3895,7 @@ static int interpolate(double phase,uint32_t *image,int stride,int height)
         }
         render_scanline(&fractional.video_frame,y,b->image+(size_t)y*b->width,320,
                         image+(size_t)y*stride,b->width,NULL,NULL);
-        s2_runtime_presentation_row(&a->party,&b->party,phase,&fractional.video_frame,
+        s2_runtime_presentation_row(&a->party,&b->party,party_actors,phase,&fractional.video_frame,
                                     y,image+(size_t)y*stride,b->width);
     }
     s_interpolating=0;s_display=saved_display;s_render=saved_render;

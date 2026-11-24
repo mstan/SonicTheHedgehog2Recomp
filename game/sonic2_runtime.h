@@ -3,6 +3,8 @@
 #include <stddef.h>
 int s2_runtime_state_needs_frame_end(void);
 #include "sonic2_party.h"
+#include "sonic2_stage_layouts.h"
+#include "sonic2_knuckles_ending.h"
 #include "video/genesis_vdp.h"
 typedef struct S2RuntimeSprite {
     int16_t x,y;
@@ -25,17 +27,16 @@ typedef struct S2RuntimePresentation {
     uint16_t card_color;
 } S2RuntimePresentation;
 void s2_runtime_presentation_capture(S2RuntimePresentation *out);
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b);
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                double phase,const GVDP *v,int line,uint32_t *out,int width);
+                                unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width);
 size_t s2_runtime_state_size(void);
 int s2_runtime_state_save(void *data,size_t size);
 int s2_runtime_state_load(const void *data,size_t size,int apply);
 int s2_runtime_state_at_boundary(void);
 int s2_runtime_hook(uint32_t pc);
 void s2_runtime_load(void);
-void s2_runtime_prepare_stages(void);
-uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act);
+const S2EndingFrame *s2_runtime_ending_frame(unsigned map,unsigned frame);
+S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act);
 void s2_runtime_capture(void);
 int s2_runtime_campaign_online(void);
 int s2_runtime_campaign_independent(void);

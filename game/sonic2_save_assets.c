@@ -58,12 +58,11 @@ typedef struct StageArt {
     uint8_t tiles[65536],blocks[0x2000],chunks[0x8000],layout[0x1000];
     uint16_t palette[64];
 } StageArt;
-static int nemesis(const uint8_t *p,size_t size,uint8_t *out,size_t cap);
 static int stage_tornado(const uint8_t *r,StageArt *a,uint16_t *pixels)
 {
     /* ObjB2 frame 0, ArtNem_Tornado, and its source-selected Tails pilot $10.
      * A 2:1 icon is intentional: a terrain-only Sky Chase card is empty sky. */
-    if (!nemesis(r+0x8CC44,0x100000-0x8CC44,a->tiles+0xA000,0x6000)) return 0;
+    if (!s2_nemesis_decode(r+0x8CC44,0x100000-0x8CC44,a->tiles+0xA000,0x6000)) return 0;
     unsigned dp=0x7446C+be16(r+0x7446C+0x10*2),dest=0x7A0*32;
     if (dp>0xFFFFE) return 0;
     unsigned cues=be16(r+dp); dp+=2;
@@ -213,7 +212,7 @@ static int enigma(const uint8_t *p,size_t size,uint16_t *out,size_t cap,unsigned
     }
     return 0;
 }
-static int nemesis(const uint8_t *p,size_t size,uint8_t *out,size_t cap)
+int s2_nemesis_decode(const uint8_t *p,size_t size,uint8_t *out,size_t cap)
 {
     if (size<4) return 0;
     unsigned header=be16(p), nibbles=(header&0x7FFF)*64, palette=0;
@@ -257,18 +256,18 @@ int s2_native_hud_art_decode(const uint8_t *r,size_t size,S2NativeHudArt *out)
     static const unsigned at[]={0x79346,0x7B946,0x7C20C};
     for (unsigned i=0;i<3;++i)
         if ((be16(r+at[i])&0x7FFF)!=12 ||
-            !nemesis(r+at[i],size-at[i],a.life[i],sizeof a.life[i])) return 0;
+            !s2_nemesis_decode(r+at[i],size-at[i],a.life[i],sizeof a.life[i])) return 0;
     if (be16(r+0x7C43A)!=88 ||
-        !nemesis(r+0x7C43A,size-0x7C43A,a.font,sizeof a.font)) return 0;
+        !s2_nemesis_decode(r+0x7C43A,size-0x7C43A,a.font,sizeof a.font)) return 0;
     if ((be16(r+0x7D58A)&0x7FFF)!=92 ||
-        !nemesis(r+0x7D58A,size-0x7D58A,a.title_font,sizeof a.title_font)) return 0;
+        !s2_nemesis_decode(r+0x7D58A,size-0x7D58A,a.title_font,sizeof a.title_font)) return 0;
     memcpy(a.numbers,r+0x4164C,sizeof a.numbers);
     *out=a; return 1;
 }
 int s2_native_stars_decode(const uint8_t *r,size_t size,uint8_t out[34*32])
 {
     return r && out && size==0x100000 && (be16(r+0x71F14)&0x7FFF)==34 &&
-        nemesis(r+0x71F14,231,out,34*32);
+        s2_nemesis_decode(r+0x71F14,231,out,34*32);
 }
 int s2_amy_special_ui_decode(const uint8_t *r,size_t size,S2SpecialStageArt *out)
 {
@@ -295,8 +294,8 @@ int s2_amy_special_ui_decode(const uint8_t *r,size_t size,S2SpecialStageArt *out
     /* The original result font changes eight HUD-name tiles and adds Y.
      * The half-pipe HUD keeps the stock mappings with five changed tiles. */
     if((be16(r+0x9BDEA)&0x7FFF)!=76 || (be16(r+0x1053C6)&0x7FFF)!=62 ||
-       !nemesis(r+0x9BDEA,901,font,sizeof font) ||
-       !nemesis(r+0x1053C6,731,hud,sizeof hud))return 0;
+       !s2_nemesis_decode(r+0x9BDEA,901,font,sizeof font) ||
+       !s2_nemesis_decode(r+0x1053C6,731,hud,sizeof hud))return 0;
     memcpy(out->results,frames,sizeof frames);
     memcpy(out->result_name,font+(0x5B0-0x590)*32,sizeof out->result_name);
     memcpy(out->font_y,font+72*32,sizeof out->font_y);
@@ -310,10 +309,10 @@ int s2_amy_item_art_decode(const uint8_t *r,size_t size,S2ItemArt *out)
     /* Rev1.7.1 PLC $44D38 loads the life atlas at $FA80. The continue
      * loader at $786A and its results PLC select the same mini atlas. */
     if ((be16(r+0x96002)&0x7FFF)!=12 || (be16(r+0x98D78)&0x7FFF)!=12 ||
-        !nemesis(r+0x96002,256,life,sizeof life) ||
-        !nemesis(r+0x98D78,334,candidate.continue_icons,sizeof candidate.continue_icons) ||
+        !s2_nemesis_decode(r+0x96002,256,life,sizeof life) ||
+        !s2_nemesis_decode(r+0x98D78,334,candidate.continue_icons,sizeof candidate.continue_icons) ||
         (be16(r+0x968DA)&0x7FFF)!=78 ||
-        !nemesis(r+0x968DA,size-0x968DA,candidate.signpost,sizeof candidate.signpost)) return 0;
+        !s2_nemesis_decode(r+0x968DA,size-0x968DA,candidate.signpost,sizeof candidate.signpost)) return 0;
     /* Original PLC $451D0 loads this complete atlas at $8680. Its six
      * mappings at $1A35A exactly retain the host's normal sign geometry. */
     candidate.signpost_tiles=78;
@@ -328,9 +327,9 @@ int s2_megamix_item_art_decode(const uint8_t *r,size_t size,unsigned shadow,S2It
      * at $FA80. The first four tiles are also the original monitor face. */
     size_t at=shadow?0x3BAF4:0x3B9EE;
     if ((be16(r+at)&0x7FFF)!=12 ||
-        !nemesis(r+at,size-at,candidate.life,sizeof candidate.life)) return 0;
+        !s2_nemesis_decode(r+at,size-at,candidate.life,sizeof candidate.life)) return 0;
     uint8_t sign[58*32];at=shadow?0x3DD88:0x3D8F2;
-    if ((be16(r+at)&0x7FFF)!=58 || !nemesis(r+at,size-at,sign,sizeof sign)) return 0;
+    if ((be16(r+at)&0x7FFF)!=58 || !s2_nemesis_decode(r+at,size-at,sign,sizeof sign)) return 0;
     /* v3 PLC $24/$25 uses the same48x32 face and rotating pieces as S2,
      * but places the two pole tiles after its face. Normalize those tile
      * ranges only; native object execution, mappings and SAT order stay put. */
@@ -360,7 +359,7 @@ unsigned s2_native_sprite_art_decode(const uint8_t *r,size_t size,unsigned asset
     if(capacity<tiles[asset]*32)return 0;
     unsigned bytes=tiles[asset]*32;
     if((be16(r+addresses[asset])&0x7FFF)!=tiles[asset])return 0;
-    return nemesis(r+addresses[asset],lengths[asset],out,bytes)?bytes:0;
+    return s2_nemesis_decode(r+addresses[asset],lengths[asset],out,bytes)?bytes:0;
 }
 typedef struct { uint32_t hash;uint16_t phase; } SlotPattern;
 static uint32_t slot_hash(const uint8_t *p)
@@ -424,17 +423,17 @@ int s2_knuckles_art_decode(const uint8_t *r,size_t size,S2KnucklesArt *out)
     S2KnucklesArt candidate={0};
     /* Byte-matched original KiS2 c336fede: the 256 KiB add-on follows S&K
      * and S2. Its artwork uses S&K's original KiS2 palette at $60BEA. */
-    if (!nemesis(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
-        !nemesis(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
-        !nemesis(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
-        !nemesis(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor) ||
-        !nemesis(r+0x33AAF2,340,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
+    if (!s2_nemesis_decode(r+0x33AC46,250,candidate.life,sizeof candidate.life) ||
+        !s2_nemesis_decode(r+0x33AD40,524,candidate.shield_stars,sizeof candidate.shield_stars) ||
+        !s2_nemesis_decode(r+0x33AF4C,530,candidate.signpost,sizeof candidate.signpost) ||
+        !s2_nemesis_decode(r+0x33B15E,146,candidate.monitor,sizeof candidate.monitor) ||
+        !s2_nemesis_decode(r+0x33AAF2,340,candidate.continue_icons,sizeof candidate.continue_icons)) return 0;
     /* KiS2 has its own half-pipe mappings and standard DPLCs. Retain those
      * pieces: nine frames extend outside the stock Sonic mapping geometry.
      * All patterns and colours remain derived from the verified owner ROM. */
     uint8_t special_tiles[442*32];
     if ((be16(r+0x33B3F0)&0x7FFF)!=442 ||
-        !nemesis(r+0x33B3F0,6892,special_tiles,sizeof special_tiles)) return 0;
+        !s2_nemesis_decode(r+0x33B3F0,6892,special_tiles,sizeof special_tiles)) return 0;
     for (unsigned frame=0;frame<S2_SPECIAL_FRAMES;++frame) {
         unsigned mp=0x32D410+be16(r+0x32D410+frame*2);
         unsigned dp=0x32D728+be16(r+0x32D728+frame*2);
@@ -497,7 +496,7 @@ int s2_save_assets_decode(const uint8_t *r,size_t size,S2SaveAssets **out,char *
         !kosinski(r+0x15A774,0xC00,a->tiles+0x8A80,0x12C0) ||
         !enigma(r+0x39D2A2,0x202,a->background,40*28,1) ||
         !enigma(r+0x3A2020,0xBE,a->layout,405,0x829F) ||
-        !nemesis(r+0xCA5E0,1396,a->tiles+0xAC40,sizeof a->tiles-0xAC40)) goto failure;
+        !s2_nemesis_decode(r+0xCA5E0,1396,a->tiles+0xAC40,sizeof a->tiles-0xAC40)) goto failure;
     for (unsigned i=0;i<16;++i) a->palette[i]=(uint16_t)be16(r+0x39D262+i*2);
     for (unsigned i=0;i<32;++i) a->palette[16+i]=(uint16_t)be16(r+0xCA78+i*2);
     /* Native Load_Icon_Art: Sonic uses static frames24/25. Tails and

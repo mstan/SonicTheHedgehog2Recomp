@@ -5,13 +5,6 @@
  * callbacks adapt player roles only, never replay a level or enemy update. */
 #include "sonic2_runtime.h"
 #include "sonic2_sound_driver.h"
-#include "sonic2_sound_assets.h"
-#ifdef SONIC2_CLONE_DRIVER
-#include "sonic2_clone_metadata.h"
-#endif
-#ifdef SONIC2_MUSIC_DRIVER
-#include "sonic2_music_clone_metadata.h"
-#endif
 #include "sonic2_party.h"
 #include "sonic2_resources.h"
 #include "sonic2_character.h"
@@ -59,6 +52,9 @@ const uint8_t *s2_runtime_title_font(void) {return hud_art_ready?hud_art.title_f
  * Extra actors retain those two bits per solid on the host. The actual actor
  * objects have real, reserved native pool addresses, so monitor/platform
  * parent links stay valid across ticks (no temporary Sidekick alias). */
+/* Launcher occupancy is private to the extra seats as well. The low two
+ * bits record idle, charging or releasing, outside the native contact bits. */
+enum { EXTRA_CONTACT_BITS = 0x50, EXTRA_LAUNCHER_STATE = 3 };
 static uint8_t solid_flags[S2_MAX_PLAYERS-2][144], solid_ids[144];
 static int inside_solid;
 typedef S2RuntimeSprite PartySprite;
@@ -73,34 +69,13 @@ static uint8_t displayed_tails;
  * INSIDE a hook (any bus access may yield to the raster scheduler), so at a
  * tick boundary any of these may legitimately be 1. */
 static int s_inside_spring, s_inside_palette, s_reward, s_checking_death,
-           s_transforming, s_combat;
+           s_transforming, s_combat, s_departing_objects;
 static int amy_available(void) { return s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY); }
 static int knuckles_available(void) { return s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK); }
 static int knuckles_lead_available(void)
 { return s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages()!=NULL; }
 static const S2Character amy={"amy","AMY",1,amy_available};
 static const S2Character knuckles={"knuckles","KNUCKLES",1,knuckles_available};
-/* Keep derived campaign banks outside both executable sound images and the
- * converted sound-asset arena. Validate generated image sizes at build time. */
-#ifdef SONIC2_CLONE_DRIVER
-_Static_assert(S2_CLONE_LOAD_ADDRESS+S2_CLONE_PAYLOAD_SIZE<=S2_STAGE_LAYOUT_ROM,
-               "Clone Driver overlaps the campaign bank");
-#endif
-_Static_assert(S2_STAGE_LAYOUT_ROM+S2_STAGE_LAYOUT_BYTES<=S2_KNUCKLES_ENDING_ROM,
-               "Campaign object and ending banks overlap");
-_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_SOUND_MUSIC_BASE,
-               "Campaign banks overlap converted sound assets");
-#ifdef SONIC2_MUSIC_DRIVER
-_Static_assert(S2_KNUCKLES_ENDING_ROM+S2_KNUCKLES_ENDING_BYTES<=S2_MUSIC_CLONE_LOAD_ADDRESS,
-               "Campaign banks overlap the music driver");
-#endif
-void s2_runtime_prepare_stages(void)
-{
-    const S2StageLayouts *stages=s2_resource_knuckles_stages();
-    if(stages) memcpy(g_rom+S2_STAGE_LAYOUT_ROM,stages->data,stages->size);
-    const S2KnucklesEnding *ending=s2_resource_knuckles_ending();
-    if(ending) memcpy(g_rom+S2_KNUCKLES_ENDING_ROM,ending->data,ending->size);
-}
 static unsigned kind(unsigned p)
 {
     const char *id=s2_party.roster.character[p];
@@ -120,16 +95,21 @@ uint16_t s2_runtime_title_card_ink(void)
  }
  return 0;
 }
-uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act)
+S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act)
 {
     if((g_ram[0xF600]&127)!=12 || g_ram[0xFFD8] || g_ram[0xFFD9] || kind(0)!=S2_CHAR_KNUCKLES ||
-       !knuckles_available() || !knuckles_lead_available()) return 0;
-    return s2_stage_layout_address(s2_resource_knuckles_stages(),zone,act);
+       !knuckles_available() || !knuckles_lead_available()) return (S2StagePlacementView){0};
+    return s2_stage_layout_view(s2_resource_knuckles_stages(),zone,act);
 }
 static int knuckles_ending(void)
 {
     return (g_ram[0xF600]&127)==0x20 && kind(0)==S2_CHAR_KNUCKLES &&
         knuckles_available() && s2_resource_knuckles_ending()!=NULL;
+}
+const S2EndingFrame *s2_runtime_ending_frame(unsigned map,unsigned frame)
+{
+    if(map!=S2_ENDING_JUMP_MAP || frame>=S2_ENDING_FRAMES || !knuckles_ending())return NULL;
+    return &s2_resource_knuckles_ending()->frames[frame];
 }
 static const S2DonorBank *bank(unsigned p)
 {
@@ -155,7 +135,7 @@ static void prepare_native_bank(unsigned k)
 static int imported(void) { return actor>=0 && (kind((unsigned)actor)==S2_CHAR_AMY || kind((unsigned)actor)==S2_CHAR_KNUCKLES || kind((unsigned)actor)==S2_CHAR_SHADOW); }
 void s2_runtime_load(void)
 {
-    active=inside_player=0; actor=-1;
+    active=inside_player=s_departing_objects=0; actor=-1;
     input_poll_serial=0;
     ss_return_zone=ss_return_rings=0;
     ss_return_post=ss_return_lives=ss_return_pending=0;
@@ -436,14 +416,18 @@ const char *s2_runtime_state_unavailable_reason(void)
 #endif
     return NULL;
 }
-static int level(void) { return active && ((g_ram[0xF600]&0x7F)==12); }
+static int level(void)
+{
+    unsigned mode=g_ram[0xF600]&127;
+    return active && (mode==12 || (mode==4 && s_departing_objects));
+}
 static int presented_level(void)
 {
     unsigned mode=g_ram[0xF600]&127;
-    /* SpecialStage changes mode before fading the still-displayed level.
-     * Its initialization retires the native player object only after white. */
-    return level() || (active && mode==16 &&
-        (g_ram[0xB000]==1 || g_ram[0xB000]==2) && g_ram[0xF711]);
+    /* Both the title return and Special Stage change mode before the
+     * current level's palette fade. The outgoing scene still owns its actors. */
+    return level() || (active && (s2_video_outgoing_level() || (mode==16 &&
+        (g_ram[0xB000]==1 || g_ram[0xB000]==2) && g_ram[0xF711])));
 }
 int s2_runtime_knuckles_item(unsigned o)
 {
@@ -627,10 +611,12 @@ static void sound_state(S2StateIO *io)
     if(io->data && io->mode && (io->pos>io->size || sizeof expected>io->size-io->pos ||
        !s2_sound_state_valid(io->data+io->pos))) {io->ok=0;return;}
     s2_state_bytes(io,expected,sizeof expected);
+    s2_sound_sequence_state(io);
 }
 static void runtime_state(S2StateIO *io)
 {
     sound_state(io);
+    if(!io->ok && io->data)return;
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
@@ -659,6 +645,7 @@ static void runtime_state(S2StateIO *io)
         if (memcmp(saved,header,sizeof saved)) io->ok=0;
     }
     S2_STATE(io,header); S2_STATE(io,active);
+    S2_STATE(io,s_departing_objects);
     S2_STATE(io,previous_input); S2_STATE(io,input_poll_serial);
     S2_STATE(io,ss_return_zone); S2_STATE(io,ss_return_rings);
     S2_STATE(io,ss_return_post); S2_STATE(io,ss_return_lives); S2_STATE(io,ss_return_pending);
@@ -758,8 +745,9 @@ static void solid_begin(unsigned p, uint8_t saved[144])
 {
     for (unsigned n=0;n<144;++n) {
         unsigned at=0xB000+n*0x40;
-        saved[n]=g_ram[at+0x22]&0x50;
-        if (!player_object(at)) g_ram[at+0x22]=(g_ram[at+0x22]&~0x50)|solid_flags[p-2][n];
+        saved[n]=g_ram[at+0x22]&EXTRA_CONTACT_BITS;
+        if (!player_object(at)) g_ram[at+0x22]=(g_ram[at+0x22]&~EXTRA_CONTACT_BITS)|
+            (solid_flags[p-2][n]&EXTRA_CONTACT_BITS);
     }
 }
 static void solid_end(unsigned p, const uint8_t saved[144])
@@ -767,14 +755,63 @@ static void solid_end(unsigned p, const uint8_t saved[144])
     for (unsigned n=0;n<144;++n) {
         unsigned at=0xB000+n*0x40;
         if (player_object(at)) continue;
-        solid_flags[p-2][n]=g_ram[at+0x22]&0x50;
-        g_ram[at+0x22]=(g_ram[at+0x22]&~0x50)|saved[n];
+        solid_flags[p-2][n]=(solid_flags[p-2][n]&~EXTRA_CONTACT_BITS)|
+            (g_ram[at+0x22]&EXTRA_CONTACT_BITS);
+        g_ram[at+0x22]=(g_ram[at+0x22]&~EXTRA_CONTACT_BITS)|saved[n];
     }
 }
 static int extra_players(void)
 {
     for (unsigned p=2;p<S2_MAX_PLAYERS;++p) if (objects[p]) return 1;
     return 0;
+}
+static int launcher_with_extras(int diagonal)
+{
+    unsigned launcher=g_cpu.A[0]&0xFFFF;
+    if (!extra_players() || word(0xFFD8) || launcher<0xB400 || launcher>=0xD000 ||
+        (launcher&63) || g_ram[launcher]!=0x85) return 0;
+
+    /* The head and both original seats have already advanced. Give each
+     * extra seat the same native contact handler and shared stroke. */
+    unsigned index=(launcher-0xB000)/64, seat=launcher+0x37;
+    uint32_t contact=diagonal?0x2AF06:0x2AD26;
+    M68KState caller=g_cpu;
+    unsigned occupied=0, buttons=0;
+    for(unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+        unsigned player=objects[p];
+        if(!player || !g_ram[player]) continue;
+        uint8_t *extra=&solid_flags[p-2][index];
+        unsigned state=*extra&EXTRA_LAUNCHER_STATE;
+        if(!state && abs((int16_t)(word(player+8)-word(launcher+8)))>0x40) continue;
+        uint8_t tag=g_ram[seat], saved[144];
+        unsigned pad=(uint16_t)(genesis_sim_pad((int)p)<<8);
+        solid_begin(p,saved);
+        g_ram[seat]=(uint8_t)state;
+        g_cpu=caller;
+        g_cpu.A[1]=0xFFFF0000u|player;
+        g_cpu.A[2]=0xFFFF0000u|seat;
+        g_cpu.D[1]=0x23; g_cpu.D[2]=diagonal?8:0x20; g_cpu.D[3]=diagonal?5:0x1D;
+        g_cpu.D[4]=word(launcher+8); g_cpu.D[5]=pad; g_cpu.D[6]=4;
+        native_helper(contact);
+        state=g_ram[seat];
+        solid_end(p,saved);
+        *extra=(*extra&~EXTRA_LAUNCHER_STATE)|state;
+        g_ram[seat]=tag;
+        occupied|=state;
+        if(state==1) buttons|=pad;
+    }
+    g_cpu=caller;
+    if(!occupied) return 0;
+    if(g_ram[launcher+0x36]==1) buttons|=word(0xF602);
+    if(g_ram[launcher+0x37]==1) buttons|=word(0xF606);
+    if(word(launcher+0x38) && !(buttons&0x7000)) {
+        putword(launcher+0x36,0x0202);
+        for(unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+            uint8_t *flags=&solid_flags[p-2][index];
+            if((*flags&EXTRA_LAUNCHER_STATE)==1) *flags=(*flags&~EXTRA_LAUNCHER_STATE)|2;
+        }
+    }
+    return 1;
 }
 static void switch_extra_planes(void)
 {
@@ -1135,6 +1172,14 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if(pc==0x437A || pc==0x4380) {
+        /* Pause can select Title before Level_MainLoop's last RunObjects.
+         * Keep the custom controller and companion context for this exact
+         * native call. The title's own object list uses its ordinary path. */
+        s_departing_objects=pc==0x437A && active && !word(0xFFD8) &&
+            (g_ram[0xF600]&127)==4 && s2_video_outgoing_level();
+        return 0;
+    }
     if(pc==0x9C7C) {
         if(knuckles_ending()) {
             s2_character_reset(&characters[0],S2_CHAR_KNUCKLES);displayed[0]=0;
@@ -1149,11 +1194,27 @@ int s2_runtime_hook(uint32_t pc)
         if(pc==0xABE2) {
             /* KiS2 uses its ordinary ending for either emerald outcome. */
             putword(0xF750,0);
-            m68k_write32(0xC00004,0x43200000); /* ArtTile_EndingCharacter=$19 */
-            g_cpu.A[0]=e->art;recomp_tail_call(0x14DE);return 1;
+            glue_poke32(0xC00004,0x43200000); /* ArtTile_EndingCharacter=$19 */
+            for(size_t i=0;i<e->tile_bytes;i+=2)
+                glue_poke16(0xC00000,(uint16_t)(e->tiles[i]<<8|e->tiles[i+1]));
+            return 1;
         }
-        if(pc==0x9E14) {g_cpu.A[1]=e->palette;return 0;}
-        if(pc==0x1331C && g_cpu.A[2]==0xAC7E) {g_cpu.A[2]=e->palette;return 0;}
+        if(pc==0x9E14) {
+            memcpy(g_ram+0xFB80,e->palette,sizeof e->palette);
+            g_cpu.A[1]+=sizeof e->palette;
+            g_cpu.A[2]=0xFFFFFC00u;
+            g_cpu.D[0]=0xFFFF;
+            recomp_tail_call(0x9E20);return 1;
+        }
+        if(pc==0x1332E && g_cpu.A[2]==0xAC7E) {
+            unsigned bytes=((g_cpu.D[0]&65535u)+1)*2, dest=g_cpu.A[3]&65535u;
+            if(bytes<=sizeof e->palette && dest>=0xFB80 && dest+bytes<=0xFC00) {
+                memcpy(g_ram+dest,e->palette,bytes);
+                g_cpu.A[2]+=bytes;g_cpu.A[3]+=bytes;
+                g_cpu.D[0]|=0xFFFFu;
+                recomp_tail_call(0x13334);return 1;
+            }
+        }
         if(pc==0x213E) {
             /* Original KiS2 cycle: three shades at palette entries 2,3,5.
              * Both the native large jump sprite and the host body use CRAM. */
@@ -1185,9 +1246,16 @@ int s2_runtime_hook(uint32_t pc)
             putword(0xB01C,0x0500);characters[0].animation=0;
             return 0;
         }
-        if(pc==0x164F4 && o>=0xB000 && o<0xD400 &&
-           ((uint32_t)word(o+4)<<16|word(o+6))==0xADA2)
-            putfixed(o+4,(int32_t)e->mappings);
+        if(pc==0x166CC && o>=0xB000 && o<0xD400 && word(o+4)==0 && word(o+6)==S2_ENDING_JUMP_MAP) {
+            unsigned frame=g_ram[o+0x1A],count=g_cpu.D[5]&255u;
+            if(frame<S2_ENDING_FRAMES && count<80) {
+                unsigned added=s2_ending_draw_sat(&e->frames[frame],g_ram+(g_cpu.A[2]&65535u),count,
+                    word(o+2),g_cpu.D[4]&3u,(int16_t)g_cpu.D[3],(int16_t)g_cpu.D[2]);
+                g_cpu.A[2]+=added*8;
+                g_cpu.D[5]=(g_cpu.D[5]&~255u)|(count+added);
+            }
+            recomp_tail_call(0x166EC);return 1;
+        }
         if(o==0xB000) {
             if(pc==0x164F4) {displayed[0]=1;return 1;}
             if(pc==0x1B350) {
@@ -1198,13 +1266,6 @@ int s2_runtime_hook(uint32_t pc)
             }
             if(pc==0x1B848)return 1;
         }
-    }
-    if(pc==0x17AF0) {
-        /* After native layout selection, before all four scrolling cursors
-         * are initialized. The native loader owns loading and respawning. */
-        uint32_t address=s2_runtime_stage_layout(g_ram[0xFE10],g_ram[0xFE11]);
-        if(address) g_cpu.A[0]=address;
-        return 0;
     }
     if (pc==0x41C3A) {
         /* Debug_SpawnObject copies the cursor's on-screen flag before the
@@ -1480,10 +1541,14 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x15F9C) {
         for (unsigned n=0;n<144;++n) {
             unsigned id=g_ram[0xB000+n*0x40];
-            if (id!=solid_ids[n]) { solid_flags[0][n]=solid_flags[1][n]=0; solid_ids[n]=(uint8_t)id; }
+            if (id!=solid_ids[n]) {
+                for(unsigned p=0;p<S2_MAX_PLAYERS-2;++p) solid_flags[p][n]=0;
+                solid_ids[n]=(uint8_t)id;
+            }
         }
         return 0;
     }
+    if (pc==0x2ACE0 || pc==0x2AEC0) return launcher_with_extras(pc==0x2AEC0);
     uint32_t single=solid_single(pc);
     if (single) return collide_extras(pc,single);
     if (pc==0x18888) return spring_extras(pc);
@@ -1520,7 +1585,12 @@ int s2_runtime_hook(uint32_t pc)
         putword(0xEEFE,word(0xEECE));
         s_checking_death=1; native_helper(0x1CC6C); s_checking_death=0;
         putword(0xEEFE,max_y); g_ram[0xEEBF]=scroll_lock;
-        if (companion_recovering() && native_id((unsigned)actor)!=2) g_ram[(g_cpu.A[0]&0xFFFF)+0x1C]=2;
+        unsigned o=g_cpu.A[0]&0xFFFF;
+        /* Catch-up can still be marked active when a companion dies. Keep
+         * the native death animation until CheckGameOver releases the
+         * object into the ordinary recovery routine. */
+        if (g_ram[o+0x24]==2 && companion_recovering() && native_id((unsigned)actor)!=2)
+            g_ram[o+0x1C]=2;
         return 1;
     }
     if (pc==0x1ABA6 || pc==0x1AB38) {
@@ -1683,10 +1753,8 @@ void s2_runtime_capture(void)
     /* BuildSprites runs after the complete object tick. Rendering live actor
      * RAM per scanline could use one pose for a head and the next for its body,
      * or observe displayed[] while an actor was being updated. */
-    /* A starpost can switch mode during RunObjects, before this final
-     * BuildSprites. Keep the last displayed donor actors while the native
-     * level SAT is held through the entry fade. Incoming SS objects retire
-     * that publication after the level objects have actually been cleared. */
+    /* When the displayed level is fading out, keep its final actor
+     * publication with the native SAT until the incoming scene replaces it. */
     int native_only=!active && g_ram[0xF711] && !word(0xFFD8) &&
         (g_ram[0xB000]==1 || g_ram[0xB000]==2);
     if (!level() && (presented_level() || (native_only && (g_ram[0xF600]&127)!=12))) return;
@@ -1950,7 +2018,8 @@ static int actor_lerp(int a,int b,double phase)
 static int actor_delta_y(int difference)
 { return ((difference+1024)&2047)-1024; }
 static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width,
-                                  const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,double phase)
+                                  const S2RuntimePresentation *picture,const S2RuntimePresentation *previous,
+                                  unsigned actors,double phase)
 {
     const GVDP *visibility=previous?v:&picture->vdp;
     if (picture->green_card && (v->reg[1]&64)) green_title_card(visibility,line,out,width,picture->card_color);
@@ -1996,7 +2065,7 @@ static void runtime_overlay_frame(const GVDP *v,int line,uint32_t *out,int width
          * wrapped positive coordinate. Subtracting them directly loses the
          * entire donor body despite valid movement and display submission. */
         if(wrap)y=actor_delta_y(y);
-        if(previous) {
+        if(previous && (actors&(1u<<index))) {
             const PartySprite *old=&previous->sprites[index];
             x=actor_lerp(old->x,s->x,phase)-origin_x;
             if(wrap)y+=actor_lerp(actor_delta_y(old->y-s->y),0,phase);
@@ -2116,7 +2185,7 @@ void s2_runtime_overlay(const GVDP *v,int line,uint32_t *out,int width)
             }
         }
     }
-    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+    runtime_overlay_frame(v,line,out,width,f,NULL,0,1);
 }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { *out=s_overlay_frame; }
@@ -2125,24 +2194,12 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
     S2RuntimePresentation *f=&s_overlay_frame;
     int left=f->left,top=f->top;
     s2_video_actor_origin(v,line,width,&f->left,&f->top);
-    runtime_overlay_frame(v,line,out,width,f,NULL,1);
+    runtime_overlay_frame(v,line,out,width,f,NULL,0,1);
     f->left=left;f->top=top;
 }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
-{
-    if(a->active!=b->active || a->vs || b->vs || a->green_card || b->green_card)return 0;
-    for(unsigned i=0;i<S2_MAX_PLAYERS+1;++i) {
-        const PartySprite *p=&a->sprites[i],*q=&b->sprites[i];
-        int dy=p->y-q->y;
-        if((a->world[0xF600]&127)==12 && (b->world[0xF600]&127)==12)dy=actor_delta_y(dy);
-        if(p->visible!=q->visible || (q->visible &&
-           (p->art!=q->art || abs(p->x-q->x)>48 || abs(dy)>48)))return 0;
-    }
-    return 1;
-}
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                double phase,const GVDP *v,int line,uint32_t *out,int width)
-{ runtime_overlay_frame(v,line,out,width,b,a,phase); }
+                                unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ runtime_overlay_frame(v,line,out,width,b,a,actors,phase); }
 
 /* ---- rollback state (GameSpec rb_state_save/load) --------------------------
  * Everything this adapter keeps outside guest RAM that a tick reads, at ANY
@@ -2172,6 +2229,7 @@ static void rb_character(S2StateIO *io, S2CharacterState *c)
 static void rb_all(S2StateIO *io)
 {
     sound_state(io);
+    if(!io->ok && io->data)return;
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
@@ -2193,7 +2251,8 @@ static void rb_all(S2StateIO *io)
         RB(io,ps->x); RB(io,ps->y); RB(io,ps->art); RB(io,ps->frame); RB(io,ps->flip); RB(io,ps->visible); RB(io,ps->wet);
     }
     RB(io,displayed_tails);
-    int32_t g[6]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,s_transforming,s_combat};
+    int32_t g[7]={s_inside_spring,s_inside_palette,s_reward,s_checking_death,
+                  s_transforming,s_combat,s_departing_objects};
     RB(io,g);
     /* Online campaign rendering can become active after the cold snapshot
      * and inactive before a rematch restore. Always carry its simulation
@@ -2213,7 +2272,7 @@ static void rb_all(S2StateIO *io)
     if (io->mode==2) {
         active=a; inside_player=ip; actor=ac; inside_companion_cpu=icc; inside_solid=is;
         s_inside_spring=g[0]; s_inside_palette=g[1]; s_reward=g[2];
-        s_checking_death=g[3]; s_transforming=g[4]; s_combat=g[5];
+        s_checking_death=g[3]; s_transforming=g[4]; s_combat=g[5]; s_departing_objects=g[6];
     }
     if (io->mode==1 && count!=s2_character_count()) io->ok=0;   /* registry is fixed after init */
 }

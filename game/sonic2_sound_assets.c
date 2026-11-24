@@ -19,7 +19,6 @@ static unsigned rw(Convert *c,unsigned p) { return rb(c,p)|(rb(c,p+1)<<8); }
 static unsigned pointer(Convert *c,unsigned p)
 { unsigned v=rw(c,p);if(v<c->base || v-c->base>=c->size)c->bad=1;return v-c->base; }
 static void ww(uint8_t *m,unsigned p,unsigned v) { m[p]=(uint8_t)(v>>8);m[p+1]=(uint8_t)v; }
-static void wl(uint8_t *m,unsigned p,unsigned v) { ww(m,p,v>>16);ww(m,p+2,v); }
 static unsigned le(const uint8_t *m,unsigned p) { return m[p]|(m[p+1]<<8); }
 
 /* Both stock decompressors use the same 4 KiB dictionary, initially zero.
@@ -67,7 +66,7 @@ static unsigned target_output(Convert *c,unsigned pc,unsigned kind)
     if(pc>=BANK_SIZE || kind>=8){c->bad=1;return 0;}
     int n=c->map[pc*8+kind];if(n<0){c->bad=1;return 0;}return c->nodes[n].output;
 }
-static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned capacity,int music)
+static unsigned convert_song(Convert *c,unsigned source,unsigned capacity,int music)
 {
     static const uint8_t lengths[]={2,2,2,1,1,2,2,1,2,2,2,2,2,1,1,2,5,1,1,2,1,2,3,5,3,1};
     static const uint8_t commands[]={0,1,2,3,4,5,6,0,8,9,10,11,12,31,7,13,14,15,16,17,18,19,20,21,22,0xFF};
@@ -77,11 +76,11 @@ static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned c
     if(music) {
         if(!fm || fm>7 || psg>3){c->bad=1;return 0;}
         header=8+fm*4+psg*6;
-        c->memory[dest+2]=(uint8_t)fm;c->memory[dest+3]=(uint8_t)psg;
-        c->memory[dest+6]=(uint8_t)rb(c,source+4);
-        c->memory[dest+7]=(uint8_t)(256-rb(c,source+5));
+        c->memory[2]=(uint8_t)fm;c->memory[3]=(uint8_t)psg;
+        c->memory[6]=(uint8_t)rb(c,source+4);
+        c->memory[7]=(uint8_t)(256-rb(c,source+5));
         for(unsigned i=0;i<fm+psg;i++) {
-            unsigned old=source+6+(i<fm?i*4:fm*4+(i-fm)*6),out=dest+old-source+2;
+            unsigned old=source+6+(i<fm?i*4:fm*4+(i-fm)*6),out=old-source+2;
             unsigned kind=i==0?1:i>=fm?i-fm+2:0;
             roots[root_count]=pointer(c,old);kinds[root_count]=kind;headers[root_count++]=out;
             unsigned n=i<fm?4:6;for(unsigned k=0;k<n;k++)c->memory[out+k]=(uint8_t)rb(c,old+k);
@@ -92,9 +91,9 @@ static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned c
         unsigned tracks=rb(c,source+3);
         if(!tracks || tracks>6){c->bad=1;return 0;}
         header=4+tracks*6;
-        for(unsigned k=0;k<header;k++)c->memory[dest+k]=(uint8_t)rb(c,source+k);
+        for(unsigned k=0;k<header;k++)c->memory[k]=(uint8_t)rb(c,source+k);
         for(unsigned i=0;i<tracks;i++) {
-            unsigned old=source+4+i*6,out=dest+4+i*6,id=rb(c,old+1);
+            unsigned old=source+4+i*6,out=4+i*6,id=rb(c,old+1);
             unsigned kind=id&128?i+2:0;
             roots[root_count]=pointer(c,old+2);kinds[root_count]=kind;headers[root_count++]=out+2;
             if(kind>=2){c->pitch[kind]=(int8_t)rb(c,old+4);c->memory[out+4]+=12;c->memory[out+5]<<=3;}
@@ -122,7 +121,7 @@ static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned c
     if(size+25*c->voices>capacity || c->voices>128){c->bad=1;return 0;}
     for(unsigned i=0;i<root_count;i++)ww(c->memory,headers[i],target_output(c,roots[i],kinds[i]));
     for(int i=0;i<c->count;i++) {
-        Node *n=&c->nodes[i];unsigned out=dest+n->output,op=rb(c,n->pc);
+        Node *n=&c->nodes[i];unsigned out=n->output,op=rb(c,n->pc);
         if(op<0xE0) {
             /* S2's maximum PSG period is zero. Resolve that sentinel after
              * the header transpose, including the leaf SFX's -8 shift. */
@@ -144,92 +143,164 @@ static unsigned convert_song(Convert *c,unsigned source,unsigned dest,unsigned c
             ww(c->memory,out+n->encoded-2,(unsigned)relative);
         }
     }
-    unsigned voices=c->voices?pointer(c,source):0;ww(c->memory,dest,size);
+    unsigned voices=c->voices?pointer(c,source):0;ww(c->memory,0,size);
     /* Z80 and Clone use the same operator order. Move TL before RS/AR and
      * mark the carriers as the original algorithm's gain mask does. */
     for(int v=0;v<c->voices;v++) {
-        unsigned alg=rb(c,voices)&7;c->memory[dest+size]=(uint8_t)rb(c,voices);
+        unsigned alg=rb(c,voices)&7;c->memory[size]=(uint8_t)rb(c,voices);
         for(unsigned k=0;k<4;k++) {
             unsigned carrier=k==0?alg==7:k==1?alg>=5:k==2?alg>=4:1;
-            c->memory[dest+size+1+k]=(uint8_t)rb(c,voices+1+k);
-            c->memory[dest+size+5+k]=(uint8_t)((rb(c,voices+21+k)&127)|(carrier?128:0));
-            for(unsigned group=0;group<4;group++)c->memory[dest+size+9+group*4+k]=(uint8_t)rb(c,voices+5+group*4+k);
+            c->memory[size+1+k]=(uint8_t)rb(c,voices+1+k);
+            c->memory[size+5+k]=(uint8_t)((rb(c,voices+21+k)&127)|(carrier?128:0));
+            for(unsigned group=0;group<4;group++)c->memory[size+9+group*4+k]=(uint8_t)rb(c,voices+5+group*4+k);
         }
         size+=25;voices+=25;
     }
     return size;
 }
-int s2_sound_build_assets(const uint8_t *rom,size_t rom_size,uint8_t *memory,size_t memory_size,
-                         const S2SoundAssetLayout *layout,char *error,size_t error_size)
+S2StockSound *s2_sound_decode_stock(const uint8_t *rom,size_t rom_size,char *error,size_t error_size)
 {
-    const char *failure="Unsupported ROM: Clone Driver requires Sonic 2 JUE REV01.";
+    const char *failure="Unsupported ROM: Sonic 2 JUE REV01 is required.";
     if(error_size)error[0]=0;
-    if(!rom || !memory || !layout || rom_size!=ROM_SIZE || memory_size<S2_SOUND_ASSETS_END)goto fail;
+    if(!rom || rom_size!=ROM_SIZE)goto fail;
     static const uint8_t expected[32]={0x19,0x3B,0xC4,0x06,0x4C,0xE0,0xDA,0xF2,0x7E,0xA9,0xE9,0x08,0xED,0x24,0x6D,0x87,0xEC,0x57,0x6C,0xC2,0x94,0x83,0x3B,0xAD,0xEB,0xB5,0x90,0xB6,0xAD,0x8E,0x8F,0x6B};
-    uint8_t digest[32];recompui_sha256_compute(rom,rom_size,digest);
-    if(memcmp(digest,expected,32))goto fail;
-    unsigned tables[]={layout->music_index,layout->sfx_index,layout->special_index,layout->psg_index,layout->sample_table};
-    for(unsigned i=0;i<5;i++)if(tables[i]<ROM_SIZE || tables[i]>S2_SOUND_MUSIC_BASE-1024)goto fail;
-    Convert *c=calloc(1,sizeof *c);failure="Unable to allocate sound conversion workspace.";
-    if(!c)goto fail;c->memory=memory;
-    uint8_t z80[8192],song[8192];unsigned zsize=saxman(rom+0xEC0E8,0xF64,z80,sizeof z80);
-    if(zsize!=0x1308){fprintf(stderr,"[sound-driver] Invalid decompressed driver length %u\n",zsize);free(c);failure="Invalid ROM sound driver stream.";goto fail;}
-    memset(memory+S2_SOUND_MUSIC_BASE,0,S2_SOUND_ASSETS_END-S2_SOUND_MUSIC_BASE);
-    for(unsigned i=0;i<31 && !c->bad;i++) {
+    uint8_t digest[32];
+    recompui_sha256_compute(rom,rom_size,digest);
+    if(memcmp(digest,expected,sizeof digest))goto fail;
+
+    S2StockSound *assets=calloc(1,sizeof *assets);
+    Convert *c=calloc(1,sizeof *c);
+    if(!assets || !c) {
+        failure="Unable to allocate sound conversion workspace.";
+        goto discard;
+    }
+    uint8_t z80[8192],song[8192];
+    unsigned zsize=saxman(rom+0xEC0E8,0xF64,z80,sizeof z80);
+    if(zsize!=0x1308) {
+        failure="Invalid ROM sound driver stream.";
+        goto discard;
+    }
+
+    failure="The ROM's sound data could not be decoded.";
+    /* The pitch tables come from the verified retail driver data. Its
+     * normalized PSG cues are transposed up one octave. The high-period
+     * sentinel follows the final retail tone in the normalized table. */
+    for(unsigned i=0;i<S2_FM_PITCHES;++i)
+        assets->fm_pitch[i]=(uint16_t)le(z80,0x534+2*i);
+    for(unsigned i=0;i<12;++i)assets->psg_pitch[i]=0x3FF;
+    /* Stock uses a seven-bit table index even for the high noise pitches
+     * whose reads cross the nominal note table boundary. */
+    for(unsigned i=12;i<S2_PSG_PITCHES;++i)
+        assets->psg_pitch[i]=(uint16_t)le(z80,0x359+2*(i-12));
+    assets->psg_pitch[81]=0x10;
+    assets->psg_pitch[82]=0;
+    assets->sega_rate=16000;
+    for(unsigned i=0;i<S2_MUSIC_CUES;++i) {
         unsigned meta=z80[0x11F5+i],bank=meta&128?0xF8000:0xF0000;
         unsigned offset=le(rom,bank+(meta&31)*2)&32767;
-        if(meta&32){c->src=rom+bank;c->size=BANK_SIZE;c->base=0x8000;}
-        else {
+        if(meta&32) {
+            c->src=rom+bank;c->size=BANK_SIZE;c->base=0x8000;
+        } else {
+            if(offset>BANK_SIZE-2)goto discard;
             unsigned length=le(rom,bank+offset);
-            if(length>BANK_SIZE-offset-2){c->bad=1;break;}
+            if(length>BANK_SIZE-offset-2)goto discard;
             c->size=saxman(rom+bank+offset+2,length,song,sizeof song);
-            if(!c->size){c->bad=1;break;}
+            if(!c->size)goto discard;
             c->src=song;c->base=0x1380;offset=0;
         }
-        unsigned dest=S2_SOUND_MUSIC_BASE+i*S2_SOUND_MUSIC_STRIDE;
-        convert_song(c,offset,dest,S2_SOUND_MUSIC_STRIDE,1);
-        if(c->bad)fprintf(stderr,"[sound-driver] Music conversion failed at ID $%02X (base $%04X, offset $%04X, nodes %d)\n",i+0x81,c->base,offset,c->count);
-        wl(memory,layout->music_index+4*i,((256u-z80[0x1214+i])<<24)|dest|((meta>>6)&1));
+        c->memory=assets->music[i];
+        unsigned bytes=convert_song(c,offset,sizeof assets->music[i],1);
+        if(!bytes || c->bad)goto discard;
+        assets->music_bytes[i]=(uint16_t)bytes;
+        assets->music_tempo[i]=(uint8_t)(0u-z80[0x1214+i]);
+        assets->music_pal[i]=(meta>>6)&1;
     }
     c->src=rom+0xF8000;c->size=BANK_SIZE;c->base=0x8000;
-    for(unsigned i=0;i<81 && !c->bad;i++) {
-        unsigned source=le(rom,0xFEE91+2*i)&32767,dest=S2_SOUND_SFX_BASE+i*S2_SOUND_SFX_STRIDE;
-        convert_song(c,source,dest,S2_SOUND_SFX_STRIDE,0);
-        if(c->bad)fprintf(stderr,"[sound-driver] SFX conversion failed at ID $%02X (offset $%04X, nodes %d)\n",i+0xA0,source,c->count);
-        wl(memory,layout->sfx_index+4*i,((unsigned)z80[0xFD8+i]<<24)|dest);
+    for(unsigned i=0;i<S2_SFX_CUES;++i) {
+        unsigned source=le(rom,0xFEE91+2*i)&32767;
+        c->memory=assets->sfx[i];
+        unsigned bytes=convert_song(c,source,sizeof assets->sfx[i],0);
+        if(!bytes || c->bad)goto discard;
+        assets->sfx_bytes[i]=(uint16_t)bytes;
+        assets->sfx_priority[i]=z80[0xFD8+i];
     }
-    for(unsigned i=0;i<13 && !c->bad;i++) {
-        unsigned p=le(z80,0x1029+2*i),dest=S2_SOUND_PSG_BASE+256*i,j;
-        wl(memory,layout->psg_index+4*i,dest);
-        for(j=0;j<256;j++) {
-            if(p+j>=zsize){c->bad=1;break;}
-            unsigned v=z80[p+j];memory[dest+j]=(uint8_t)(v==0x80?0x81:v);
-            if(v==0x80)break;
+    /* The save-menu warp shares the special-stage entry instrument and
+     * stream. Apply its alternate modulation in the host cue allocation. */
+    enum { SPECIAL_ENTRY_INDEX=0xCA-0xA0 };
+    assets->save_warp_bytes=assets->sfx_bytes[SPECIAL_ENTRY_INDEX];
+    memcpy(assets->save_warp,assets->sfx[SPECIAL_ENTRY_INDEX],assets->save_warp_bytes);
+    unsigned stream=(unsigned)assets->save_warp[6]<<8|assets->save_warp[7];
+    if(stream+8>assets->save_warp_bytes || assets->save_warp[stream+3]!=0xFF ||
+       assets->save_warp[stream+4]!=0x0E)goto discard;
+    assets->save_warp[stream+4]=0x21;
+    assets->save_warp[stream+7]=0x50;
+    for(unsigned i=0;i<S2_PSG_ENVELOPES;++i) {
+        unsigned source=le(z80,0x1029+2*i),j;
+        for(j=0;j<256 && source+j<zsize;++j) {
+            unsigned value=z80[source+j];
+            assets->envelope[i][j]=(uint8_t)(value==0x80?0x81:value);
+            if(value==0x80)break;
         }
-        if(j==256)c->bad=1;
+        if(j==256 || source+j>=zsize)goto discard;
     }
-    for(unsigned i=0;i<7 && !c->bad;i++) {
-        unsigned p=0xE8000+(le(z80,0x1233+4*i)&32767),size=le(z80,0x1235+4*i),sample=128;
-        if(size>0x2000 || p+size>ROM_SIZE){c->bad=1;break;}
-        unsigned dest=S2_SOUND_PCM_BASE+0x4000*i;
-        for(unsigned j=0;j<size;j++)for(unsigned n=0;n<2;n++) {
-            sample=(sample+z80[0x1B3+((rom[p+j]>>(n?0:4))&15)])&255;
-            memory[dest++]=(uint8_t)sample;
+    uint16_t pcm_bytes[S2_PCM_BANKS];
+    for(unsigned i=0;i<S2_PCM_BANKS;++i) {
+        unsigned source=0xE8000+(le(z80,0x1233+4*i)&32767);
+        unsigned bytes=le(z80,0x1235+4*i),sample=128;
+        if(bytes>S2_PCM_BYTES/2 || source+bytes>ROM_SIZE)goto discard;
+        pcm_bytes[i]=(uint16_t)(bytes*2);
+        for(unsigned j=0;j<bytes;++j)for(unsigned n=0;n<2;++n) {
+            sample=(sample+z80[0x1B3+((rom[source+j]>>(n?0:4))&15)])&255;
+            assets->pcm[i][j*2+n]=(uint8_t)sample;
         }
     }
-    for(unsigned i=0;i<17 && !c->bad;i++) {
-        unsigned id=z80[0x124F+2*i]-0x81,delay=z80[0x1250+2*i];
-        if(id>=7){c->bad=1;break;}
-        unsigned dest=S2_SOUND_PCM_BASE+0x4000*id,size=le(z80,0x1235+4*id)*2;
-        unsigned record=layout->sample_table+10*i;
+    for(unsigned i=0;i<S2_PCM_SLOTS;++i) {
+        unsigned bank=z80[0x124F+2*i]-0x81,delay=z80[0x1250+2*i];
+        if(bank>=S2_PCM_BANKS || !pcm_bytes[bank])goto discard;
         /* 295 cycles per decoded byte, plus two DJNZ delay loops. */
         unsigned rate=7159090u/(295+26*((delay?delay:256)-1));
-        memory[record]=0x12;memory[record+1]=(uint8_t)(rate*256/25208);
-        wl(memory,record+2,dest);wl(memory,record+6,dest+size);
+        assets->samples[i]=(S2SoundSample){pcm_bytes[bank],(uint16_t)rate,(uint8_t)bank};
     }
-    memcpy(memory+S2_SOUND_SEGA_BASE,rom+0xF1E8C,0x6174);
-    int ok=!c->bad;free(c);if(ok)return 1;
-    failure="The ROM's sound data could not be converted for this build.";
+    memcpy(assets->sega,rom+0xF1E8C,sizeof assets->sega);
+    free(c);
+    return assets;
+discard:
+    free(c);free(assets);
 fail:
-    if(error_size)snprintf(error,error_size,"%s",failure);return 0;
+    if(error_size)snprintf(error,error_size,"%s",failure);
+    return NULL;
+}
+
+/* Compatibility writer for the older generated driver. The HLE decoder
+ * never needs this representation or an address in the cartridge. */
+S2MusicCue s2_sound_music_cue(const S2StockSound *bank,unsigned id)
+{
+    if(!bank || id<0x81 || id>0x9F)return (S2MusicCue){0};
+    unsigned i=id-0x81;
+    if(bank->selected_music[i].data)return bank->selected_music[i];
+    return (S2MusicCue){bank->music[i],NULL,bank->music_bytes[i],bank->music_tempo[i],bank->music_pal[i]};
+}
+
+const uint8_t *s2_sound_pcm_view(const S2StockSound *bank,unsigned cue,unsigned id,
+                                uint32_t *bytes,uint32_t *rate)
+{
+    if(!bank)return NULL;
+    if(!cue && id==0xFA) {
+        *bytes=sizeof bank->sega;
+        *rate=bank->sega_rate;
+        return bank->sega;
+    }
+    if(id<0x81)return NULL;
+    unsigned slot=id-0x81;
+    const S2DonorSound *donor=s2_sound_music_cue(bank,cue).donor;
+    if(donor) {
+        if(slot>=S2_DONOR_PCM_SLOTS || !donor->pcm[slot].data)return NULL;
+        *bytes=donor->pcm[slot].bytes;
+        *rate=donor->pcm[slot].rate;
+        return donor->pcm[slot].data;
+    }
+    if(slot>=S2_PCM_SLOTS)return NULL;
+    *bytes=bank->samples[slot].bytes;
+    *rate=bank->samples[slot].rate;
+    return bank->pcm[bank->samples[slot].bank];
 }

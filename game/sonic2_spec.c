@@ -56,7 +56,6 @@ extern void func_000F54(void);   /* HBlank IRQ4   ($000F54) */
 
 static void s2_call_entry_point(void) {
     s2_sound_post_reset();
-    s2_runtime_prepare_stages();
     recomp_call_addr(0x000206u);
 }
 static void s2_call_resume(uint32_t pc) {
@@ -64,7 +63,6 @@ static void s2_call_resume(uint32_t pc) {
      * Rebuild only immutable ROM-derived banks here; restored sequencer and
      * Z80 state already belong to the snapshot and must stay intact. */
     s2_sound_post_reset();
-    s2_runtime_prepare_stages();
     recomp_call_addr(pc);
 }
 static void s2_call_vblank(void)      { s2_video_vblank(); recomp_call_addr(0x000408u); }
@@ -260,8 +258,7 @@ static int s2_instruction_hook(uint32_t pc)
     switch (pc) {
     case 0x111C: /* ReadJoypads: physical-controller generation */
     case 0x9C7C: case 0x9E14: case 0xABE2: case 0xAC30:
-    case 0x3AC56: case 0x3AB46: case 0xA554: case 0x1331C:
-    case 0x17AF0: /* campaign object-layout selection */
+    case 0x3AC56: case 0x3AB46: case 0xA554: case 0x1332E: case 0x166CC:
     case 0x1B248: case 0x1CCA6: case 0x1DAAC:
     case 0x40DEA: case 0x40F22: case 0x40F62: case 0x40F9A:
     case 0x157C4:
@@ -279,10 +276,12 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x1BAD4: case 0x1A15C: case 0x1ABA6: case 0x1AB38:
     case 0x213E: case 0x1C6F6: case 0x1C644: case 0x1BA14: case 0x1BA1C:
     case 0x164F4: case 0x1B848: case 0x1D1AC: case 0x1AC3E: case 0x1B350: case 0x3F554:
+    case 0x437A: case 0x4380: /* final level object update after pause return */
     case 0x15F9C: case 0x19718: case 0x19778: case 0x197D0: case 0x19880:
     case 0x19C32: case 0x19C8A: case 0x19CE2:
     case 0xF77A: case 0xF810: case 0xF872:
     case 0x18888: case 0x3F5A0:
+    case 0x2ACE0: case 0x2AEC0: /* launcher occupancy after both native contacts */
     case 0x3F73C: case 0x3F69C:
     case 0xC680: /* original Knuckles EHZ H-scroll tail */
     case 0x1AF2C: /* original Knuckles glide floor acceptance */
@@ -347,7 +346,6 @@ const GameSpec g_game_spec = {
     .call_periodic          = NULL,
 
     .on_post_reset          = s2_sound_post_reset,
-    .dispatch_override      = s2_sound_dispatch_miss,
     .on_frame_pre           = NULL,
 #ifdef SONIC2_MUSIC_DRIVER
     .on_frame_post          = s2_cd_theme_tick,

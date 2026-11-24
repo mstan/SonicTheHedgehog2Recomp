@@ -153,6 +153,7 @@ int main(void)
     press(0,0x20);
     assert(g_ram[0xF605]&128);
     assert(s2_options_hook(0x909A)==1 && g_ram[0xF600]==0x28);
+    assert(g_ram[0xFFD0]==1 && g_ram[0xFFD1]==1);
     g_ram[0xF600]=0x24;
     assert(!s2_options_hook(0x8FCC));
     for(unsigned row=0;row<LEVEL_ROW;++row)press(0,2);

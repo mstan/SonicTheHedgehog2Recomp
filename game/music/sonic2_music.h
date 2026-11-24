@@ -1,6 +1,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include "sonic2_sound_assets.h"
 struct RecompLauncherCModProvider;
 struct S2StateIO;
 enum { S2_MUSIC_SHARED,S2_MUSIC_CAMPAIGN,S2_MUSIC_VS,S2_MUSIC_GROUPS };
@@ -18,6 +19,7 @@ extern const char *const s2_donor_names[S2_DONOR_COUNT];
 void s2_music_load(const char *settings);
 int s2_themes_save(void);
 int s2_themes_validate(void);
+int s2_themes_validate_netplay(void);
 const char *s2_themes_error(void);
 void s2_themes_clear_error(void);
 int s2_theme_choices(unsigned track);
@@ -42,7 +44,9 @@ uint8_t *s2_donor_read(unsigned donor,size_t *size);
 int s2_music_donor_use(unsigned donor,const char *verified_path);
 int s2_theme_import(unsigned track,const char *path,void (*progress)(void *,float,const char *),void *user);
 int s2_music_import_file(const char *source,const char *expected,const char *settings,char content[1024],char *error,size_t capacity,void (*progress)(void *,float,const char *),void *user);
-int s2_music_prepare(uint8_t *rom,size_t size,uint32_t music,uint32_t sfx,uint32_t psg,uint32_t samples,char *error,size_t error_size);
+typedef struct S2MusicLibrary { S2DonorSound *donors[S2_ROM_DONOR_COUNT]; } S2MusicLibrary;
+int s2_music_prepare(S2StockSound *stock,S2MusicLibrary *library,char *error,size_t error_size);
+void s2_music_release(S2StockSound *stock,S2MusicLibrary *library);
 const struct RecompLauncherCModProvider *s2_music_mods(const struct RecompLauncherCModProvider *base);
 
 void s2_music_config_identity(uint8_t out[32]);

@@ -3,7 +3,11 @@
 
 uint8_t g_ram[65536],g_rom[0x400000];
 M68KState g_cpu;
-uint32_t s2_runtime_stage_layout(unsigned zone,unsigned act) { (void)zone;(void)act;return 0; }
+static S2StagePlacementView campaign_test_layout;
+S2StagePlacementView s2_runtime_stage_layout(unsigned zone,unsigned act)
+{ return zone==12 && act==0?campaign_test_layout:(S2StagePlacementView){0}; }
+const S2EndingFrame *s2_runtime_ending_frame(unsigned map,unsigned frame)
+{ (void)map;(void)frame;return NULL; }
 #if OWN_BACKEND
 GenesisMachine g_machine;
 #endif
@@ -73,11 +77,9 @@ void s2_runtime_overlay_view(const GVDP *v,int line,uint32_t *out,int width)
 static const uint32_t *test_native_row(void *ctx) { return ctx; }
 void s2_runtime_presentation_capture(S2RuntimePresentation *out)
 { memset(out,0,sizeof *out); }
-int s2_runtime_presentation_matches(const S2RuntimePresentation *a,const S2RuntimePresentation *b)
-{ (void)a;(void)b;return 1; }
 void s2_runtime_presentation_row(const S2RuntimePresentation *a,const S2RuntimePresentation *b,
-                                double phase,const GVDP *v,int line,uint32_t *out,int width)
-{ (void)a;(void)b;(void)phase;(void)v;(void)line;(void)out;(void)width; }
+                                unsigned actors,double phase,const GVDP *v,int line,uint32_t *out,int width)
+{ (void)a;(void)b;(void)actors;(void)phase;(void)v;(void)line;(void)out;(void)width; }
 void glue_poke8(uint32_t a,uint8_t v){g_ram[a&65535]=v;}
 void glue_poke16(uint32_t a,uint16_t v){glue_poke8(a,v>>8);glue_poke8(a+1,v);}
 void glue_poke32(uint32_t a,uint32_t v){glue_poke16(a,v>>16);glue_poke16(a+2,v);}
@@ -2601,6 +2603,31 @@ static void cpz_interpolation_band_test(void)
     f.width=398;f.render.left=3321;
     CHECK(captured_background_base(&f,154,304)==1644);
 }
+static void ooz_interpolation_band_test(void)
+{
+    static PresentationFrame early,late;
+    PresentationFrame *ends[]={&early,&late};
+    for(unsigned i=0;i<2;++i) {
+        PresentationFrame *f=ends[i];
+        f->width=320;
+        f->render.frame_zone=10;
+        f->render.frame_bg_y=90+(int)i;
+        f->render.frame_fg_x=800;
+        f->render.frame_bg_x[0]=100*65536;
+        for(int line=164;line<=166;++line) {
+            f->vscroll[line][1]=(uint16_t)f->render.frame_bg_y;
+            f->hscroll[line][0]=(uint16_t)-800;
+            f->hscroll[line][1]=(uint16_t)(line+f->render.frame_bg_y<256?-13:-100);
+        }
+        /* The native sky and factory have different horizontal scroll.
+         * A one-row camera shift must not blend these adjacent bands. */
+        CHECK(captured_background_base(f,165,255)==13);
+        CHECK(captured_background_base(f,165,256)==100);
+        f->width=398;f->render.left=761;
+        CHECK(captured_background_base(f,165,255)==12);
+        CHECK(captured_background_base(f,165,256)==95);
+    }
+}
 static void native_interpolation_test(void)
 {
     static GVDP v;
@@ -2738,6 +2765,55 @@ static void native_interpolation_test(void)
     current->scene.sprites[0]=current->scene.sprites[added];
     current->keys[0]=current->keys[added];
     --current->scene.count;
+
+    /* The sidekick's newly published root can be discontinuous without
+     * snapping the leader or disabling the entire fractional picture. */
+    added=current->scene.count++;
+    current->scene.sprites[added]=(SceneSprite){.x=104,.y=40,.attr=0x8004,.actor=2};
+    current->keys[added]=0xB0400100u;
+    current->scene.actors.object[1]=0xB040;
+    current->scene.actors.x[1]=104;
+    current->scene.actors.y[1]=40;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000 && fraction[40*320+104]==0xFFFF0000);
+    --current->scene.count;
+
+    /* Imported character art priority and blink phases can change while
+     * their root is continuous. These are pose changes, not scene cuts. */
+    S2RuntimePresentation *older=&s_present[s_present_front^1].party;
+    S2RuntimePresentation *newer=&current->party;
+    older->sprites[0]=(S2RuntimeSprite){.x=20,.y=40,.art=0x78,.visible=1};
+    newer->sprites[0]=(S2RuntimeSprite){.x=24,.y=40,.art=0x8078,.visible=1};
+    older->sprites[1]=(S2RuntimeSprite){.x=40,.y=40,.visible=1};
+    newer->sprites[1]=(S2RuntimeSprite){.x=180,.y=40,.visible=1};
+    unsigned matched_actors=0;
+    CHECK(match_presentation_actors(older,newer,&matched_actors) && matched_actors==1);
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[40*320+22]==0xFFFF0000);
+    older->sprites[0].visible=0;
+    CHECK(match_presentation_actors(older,newer,&matched_actors) && !matched_actors);
+    CHECK(interpolate(.5,fraction,320,224));
+    older->sprites[0].visible=1;
+    newer->sprites[0].x+=100;
+    CHECK(!interpolate(.5,fraction,320,224));
+    memset(older->sprites,0,sizeof older->sprites);
+    memset(newer->sprites,0,sizeof newer->sprites);
+
+    /* Scanline buckets preserve original publication order. A low-priority
+     * pose still owns its sprite pixel before a later high-priority pose. */
+    const unsigned first_piece=current->scene.count++;
+    current->scene.sprites[first_piece]=(SceneSprite){120,55,4,0,0};
+    current->keys[first_piece]=0xC4000100u;
+    const unsigned second_piece=current->scene.count++;
+    current->scene.sprites[second_piece]=(SceneSprite){120,55,0x8005,0,0};
+    current->keys[second_piece]=0xC4400100u;
+    memset(current->render.video_frame.vram+5*32,0x22,32);
+    for(unsigned row=55;row<63;++row)current->cram[row][2]=0xE00;
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[55*320+120]==0xFFFF0000 && fraction[62*320+127]==0xFFFF0000);
+    CHECK(fraction[54*320+120]==0xFF000000 && fraction[63*320+120]==0xFF000000);
+    CHECK(s_fractional_row_offset[56]-s_fractional_row_offset[55]>=2);
+    current->scene.count=first_piece;
 
     /* Actor animation identities may change; replacing the actor or
      * teleporting its camera still repeats an ordinary picture. */
@@ -3087,10 +3163,10 @@ int main(void)
     for(unsigned destination=0;destination<=4;destination+=4) {
         clear_guest();g_ram[0xF600]=(uint8_t)destination;
         g_ram[0xB000]=1;g_ram[0xF711]=1;
-        CHECK(outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
-        word(g_ram,0xFFD8,1);CHECK(outgoing_level() && !gameplay() && !competition());
-        g_ram[0xF711]=0;CHECK(!outgoing_level());
-        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!outgoing_level());
+        CHECK(s2_video_outgoing_level() && !gameplay() && !competition() && s2_video_main_cpu_divisor()==1);
+        word(g_ram,0xFFD8,1);CHECK(s2_video_outgoing_level() && !gameplay() && !competition());
+        g_ram[0xF711]=0;CHECK(!s2_video_outgoing_level());
+        g_ram[0xF711]=1;g_ram[0xB000]=0;CHECK(!s2_video_outgoing_level());
     }
     clear_guest();
     CHECK(sonic2_video.configure("off"));
@@ -3205,7 +3281,13 @@ int main(void)
     g_ram[0xFFD9]=1;CHECK(s2_video_main_cpu_divisor()==4);
     CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
     CHECK(sonic2_video.configure("fit"));g_ram[0xFFD9]=0;
-    g_ram[0xF600]=0x8C;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
+    g_ram[0xF600]=0x8C;g_ram[0xF711]=0;g_ram[0xB080]=0x34;
+    CHECK(s2_video_main_cpu_divisor()==1);
+    word(g_ram,0xB0BE,0xFFFF);CHECK(s2_video_main_cpu_divisor()==4);
+    g_ram[0xF600]=0x88;CHECK(s2_video_main_cpu_divisor()==1);
+    g_ram[0xF600]=0x8C;CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
+    CHECK(sonic2_video.configure("fit"));
+    g_ram[0xB080]=0;word(g_ram,0xB0BE,0);g_ram[0xF600]=12;g_ram[0xF711]=1;
     g_ram[0xF600]=16;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
     CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
     CHECK(sonic2_video.configure("fit"));g_ram[0xF711]=0;
@@ -3495,8 +3577,31 @@ int main(void)
     CHECK(s_loader_active && !g_ram[0xB400] && !(g_ram[0xFC03]&128));
     CHECK(sonic2_video.configure("32:9"));CHECK(sonic2_video.width(1,1,320,224)==796);
     spawn_scene();CHECK(g_ram[0xB400]==0x41 && !g_ram[0xB424] && !g_ram[0xB438] && g_ram[0xB428]==6);
+    /* A Knuckles campaign consumes the same bounded host list in either
+     * viewport. The stock ROM has no fixture for these object records. */
+    static const uint8_t campaign_records[]={
+        0x00,0x20,0x80,0x20,0x41,0x06,
+        0x01,0x70,0x00,0x30,0x19,0x02,
+        0xFF,0xFF,0x00,0x00,0x00,0x00
+    };
+    campaign_test_layout=(S2StagePlacementView){campaign_records,sizeof campaign_records};
+    clear_guest();g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xB000]=1;
+    CHECK(sonic2_video.configure("off"));
+    CHECK(s2_video_hook(0x17AA4)==1 && g_ram[0xF76C]==2 && !s_loader_active);
+    CHECK(g_ram[0xB400]==0x41 && g_ram[0xB440]==0x19 && g_ram[0xFC03]==128);
+    CHECK(scene_read32(0xFFF770)==12);
+
+    clear_guest();g_ram[0xF600]=12;g_ram[0xFE10]=12;g_ram[0xB000]=1;
+    CHECK(sonic2_video.configure("32:9"));
+    CHECK(sonic2_video.width(1,1,320,224)==796);
+    CHECK(s2_video_hook(0x17AA4)==1 && g_ram[0xF76C]==2 && s_loader_active);
+    CHECK(g_ram[0xB400]==0x41 && g_ram[0xB440]==0x19 && g_ram[0xFC03]==128);
+    CHECK(scene_read32(0xFFF770)==12);
+    campaign_test_layout=(S2StagePlacementView){0};
+    clear_guest();
     clamped_background_interpolation_test();
     cpz_interpolation_band_test();
+    ooz_interpolation_band_test();
     arz_background_stream_limit_test();
     native_interpolation_test();
     scene_scroll_phase_test();

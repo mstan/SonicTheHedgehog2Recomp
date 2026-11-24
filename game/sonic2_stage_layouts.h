@@ -2,10 +2,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-enum { S2_STAGE_LAYOUT_COUNT=34, S2_STAGE_LAYOUT_BYTES=0x10000,
-       S2_STAGE_LAYOUT_ROM=0x140000 };
+enum { S2_STAGE_LAYOUT_COUNT=34, S2_STAGE_LAYOUT_BYTES=0x10000 };
+typedef struct S2StagePlacementView {
+    const uint8_t *data;
+    size_t bytes;
+} S2StagePlacementView;
 typedef struct S2StageLayouts {
-    uint32_t address[S2_STAGE_LAYOUT_COUNT];
+    uint32_t offset[S2_STAGE_LAYOUT_COUNT+1];
     size_t size;
     uint8_t data[S2_STAGE_LAYOUT_BYTES];
     uint8_t special_ring_requirements[28];
@@ -16,4 +19,6 @@ typedef struct S2StageLayouts {
  * Terrain, collision and ring placements retain Sonic 2's native loaders.
  * The original solo half-pipe requirements are decoded with the campaign. */
 int s2_stage_layouts_decode(const uint8_t *rom,size_t size,S2StageLayouts *out);
-uint32_t s2_stage_layout_address(const S2StageLayouts *layouts,unsigned zone,unsigned act);
+S2StagePlacementView s2_stage_layout_view(const S2StageLayouts *layouts,unsigned zone,unsigned act);
+void s2_stage_layout_prepare(S2StagePlacementView placements,uint8_t ram[65536]);
+void s2_stage_layout_stream(S2StagePlacementView placements,uint8_t ram[65536]);

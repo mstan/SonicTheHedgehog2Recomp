@@ -71,20 +71,13 @@ int s3_sound_read_source(const uint8_t *rom,size_t size,S3SoundSource *out,char 
     if((b>=a && b-a<size) || (a>=b && a-b<sizeof *out))
         return fail(error,error_size,"Sound-source output aliases the ROM");
     char hash[65];hex_digest(rom,size,hash);
-    if(size==0x400000 && strcmp(hash,"fba0677fde9f76df93f3e98d6310d8af68b9847bde16e253d73cd4dd8134ed23") && strcmp(hash,"ce7b4d8807512aab4b9aa771654c66a019d1f17b0c9dc96a5ee7ca7fba0c2019") && rom[0x2001F0]=='J'){
-        /* The supported Steam dump differs only in the locked-on region
-         * header. Normalize a private copy for verification, never the ROM. */
-        uint8_t *copy=(uint8_t*)malloc(size);
-        if(!copy)return fail(error,error_size,"Unable to verify sound-source ROM");
-        memcpy(copy,rom,size);copy[0x2001F0]='U';hex_digest(copy,size,hash);free(copy);
-    }
     int s3=!strcmp(hash,"d6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c");
     int may17=!strcmp(hash,"ce7b4d8807512aab4b9aa771654c66a019d1f17b0c9dc96a5ee7ca7fba0c2019");
     /* This exact prototype retains the uncompressed S3 driver/table layout. */
     s3|=may17;
     int sk=!strcmp(hash,"6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1");
     int combined=!strcmp(hash,"fba0677fde9f76df93f3e98d6310d8af68b9847bde16e253d73cd4dd8134ed23");
-    if(!s3 && !sk && !combined)return fail(error,error_size,"Clone Driver requires a supported original Sonic 3-family ROM");
+    if(!s3 && !sk && !combined)return fail(error,error_size,"Provide a supported original Sonic 3-family ROM");
     S3SoundSource source;memset(&source,0,sizeof source);source.rom_size=(uint32_t)size;source.standalone_sonic3=(uint8_t)s3;
     if(s3)memcpy(source.z80,rom+0xE6000,7167); /* original byte-copy count */
     else if(!kos(rom,size,0xF6960,source.z80,0x1300) ||
