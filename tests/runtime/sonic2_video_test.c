@@ -2846,6 +2846,8 @@ static void native_interpolation_test(void)
     /* The ordinary row-list path must match the former per-row projection,
      * including sprite order, coverage and pixel priority. */
     const SceneFrame *saved_scene=s_display;
+    unsigned saved_serial=current->scene.serial;
+    current->scene.serial=1;
     s_display=&current->scene;s_sprite_rows_ready=0;
     uint32_t colors[64];
     for(unsigned i=0;i<64;++i)colors[i]=genesis_dac_cram_to_argb(current->cram[55][i],GENESIS_DAC_NORMAL);
@@ -2868,6 +2870,7 @@ static void native_interpolation_test(void)
         CHECK(!memcmp(cached_priority,s_priority,sizeof cached_priority));
     }
     CHECK(s_sprite_rows_ready && s_sprite_row_view.scene==s_display);
+    current->scene.serial=saved_serial;
     s_display=saved_scene;s_sprite_rows_ready=0;
     current->scene.count=first_piece;
 
@@ -2880,6 +2883,68 @@ static void native_interpolation_test(void)
     s_present[s_present_front].render.frame_fg_x+=512;CHECK(!interpolate(.5,fraction,320,224));
     presentation_configure(0);CHECK(!interpolate(.5,fraction,320,224));
     free(before);free(after);
+}
+
+static void marked_sprite_interpolation_test(void)
+{
+    static GVDP v;
+    static uint32_t ordinary[2][320*224],fraction[320*224];
+    static uint8_t item_patterns[64],effect_patterns[64];
+    const uint8_t item_lines[2]={0,2},effect_lines[2]={0,0};
+    uint16_t ext[GVDP_EXT_LINES*16]={0};
+    memset(&v,0,sizeof v);clear_guest();
+    CHECK(configure("off"));online=0;s_loader_active=0;
+    memset(&s2_party,0,sizeof s2_party);
+    g_ram[0xF600]=12;g_ram[0xF711]=1;g_ram[0xB000]=1;
+    v.reg[1]=64;v.reg[2]=0x30;v.reg[4]=7;v.reg[5]=0x7C;
+    v.reg[12]=1;v.reg[13]=0x3C;v.reg[16]=1;
+    v.cram[2]=0x0E0;ext[17]=0xE00;
+    memset(item_patterns+32,0x11,32);memset(effect_patterns+32,0x22,32);
+    presentation_configure(1);
+    s_item_water_enabled=s_slot_palette_enabled=0;
+    CHECK(gvdp_set_sprite_patterns_bank(0,item_patterns,sizeof item_patterns,item_lines));
+    CHECK(gvdp_set_sprite_patterns_bank(1,effect_patterns,sizeof effect_patterns,effect_lines));
+    gvdp_set_ext_colors(ext,ext,224);
+    uint32_t item_color=genesis_dac_cram_to_argb(ext[17],GENESIS_DAC_NORMAL);
+    uint32_t effect_color=genesis_dac_cram_to_argb(v.cram[2],GENESIS_DAC_NORMAL);
+    for(unsigned frame=0;frame<2;++frame) {
+        unsigned serial=frame+1;
+        word(g_ram,0xFE04,serial);
+        SceneFrame *scene=&s_native_history[serial%3];
+        memset(scene,0,sizeof *scene);scene->serial=serial;scene->scene=1;
+        scene->count=2;
+        for(unsigned n=0;n<2;++n) {
+            unsigned x=64+n*24+frame*4;
+            unsigned flags=n?0xC0:0x80,at=0xF800+n*8;
+            scene->sprites[n]=(SceneSprite){(int)x,48,0x8001,(uint8_t)flags,0,0,0};
+            s_native_keys[serial%3][n]=(0xB400u+n*64)<<16;
+            word(v.vram,at,176);v.vram[at+2]=(uint8_t)flags;v.vram[at+3]=n?0:1;
+            word(v.vram,at+4,0x8001);word(v.vram,at+6,128+x);
+        }
+        memcpy(scene->sat,v.vram+0xF800,sizeof scene->sat);
+        for(int row=0;row<224;++row) {
+            uint8_t indices[GVDP_MAX_WIDTH];CHECK(gvdp_render_scanline(&v,row,indices)==320);
+            for(unsigned x=0;x<320;++x) {
+                unsigned c=indices[x];
+                ordinary[frame][row*320+x]=genesis_dac_cram_to_argb(
+                    c>=GVDP_HOST_PALETTE_BASE?gvdp_ext_color(row,1+(c-GVDP_HOST_PALETTE_BASE)/16,c&15):v.cram[c&63],
+                    GENESIS_DAC_NORMAL);
+            }
+            presentation_capture(&v,row,ordinary[frame]+row*320,320,320,NULL);
+        }
+        CHECK(s_present[s_present_front].valid);
+        CHECK(ordinary[frame][48*320+64+frame*4]==item_color);
+        CHECK(ordinary[frame][48*320+88+frame*4]==effect_color);
+    }
+    CHECK(interpolate(.5,fraction,320,224));
+    CHECK(fraction[48*320+66]==item_color && fraction[48*320+90]==effect_color);
+    CHECK(fraction[48*320+65]==ordinary[0][0]);
+    CHECK(interpolate(0,fraction,320,224) && !memcmp(fraction,ordinary[0],sizeof fraction));
+    CHECK(interpolate(1,fraction,320,224) && !memcmp(fraction,ordinary[1],sizeof fraction));
+    presentation_configure(0);
+    CHECK(gvdp_set_sprite_patterns_bank(0,NULL,0,NULL));
+    CHECK(gvdp_set_sprite_patterns_bank(1,NULL,0,NULL));
+    clear_guest();
 }
 
 static void signpost_palette_test(void)
@@ -3660,6 +3725,7 @@ int main(void)
     ooz_interpolation_band_test();
     arz_background_stream_limit_test();
     native_interpolation_test();
+    marked_sprite_interpolation_test();
     scene_scroll_phase_test();
     half_pipe_width_test();
     outgoing_zone_test();

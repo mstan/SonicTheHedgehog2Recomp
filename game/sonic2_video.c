@@ -2987,7 +2987,7 @@ static void draw_scene_sprites(const GVDP *v,int line,uint32_t *out,int width,
 {
     if(!s_display)return;
     int cell_height=(v->reg[12]&6)==6?16:8;
-    if(s_interpolating || (s_display->scene==1 && cell_height==8 &&
+    if(s_interpolating || (s_display->serial && s_display->scene==1 && cell_height==8 &&
                             !s_frame_campaign_view && line>=0 && line<SCENE_SPRITE_ROWS)) {
         /* Ordinary gameplay keeps its source publication and camera fixed for
          * the scanline pass. Rebuild on a view/publication change or at row 0. */
@@ -3704,7 +3704,10 @@ static void presentation_capture(const GVDP *v,int line,const uint32_t *image,
         const SceneFrame *scene=enabled()?s_display:native_select_scene(v);
         const uint32_t *keys=enabled()?s_display_keys:s_native_display_keys;
         if(!scene || scene->scene!=1 || (enabled() && s_display_key_serial!=scene->serial))return;
-        for(unsigned i=0;i<scene->count;++i)if(scene->sprites[i].size&0x80)return;
+        /* Gameplay item and native-effect banks are immutable pattern sources.
+         * The fractional sprite renderer already honors both banks and the
+         * native-timed palette selector. A marked world item must not cancel
+         * the entire presentation just because its animation exposes a tile. */
         size_t need=(size_t)width*224;
         if(need>f->capacity) {
             uint32_t *next=(uint32_t*)realloc(f->image,need*sizeof *next);
