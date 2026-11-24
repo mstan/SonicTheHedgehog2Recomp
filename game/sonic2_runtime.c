@@ -1550,6 +1550,19 @@ int s2_runtime_hook(uint32_t pc)
     uint32_t single=solid_single(pc);
     if (single) return collide_extras(pc,single);
     if (pc==0x18888) return spring_extras(pc);
+    if (pc==0x2A9E6) {
+        /* KiS2 $3241EA clears the special-move flag only after an upward
+         * fan has accepted contact. Native lift and flip setup still run. */
+        unsigned player=g_cpu.A[1]&0xFFFFu;
+        for (unsigned p=0;p<S2_MAX_PLAYERS;++p) {
+            if (objects[p] && objects[p]==player && kind(p)==S2_CHAR_KNUCKLES) {
+                characters[p].special=S2_SK_NORMAL;
+                g_ram[player+0x21]=0;
+                break;
+            }
+        }
+        return 0;
+    }
     if (pc==0x189CA || pc==0x18AEE || pc==0x18CC6 || pc==0x18DB4 || pc==0x18EE6) {
         for (unsigned p=0;p<S2_MAX_PLAYERS;++p) if (objects[p] && objects[p]==(g_cpu.A[1]&0xFFFF))
             characters[p].special=0;
