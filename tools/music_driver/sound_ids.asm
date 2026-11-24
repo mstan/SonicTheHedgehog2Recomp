@@ -1,0 +1,14 @@
+mus__First = 1
+mus__Last = $1F
+mus_ExtraLife = $18
+sfx__First = $40
+sfx__Last = $90
+sfx_RingRight = $55
+sfx_RingLeft = $6E
+sfx_Spindash = $80
+sfx_Push = $47
+sfx_SlideSkidLoud = $91
+flg__First = $F9
+flg__Last = $FF
+mus_Fade = $FB
+sfx_Stop = $FA

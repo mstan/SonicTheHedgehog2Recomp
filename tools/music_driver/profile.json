@@ -1,0 +1,9 @@
+{
+  "load_address": 2752512,
+  "ram_address": 4294963712,
+  "ram_capacity": 1024,
+  "tempo_policy": "song_format",
+  "legacy_psg_period": true,
+  "legacy_gloop": true,
+  "sound_ids": "sound_ids.asm"
+}

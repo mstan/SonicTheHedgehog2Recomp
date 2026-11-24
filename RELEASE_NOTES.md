@@ -1,8 +1,7 @@
-# v0.15.5
+# v1.2.3
 
-- Import Genesis VGZ files and VGM files with timed DAC streams. Campaign tracks retain their file loops.
-- Play DAC samples through the emulated YM2612 so imported music follows the file's stereo pan, DAC enable and Music Player channel controls.
+- Build the optional music sequencer from the shared Genesis Clone Driver source. Preserve existing music customization and supported soundtrack formats.
 
-Fresh settings start with Fit to screen. The launcher loads saved aspect and mod choices after an update.
+Fresh settings start with Fit to screen. Updating preserves saved aspect and mod choices.
 
 After loading a save state, play can diverge from an uninterrupted run. This remains under investigation.
