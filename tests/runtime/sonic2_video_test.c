@@ -3281,7 +3281,13 @@ int main(void)
     g_ram[0xFFD9]=1;CHECK(s2_video_main_cpu_divisor()==4);
     CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
     CHECK(sonic2_video.configure("fit"));g_ram[0xFFD9]=0;
-    g_ram[0xF600]=0x8C;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
+    g_ram[0xF600]=0x8C;g_ram[0xF711]=0;g_ram[0xB080]=0x34;
+    CHECK(s2_video_main_cpu_divisor()==1);
+    word(g_ram,0xB0BE,0xFFFF);CHECK(s2_video_main_cpu_divisor()==4);
+    g_ram[0xF600]=0x88;CHECK(s2_video_main_cpu_divisor()==1);
+    g_ram[0xF600]=0x8C;CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
+    CHECK(sonic2_video.configure("fit"));
+    g_ram[0xB080]=0;word(g_ram,0xB0BE,0);g_ram[0xF600]=12;g_ram[0xF711]=1;
     g_ram[0xF600]=16;CHECK(s2_video_main_cpu_divisor()==1);g_ram[0xF600]=12;
     CHECK(sonic2_video.configure("off"));CHECK(s2_video_main_cpu_divisor()==1);
     CHECK(sonic2_video.configure("fit"));g_ram[0xF711]=0;

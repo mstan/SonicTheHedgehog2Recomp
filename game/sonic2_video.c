@@ -303,10 +303,13 @@ unsigned s2_video_main_cpu_divisor(void)
 {
     /* Level_MainLoop ($4360) still waits for the real V-int every tick.
      * Expanded activation must not inherit the 7.67 MHz object's lag budget.
-     * Attract inputs also depend on the original sub-frame CPU timing.
-     * Loading, demos, special stages and opt-out retain that timing. */
+     * The departing card also runs the fully populated level before setting
+     * Level_started. Bring that loop onto the same budget when its leave
+     * flag is set. Loading and attract inputs retain their native timing. */
     int mode=g_ram[0xF600];
-    return enabled() && mode==12 && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
+    if (!enabled()) return 1;
+    if (mode==0x8C && g_ram[0xB080]==0x34 && ram16(0xB0BE)==0xFFFF && gameplay()) return 4;
+    return mode==12 && (gameplay() || competition()) && g_ram[0xF711] ? 4 : 1;
 }
 static int width(int dw, int dh, int nw, int nh)
 {
