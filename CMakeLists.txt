@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SonicTheHedgehog2Recomp VERSION 0.15.6 LANGUAGES C)
+project(SonicTheHedgehog2Recomp VERSION 1.2.3 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 # Build version = netplay lobby key + release package name. Derived from git on
