@@ -281,6 +281,7 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x19C32: case 0x19C8A: case 0x19CE2:
     case 0xF77A: case 0xF810: case 0xF872:
     case 0x18888: case 0x3F5A0:
+    case 0x2ACE0: case 0x2AEC0: /* launcher occupancy after both native contacts */
     case 0x3F73C: case 0x3F69C:
     case 0xC680: /* original Knuckles EHZ H-scroll tail */
     case 0x1AF2C: /* original Knuckles glide floor acceptance */

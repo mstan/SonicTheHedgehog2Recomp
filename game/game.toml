@@ -252,6 +252,12 @@ kind = "game_hook"
 addr = 0x18888 # Obj41: native spring once, collision/launch for extra players
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x2ACE0 # Obj85_Up: include extra seats in the shared stroke
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x2AEC0 # Obj85_Diagonal: same after native seat contacts
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x3F5A0 # Touch_Loop: donor-defined grounded hammer attack extent
 kind = "game_hook"
 [[widescreen_site]]

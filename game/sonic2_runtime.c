@@ -52,6 +52,9 @@ const uint8_t *s2_runtime_title_font(void) {return hud_art_ready?hud_art.title_f
  * Extra actors retain those two bits per solid on the host. The actual actor
  * objects have real, reserved native pool addresses, so monitor/platform
  * parent links stay valid across ticks (no temporary Sidekick alias). */
+/* Launcher occupancy is private to the extra seats as well. The low two
+ * bits record idle, charging or releasing, outside the native contact bits. */
+enum { EXTRA_CONTACT_BITS = 0x50, EXTRA_LAUNCHER_STATE = 3 };
 static uint8_t solid_flags[S2_MAX_PLAYERS-2][144], solid_ids[144];
 static int inside_solid;
 typedef S2RuntimeSprite PartySprite;
@@ -742,8 +745,9 @@ static void solid_begin(unsigned p, uint8_t saved[144])
 {
     for (unsigned n=0;n<144;++n) {
         unsigned at=0xB000+n*0x40;
-        saved[n]=g_ram[at+0x22]&0x50;
-        if (!player_object(at)) g_ram[at+0x22]=(g_ram[at+0x22]&~0x50)|solid_flags[p-2][n];
+        saved[n]=g_ram[at+0x22]&EXTRA_CONTACT_BITS;
+        if (!player_object(at)) g_ram[at+0x22]=(g_ram[at+0x22]&~EXTRA_CONTACT_BITS)|
+            (solid_flags[p-2][n]&EXTRA_CONTACT_BITS);
     }
 }
 static void solid_end(unsigned p, const uint8_t saved[144])
@@ -751,14 +755,63 @@ static void solid_end(unsigned p, const uint8_t saved[144])
     for (unsigned n=0;n<144;++n) {
         unsigned at=0xB000+n*0x40;
         if (player_object(at)) continue;
-        solid_flags[p-2][n]=g_ram[at+0x22]&0x50;
-        g_ram[at+0x22]=(g_ram[at+0x22]&~0x50)|saved[n];
+        solid_flags[p-2][n]=(solid_flags[p-2][n]&~EXTRA_CONTACT_BITS)|
+            (g_ram[at+0x22]&EXTRA_CONTACT_BITS);
+        g_ram[at+0x22]=(g_ram[at+0x22]&~EXTRA_CONTACT_BITS)|saved[n];
     }
 }
 static int extra_players(void)
 {
     for (unsigned p=2;p<S2_MAX_PLAYERS;++p) if (objects[p]) return 1;
     return 0;
+}
+static int launcher_with_extras(int diagonal)
+{
+    unsigned launcher=g_cpu.A[0]&0xFFFF;
+    if (!extra_players() || word(0xFFD8) || launcher<0xB400 || launcher>=0xD000 ||
+        (launcher&63) || g_ram[launcher]!=0x85) return 0;
+
+    /* The head and both original seats have already advanced. Give each
+     * extra seat the same native contact handler and shared stroke. */
+    unsigned index=(launcher-0xB000)/64, seat=launcher+0x37;
+    uint32_t contact=diagonal?0x2AF06:0x2AD26;
+    M68KState caller=g_cpu;
+    unsigned occupied=0, buttons=0;
+    for(unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+        unsigned player=objects[p];
+        if(!player || !g_ram[player]) continue;
+        uint8_t *extra=&solid_flags[p-2][index];
+        unsigned state=*extra&EXTRA_LAUNCHER_STATE;
+        if(!state && abs((int16_t)(word(player+8)-word(launcher+8)))>0x40) continue;
+        uint8_t tag=g_ram[seat], saved[144];
+        unsigned pad=(uint16_t)(genesis_sim_pad((int)p)<<8);
+        solid_begin(p,saved);
+        g_ram[seat]=(uint8_t)state;
+        g_cpu=caller;
+        g_cpu.A[1]=0xFFFF0000u|player;
+        g_cpu.A[2]=0xFFFF0000u|seat;
+        g_cpu.D[1]=0x23; g_cpu.D[2]=diagonal?8:0x20; g_cpu.D[3]=diagonal?5:0x1D;
+        g_cpu.D[4]=word(launcher+8); g_cpu.D[5]=pad; g_cpu.D[6]=4;
+        native_helper(contact);
+        state=g_ram[seat];
+        solid_end(p,saved);
+        *extra=(*extra&~EXTRA_LAUNCHER_STATE)|state;
+        g_ram[seat]=tag;
+        occupied|=state;
+        if(state==1) buttons|=pad;
+    }
+    g_cpu=caller;
+    if(!occupied) return 0;
+    if(g_ram[launcher+0x36]==1) buttons|=word(0xF602);
+    if(g_ram[launcher+0x37]==1) buttons|=word(0xF606);
+    if(word(launcher+0x38) && !(buttons&0x7000)) {
+        putword(launcher+0x36,0x0202);
+        for(unsigned p=2;p<S2_MAX_PLAYERS;++p) {
+            uint8_t *flags=&solid_flags[p-2][index];
+            if((*flags&EXTRA_LAUNCHER_STATE)==1) *flags=(*flags&~EXTRA_LAUNCHER_STATE)|2;
+        }
+    }
+    return 1;
 }
 static void switch_extra_planes(void)
 {
@@ -1488,10 +1541,14 @@ int s2_runtime_hook(uint32_t pc)
     if (pc==0x15F9C) {
         for (unsigned n=0;n<144;++n) {
             unsigned id=g_ram[0xB000+n*0x40];
-            if (id!=solid_ids[n]) { solid_flags[0][n]=solid_flags[1][n]=0; solid_ids[n]=(uint8_t)id; }
+            if (id!=solid_ids[n]) {
+                for(unsigned p=0;p<S2_MAX_PLAYERS-2;++p) solid_flags[p][n]=0;
+                solid_ids[n]=(uint8_t)id;
+            }
         }
         return 0;
     }
+    if (pc==0x2ACE0 || pc==0x2AEC0) return launcher_with_extras(pc==0x2AEC0);
     uint32_t single=solid_single(pc);
     if (single) return collide_extras(pc,single);
     if (pc==0x18888) return spring_extras(pc);
