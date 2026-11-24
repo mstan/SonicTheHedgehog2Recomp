@@ -139,6 +139,14 @@ static int start_music(S2SoundSequence *s,const S2StockSound *bank,unsigned id)
         if(i>=fm) {
             if(part[5]>(cue.donor?S2_DONOR_PSG_ENVELOPES:S2_PSG_ENVELOPES))return 0;
             s->music[ch].voice=part[5];
+            if(cue.donor && (cue.data[5]&1u)) {
+                /* S3's PSG track header sets a pitch envelope before the
+                 * track encounters any modulation command. */
+                unsigned envelope=part[4]&0x3F;
+                if(envelope>S2_DONOR_MOD_ENVELOPES ||
+                   (envelope && !cue.donor->modulation[envelope-1].bytes))return 0;
+                s->music[ch].mod_envelope=(uint8_t)envelope;
+            }
         }
     }
     if(id==ONE_UP)s->pcm_id=0;

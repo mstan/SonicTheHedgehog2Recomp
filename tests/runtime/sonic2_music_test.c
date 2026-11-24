@@ -444,6 +444,12 @@ int main(int argc,char **argv)
   if(d==S2_DONOR_PROTO){
    S2MusicCue cue=s2_sound_music_cue(stock,s2_music_target(track("options"))+0x80);
    competition_loops(cue,2);competition_loops(cue,5);
+   S2SoundSequence opening;
+   s2_sequence_reset(&opening);
+   uint8_t queue[5]={0x9B};
+   unsigned events=0;
+   assert(s2_sequence_frame(&opening,stock,queue,0,53693175,895780,count_events,&events));
+   assert(opening.music[6].mod_envelope==3 && opening.music[7].mod_envelope==3);
   }
   if(d==S2_DONOR_S3||d==S2_DONOR_SK||d==S2_DONOR_MAY17){
    const S2SoundEnvelope *envelope=&library.donors[d]->modulation[3];
