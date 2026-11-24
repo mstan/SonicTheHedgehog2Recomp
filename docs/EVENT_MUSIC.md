@@ -50,8 +50,9 @@ matching source enables the section when its remaining requirements are
 ready. Disable a section to restore stock tracks while retaining its choices,
 or choose Stock for one row.
 
-Restart to apply changes. Music customization is for local play. Disable
-these sections and restart before netplay. Stock sound effects remain in use.
+Replacements enable Clone Driver automatically. Restart to apply changes.
+Music customization is for local play; disable these sections and Clone
+Driver, then restart before netplay. Cartridge sound effects remain in use.
 Native campaign SRAM and progress are independent of music choices.
 
 Imported Sonic 3 music resumes its current FM notes when sound effects release
@@ -70,5 +71,7 @@ Prototype references:
 - [Sonic 2 September 14 disassembly](https://github.com/desiresin/Sonic-2-9-14-92-Disassembly)
 - [Sonic 3 November 3, 1993 prototype](https://hiddenpalace.org/Sonic_the_Hedgehog_3_(Nov_3,_1993_prototype))
 
-The native sequencer prepares source music, instruments, envelopes and
-percussion directly from verified user media.
+The optional mixed-source sequencer uses the software-only
+[skdisasm Clone Driver](https://github.com/TheBlad768/skdisasm-clone-driver)
+at revision 13ca55d1f9bf2268f440616404cc65a3b08a6ad6. Source music,
+instruments, envelopes and percussion are prepared from verified user media.

@@ -3,14 +3,12 @@ set(S2_GAME "${CMAKE_CURRENT_LIST_DIR}/../game")
 set(S2_TOOLS "${CMAKE_CURRENT_LIST_DIR}/../tools")
 
 add_executable(sonic2_sound_assets_test runtime/sonic2_sound_assets_test.c
-    "${S2_GAME}/sonic2_sound_assets.c" "${S2_GAME}/sonic2_sound_sequence.c"
-    "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
+    "${S2_GAME}/sonic2_sound_assets.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
 target_include_directories(sonic2_sound_assets_test PRIVATE "${S2_GAME}" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common")
 target_compile_options(sonic2_sound_assets_test PRIVATE $<IF:$<C_COMPILER_ID:MSVC>,/UNDEBUG,-UNDEBUG>)
 add_test(NAME sonic2_sound_assets COMMAND sonic2_sound_assets_test "${CMAKE_SOURCE_DIR}/game/sonic2.bin")
 add_executable(sonic2_sound_driver_test runtime/sonic2_sound_driver_test.c
-    "${S2_GAME}/sonic2_sound_driver.c" "${S2_GAME}/sonic2_sound_assets.c"
-    "${S2_GAME}/sonic2_sound_sequence.c"
+    "${S2_GAME}/sonic2_sound_driver.c" "${S2_GAME}/sonic2_sound_mods.c" "${S2_GAME}/sonic2_sound_assets.c"
     "${RUNNER_ROOT}/host_atomic_file.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
 target_compile_definitions(sonic2_sound_driver_test PRIVATE RECOMP_LAUNCHER=1)
 target_include_directories(sonic2_sound_driver_test PRIVATE "${S2_GAME}" "${RUNNER_ROOT}" "${RUNNER_ROOT}/include"

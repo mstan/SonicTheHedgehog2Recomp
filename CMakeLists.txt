@@ -151,6 +151,7 @@ set(FM_SOURCES
 # ---------------------------------------------------------------------------
 
 include("${RECOMP_ROOT}/cmake/GenesisRecompGenerated.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/Sonic2CloneDriver.cmake")
 genesisrecomp_add_generated_sources(
     SONIC2_GENERATED_SOURCES sonic2 "${CMAKE_SOURCE_DIR}/game" sonic2.bin
     REVERSE_DEBUG "${SONIC_REVERSE_DEBUG}")
@@ -201,8 +202,8 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_party.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_options.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_driver.c"
+    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_mods.c"
     "${CMAKE_SOURCE_DIR}/game/sonic2_sound_assets.c"
-    "${CMAKE_SOURCE_DIR}/game/sonic2_sound_sequence.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_mods.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic2_music_import.c"
@@ -216,6 +217,7 @@ set(SONIC2_SHARED_SOURCES
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_legacy.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_sequences.c"
     "${CMAKE_SOURCE_DIR}/game/music/sonic3_sound_pcm.c"
+    "${CMAKE_SOURCE_DIR}/game/music/sonic3_prototype_pcm.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_donor_assets.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_resources.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_stage_layouts.c"
@@ -335,12 +337,14 @@ target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
     ENABLE_RECOMPILED_CODE=1
     OWN_BACKEND=1                   # the own backend IS the Sonic 2 runtime (no clownmdemu link)
     SONIC2_MUSIC_CUSTOMIZATION=1
-    SONIC2_MUSIC_DRIVER=1
     DEFAULT_DEBUG_PORT=4380
     $<$<BOOL:${SONIC_REVERSE_DEBUG}>:SONIC_REVERSE_DEBUG=1>
     $<$<BOOL:${GEN_DEV_TRACE}>:GEN_DEV_TRACE>
 )
 _sonic2_finalize_target(SonicTheHedgehog2Recomp SONIC2_INCLUDES_NATIVE)
+if(SONIC_CLONE_DRIVER_PROBE_DIR AND NOT SONIC_CLONE_DRIVER_SUPPORT STREQUAL "OFF")
+    target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE SONIC2_MUSIC_DRIVER=1)
+endif()
 
 # Shared recomp-ui (Dear ImGui) pre-boot launcher â€” native (shipped) target only
 # Defines RECOMP_LAUNCHER (un-gates the seam in
@@ -366,7 +370,7 @@ add_custom_command(TARGET SonicTheHedgehog2Recomp POST_BUILD
         "${CMAKE_SOURCE_DIR}/docs/SOUND_DRIVER_MODS.md"
         "${CMAKE_SOURCE_DIR}/docs/CLONE_DRIVER_NOTICES.txt"
         "$<TARGET_FILE_DIR:SonicTheHedgehog2Recomp>/docs"
-    COMMENT "Staging sound driver documentation and notices")
+    COMMENT "Staging alternate sound driver documentation and notices")
 
 # Up to six-player rollback netplay. The engine owns the transport,
 # lobby, and deterministic frame gate; recomp-ui supplies the waiting-room UI.
@@ -453,10 +457,13 @@ if(BUILD_TESTING)
         "${RUNNER_ROOT}/external/ymfm/src/ymfm_pcm.cpp"
         game/music/sonic3_sound_assets.c game/music/sonic3_sound_legacy.c
         game/music/sonic3_sound_sequences.c game/music/sonic3_sound_pcm.c
-        game/sonic2_sound_assets.c game/sonic2_sound_sequence.c
+        game/music/sonic3_prototype_pcm.c game/sonic2_sound_assets.c
         "${RUNNER_ROOT}/host_atomic_file.c" "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c")
     target_include_directories(sonic2_music_test PRIVATE ${SONIC2_INCLUDES_NATIVE} "${CMAKE_SOURCE_DIR}/recomp-ui/src")
-    target_compile_definitions(sonic2_music_test PRIVATE SDL_MAIN_HANDLED RECOMP_LAUNCHER=1 SONIC2_MUSIC_DRIVER=1)
+    target_compile_definitions(sonic2_music_test PRIVATE SDL_MAIN_HANDLED RECOMP_LAUNCHER=1)
+    if(SONIC_CLONE_DRIVER_PROBE_DIR AND NOT SONIC_CLONE_DRIVER_SUPPORT STREQUAL "OFF")
+        target_compile_definitions(sonic2_music_test PRIVATE SONIC2_MUSIC_DRIVER=1)
+    endif()
     target_link_libraries(sonic2_music_test PRIVATE SDL2::SDL2)
     sonic2_link_custom_music(sonic2_music_test)
     if(WIN32)

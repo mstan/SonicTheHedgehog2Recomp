@@ -222,20 +222,17 @@ int s2_custom_import(unsigned t,const char *source,char *error,size_t capacity,
  if(!ok&&error&&capacity&&!*error)snprintf(error,capacity,"Use WAV, VGM/VGZ, or Sonic 1 68K SMPS BIN/ASM with Sonic 2 PSG envelopes and DAC notes.");
  if(ok&&progress)progress(user,1,"Custom music imported. Restart to apply.");return ok;
 }
-int s2_custom_prepare(unsigned t,S2MusicCue *cue,char *error,size_t capacity)
+int s2_custom_build(unsigned t,const S3SoundLayout *l,uint8_t *bank,size_t cap,uint32_t *used,char *error,size_t capacity)
 {
  size_t n=0;uint8_t *p=t<S2_MUSIC_COUNT?read_file(paths[t],&n):NULL;int ok=0;
- if(!p||!cue||!valid(t,p,n))goto done;
+ if(!p||!valid(t,p,n))goto done;
  uint8_t digest[32];recompui_sha256_compute(p,n,digest);if(memcmp(digest,identities[t],32))goto done;
- if(le32(p+8)!=S2_CUSTOM_SMPS){
-  ok=s2_cd_custom_prepare(t,le32(p+8),p+HEADER,n-HEADER,le32(p+16),le32(p+20),digest,cue,error,capacity);
-  goto done;
- }
- uint8_t *data=malloc(0x8000);
- int converted=data?convert_smps(t,p+HEADER,n-HEADER,data,0x8000,error,capacity):0;
- if(converted<=0){free(data);goto done;}
- *cue=(S2MusicCue){data,NULL,(uint16_t)converted,1,0};
- ok=1;
+ if(le32(p+8)!=S2_CUSTOM_SMPS){ok=s2_cd_custom_build(t,le32(p+8),p+HEADER,n-HEADER,le32(p+16),le32(p+20),digest,l,bank,cap,used,error,capacity);goto done;}
+ uint32_t dest=(*used+1)&~1u;size_t length=0;
+ if(dest>cap||cap-dest<0x8000||l->music_index<0x2A0000)goto done;
+ int converted=convert_smps(t,p+HEADER,n-HEADER,bank+dest,cap-dest,error,capacity);if(converted<=0)goto done;length=(size_t)converted;*used=dest+(uint32_t)length;
+ unsigned target=s2_music_target(t);uint8_t *entry=bank+l->music_index-0x2A0000+(target-1)*4;
+ unsigned address=0x01000000u|(0x2A0000u+dest);for(unsigned i=0;i<4;i++)entry[i]=(uint8_t)(address>>(24-i*8));ok=1;
 done:
  free(p);if(!ok&&error&&capacity&&!*error)snprintf(error,capacity,"Unable to prepare custom music for %s.",s2_theme_names[t]);return ok;
 }

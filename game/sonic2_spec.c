@@ -346,6 +346,7 @@ const GameSpec g_game_spec = {
     .call_periodic          = NULL,
 
     .on_post_reset          = s2_sound_post_reset,
+    .dispatch_override      = s2_sound_dispatch_miss,
     .on_frame_pre           = NULL,
 #ifdef SONIC2_MUSIC_DRIVER
     .on_frame_post          = s2_cd_theme_tick,

@@ -1,9 +1,12 @@
 # SonicTheHedgehog2Recomp
 
-## Sound and presentation
+## Optional sound driver
 
-The native sound driver prepares music, effects and samples automatically
-from your verified Sonic 2 ROM. See [sound driver notes](docs/SOUND_DRIVER_MODS.md).
+**Mods -> Audio -> Clone Driver + Mega PCM** enables an experimental alternate
+sound driver for local play. It is off by default and prepares music, effects
+and samples automatically from your verified Sonic 2 ROM. Restart after
+changing drivers; disable it and restart before netplay. See
+[sound driver setup and build notes](docs/SOUND_DRIVER_MODS.md).
 
 **Mods -> Sound** offers separate **Shared Themes**, **Sonic 2 Campaign**, and
 **2-Player Competition** sections. Choose Stock or a matching Sonic 2 prototype
@@ -12,7 +15,7 @@ themes. Imports are verified and shared with compatible tracks and games.
 See [music choices and donor setup](docs/EVENT_MUSIC.md).
 
 **Mods -> Presentation -> High refresh rate** offers 120 Hz, 144 Hz and Display
-refresh interpolation. Supported camera and actor
+refresh interpolation with either sound driver. Supported camera and actor
 movement includes imported characters and party overlays; unsafe scenes use
 completed images.
 This adds one tick of visual latency while simulation and audio keep their

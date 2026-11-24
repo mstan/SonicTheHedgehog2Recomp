@@ -99,8 +99,14 @@ def main():
     config, count = re.subn(r"discovery_files\s*=\s*\[", 'discovery_files = [\n    "sonic2.clone_driver.toml", "sonic2.clone_tables.toml",', config, count=1)
     if count != 1:
         p.error("game discovery list missing")
+    annotations_path = out / "annotations_from_disasm.csv"
+    config, count = re.subn(
+        r'^annotations\s*=\s*"annotations_from_disasm\.csv"',
+        lambda _: "annotations = " + json.dumps(annotations_path.as_posix(), ensure_ascii=False),
+        config, count=1, flags=re.MULTILINE)
+    if count != 1:
+        p.error("game annotation path missing")
     write(out / "game.toml",config)
-    write(out / "sonic2.bin",image)
     write(out / "sonic2.clone_driver.toml",
         "[functions]\nextra = [\n" + "".join(f"    0x{pc:06X},\n" for pc in sorted(entries)) + "]\n")
     code_starts=module.instruction_starts(probe/"driver.lst",image)
@@ -113,7 +119,7 @@ def main():
     (out / "clone_tables.next").unlink()
     annotations=(game / "annotations_from_disasm.csv").read_text(encoding="utf-8")
     annotations+="".join(f"{pc:06X},Clone_{names[0]},\n" for pc,names in sorted(labels.items()))
-    write(out / "annotations_from_disasm.csv",annotations)
+    write(annotations_path,annotations)
     header = "/* Generated sound image identity; no game data. */\n#pragma once\n"
     header += f'#define S2_CLONE_SHA256 "{digest}"\n'
     for key in ("load_address", "payload_size", "initialise", "update", "queue_music", "queue_sfx", "queue_extra",

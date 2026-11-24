@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v1.1.0
+SonicTheHedgehog2Recomp v1.2.1
 ===========================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -22,6 +22,7 @@ selection and cheat-code handling: Left/Right changes the sound number, A adds
 0x10, and B/C plays it. Start saves the roster and returns to the title.
 Choose Level Select and press A, C or Start to open the native stage selector.
 The original sound-test cheat sequence and title A+Start entry also work.
+These controls work with the original driver and the optional Clone Driver.
 
 LOCAL SPLIT-SCREEN CO-OP
 ----------------------
@@ -33,7 +34,8 @@ Imported characters require their verified donor ROMs.
 
 ONLINE PLAY
 -----------
-Disable Music Customization and restart before joining a room.
+Leave Clone Driver + Mega PCM disabled for netplay. This experimental alternate
+sound driver is for local play; disable it and restart before joining a room.
 
 Everyone must use this exact package: the lobby checks the executable and ROM.
 Use Online in the launcher to host or join the same room. Online rooms support
@@ -65,10 +67,15 @@ If both players can do this, send both files. The file includes network
 addresses and lobby/player names, but no passwords. It does not affect
 gameplay or who you can play with. Turn it off again whenever you like.
 
-NATIVE SOUND DRIVER
--------------------
-The native sound driver extracts music, effects, instruments and samples from
-your verified Sonic 2 ROM. See docs/SOUND_DRIVER_MODS.md for details.
+OPTIONAL SOUND DRIVER
+---------------------
+Mods > Audio > Clone Driver + Mega PCM enables an experimental alternate
+sequencer and PCM driver for local play. It is off by default. Music, effects,
+instruments and samples are prepared automatically from your verified Sonic 2
+ROM; no separate sound pack is needed. Restart after changing drivers.
+Current-build save states require the same driver selection. Campaign SRAM
+remains independent. See docs/SOUND_DRIVER_MODS.md and
+docs/CLONE_DRIVER_NOTICES.txt for setup, source identity and notices.
 
 MUSIC CUSTOMIZATION
 -------------------
@@ -84,9 +91,9 @@ Windows importer is included; no installed Python is required. Verified imports
 are shared across compatible tracks and the Sonic 3 family. CD choices require
 your supported US disc with audio tracks. Imports remain private on your PC.
 
-Choosing a ready replacement enables its section. Disable a
+Choosing a ready replacement enables its section and Clone Driver. Disable a
 section to restore its stock tracks while retaining its choices. Press Play
-and restart to apply changes. Disable these sections before
+and restart to apply changes. Disable these sections and Clone Driver before
 netplay. Current-build save states, rewind and replay retain the selected
 music configuration and CD playback clock. See docs/EVENT_MUSIC.md.
 

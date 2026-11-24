@@ -40,15 +40,12 @@ static unsigned player_audible_track(void)
 static void player_mask(void)
 {
  unsigned fm=0x7f,psg=15;
- unsigned track=s_player_open?player_audible_track():S2_MUSIC_COUNT;
- int silent=s_player_delay || (s_player_open && s_player_stopped);
- if(silent)fm=psg=0;
- else if(s_player_open && s_player_solo && s2_cd_theme_native_channels(track)) {
-  fm=s_player_solo<=7?1u<<(s_player_solo-1):0;
-  psg=s_player_solo>=8?(s_player_solo==10?12u:1u<<(s_player_solo-8)):0;
+ if(s_player_open) {
+  if(s_player_stopped)fm=psg=0;
+  else if(s_player_solo){fm=s_player_solo<=7?1u<<(s_player_solo-1):0;psg=s_player_solo>=8?(s_player_solo==10?12u:1u<<(s_player_solo-8)):0;}
  }
  ym2612_set_output_mask(fm);psg_set_output_mask(psg);
- s2_cd_theme_audition(track,s_player_open?s_player_solo:0,silent);
+ s2_cd_theme_audition(s_player_open?player_audible_track():S2_MUSIC_COUNT,s_player_open?s_player_solo:0,s_player_open&&s_player_stopped);
 }
 static int player_used(unsigned t)
 {return strcmp(s2_theme_ids[t],"hidden-palace");}
@@ -56,38 +53,22 @@ static void player_change(int direction)
 {
  do{s_player_track=(s_player_track+S2_MUSIC_COUNT+direction)%S2_MUSIC_COUNT;}while(!player_used(s_player_track));
 }
-static unsigned player_channel_mask(unsigned track)
-{
- return s2_cd_theme_native_channels(track)?s2_sound_music_channels(s2_music_target(track)):~0u;
-}
 static void player_channel(int direction)
 {
  unsigned track=player_audible_track();
  unsigned count=s2_cd_theme_channel_count(track);
- unsigned available=player_channel_mask(track);
+ unsigned available=s2_cd_theme_native_channels(track)?s2_sound_music_channels(s2_music_target(track)):~0u;
  do{s_player_solo=(s_player_solo+count+direction)%count;}while(!(available&(1u<<s_player_solo)));
 }
 static void player_queue(unsigned native)
 {
- /* Keep both output paths silent until the native stop has retired the
-  * outgoing track and any 1-UP backup. */
+ /* A native stop ends a preceding 1-UP backup before the next preview. */
  g_ram[0xFFE0]=0xFD;s_player_pending=native;s_player_delay=2;
- player_mask();
 }
 static void player_play(void)
 {
- unsigned selected=s2_cd_theme_channel_id(player_audible_track(),s_player_solo);
- unsigned available=player_channel_mask(s_player_track);
- unsigned count=s2_cd_theme_channel_count(s_player_track);
- s_player_solo=0;
- for(unsigned index=1;selected && index<count;++index) {
-  if((available&(1u<<index)) && s2_cd_theme_channel_id(s_player_track,index)==selected) {
-   s_player_solo=index;
-   break;
-  }
- }
  s_player_stopped=0;s_player_playing_track=s_player_track;
- player_queue(s2_music_target(s_player_track)+0x80);
+ s_player_solo%=s2_cd_theme_channel_count(s_player_track);player_mask();player_queue(s2_music_target(s_player_track)+0x80);
 }
 static void player_select(void)
 {
@@ -96,7 +77,7 @@ static void player_select(void)
  g_ram[0xFFE0]=0xFD;player_mask();
 }
 static void player_close(void)
-{s_player_open=s_player_stopped=s_player_solo=0;s_player_playing_track=S2_MUSIC_COUNT;player_queue(0x91);}
+{s_player_open=s_player_stopped=s_player_solo=0;s_player_playing_track=S2_MUSIC_COUNT;player_mask();player_queue(0x91);}
 #endif
 void s2_options_gameplay_restored(void)
 {
@@ -260,13 +241,7 @@ int s2_options_hook(uint32_t pc)
 {
     if(pc==0x111C) {
 #ifdef SONIC2_MUSIC_DRIVER
-        if(s_player_delay && !--s_player_delay) {
-            if(g_ram[0xFFE0])s_player_delay=1;
-            else {
-                g_ram[0xFFE0]=(uint8_t)s_player_pending;s_player_pending=0;
-                player_mask();
-            }
-        }
+        if(s_player_delay&&!--s_player_delay){g_ram[0xFFE0]=(uint8_t)s_player_pending;s_player_pending=0;}
 #endif
         if(s_departing) {if(s_panel_age)--s_panel_age;else s_ready=s_departing=0;}
         else if(s_ready&&s_panel_age<12)++s_panel_age;

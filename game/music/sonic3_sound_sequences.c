@@ -2,12 +2,11 @@
 #include "sonic3_sound_assets.h"
 #include "sonic3_sound_legacy.h"
 #include "sonic3_sound_themes.h"
-#include "sonic2_sound_assets.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_NODES=16384, KINDS=4 };
+enum { BASE=0x2A0000, MAX_NODES=16384, KINDS=4 };
 typedef struct Node {
     uint16_t pc,target,output;
     uint8_t kind,length,encoded;
@@ -16,13 +15,16 @@ typedef struct Convert {
     S3SoundSource source;
     const uint8_t *rom;
     uint8_t *bank;
-    size_t capacity;
+    size_t capacity,cursor;
     uint32_t input_bank;
     int bad,count,voices;
+    unsigned psg_base,mod_base;
+    const uint8_t *dac_map;
     uint8_t *drums;
     uint32_t last_pc,last_op;
     int map[0x8000*KINDS];
     Node nodes[MAX_NODES];
+    S3SoundAssetStats stats;
 } Convert;
 static unsigned rb(Convert *c,uint32_t p)
 {if(p>=c->source.rom_size){c->bad=1;return 0;}return c->rom[p];}
@@ -32,6 +34,9 @@ static unsigned zb(Convert *c,uint32_t p)
 static unsigned zw(Convert *c,uint32_t p){return zb(c,p)|(zb(c,p+1)<<8);}
 static void ww(Convert *c,size_t p,unsigned v)
 {if(p>c->capacity || c->capacity-p<2){c->bad=1;return;}c->bank[p]=(uint8_t)(v>>8);c->bank[p+1]=(uint8_t)v;}
+static void wl(Convert *c,size_t p,uint32_t v){ww(c,p,v>>16);ww(c,p+2,v);}
+static int table(Convert *c,uint32_t address,size_t bytes)
+{return address>=BASE && address-BASE<=c->cursor && bytes<=c->cursor-(address-BASE);}
 static int node(Convert *c,unsigned pc,unsigned kind)
 {
     if(pc<0x8000 || pc>0xFFFF || kind>=KINDS || c->count>=MAX_NODES){c->bad=1;return 0;}
@@ -58,15 +63,14 @@ static unsigned parameter_length(unsigned op)
 static unsigned psg_id(Convert *c,unsigned id)
 {
     if(id>c->source.volume_count){c->bad=1;return 0;}
-    return id;
+    return id?id+c->psg_base:0;
 }
 static unsigned mod_id(Convert *c,unsigned id)
 {
-    if(c->source.prototype && id==0xFF)return S2_DONOR_MOD_ENVELOPES;
     unsigned env=id&63u;
     if(!(id&0xC0) && env){
         if(env>c->source.modulation_count){c->bad=1;return 0;}
-        return env;
+        return env+c->mod_base;
     }
     return id;
 }
@@ -128,11 +132,10 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
     for(int i=0;i<c->count && !c->bad;i++){
         Node *n=&c->nodes[i];uint32_t pc=c->input_bank+(n->pc&0x7FFFu);unsigned op=rb(c,pc),length=1,encoded=1;
         c->last_pc=pc;c->last_op=op;
-        unsigned drum=n->kind==1 && op>=0x81 && op<0xE0?op:op==0xEA?rb(c,pc+1):0;
-        if(drum>=0x81){
-            if(c->drums)c->drums[drum&127]=1;
+        if(n->kind==1 && op>=0x81 && op<0xE0){
+            if(c->drums)c->drums[op&127]=1;
             unsigned banks=c->source.standalone_sonic3?0xDC:0xD6;
-            if(c->source.prototype ? drum>0x9B : drum>0xC4 || ((uint32_t)c->source.z80[banks+(drum&0x7F)]<<15)>=c->source.rom_size){c->bad=1;break;}
+            if(c->source.prototype ? op>0x9B : op>0xC4 || ((uint32_t)c->source.z80[banks+(op&0x7F)]<<15)>=c->source.rom_size){c->bad=1;break;}
         }
         if(op>=0xE0){
             length=1+parameter_length(op);encoded=length+1;
@@ -177,7 +180,7 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
             memcpy(c->bank+out,setup,sizeof setup);out+=sizeof setup;
         }
         if(op<0xE0){
-            c->bank[out]=(uint8_t)op;
+            c->bank[out]=(uint8_t)(n->kind==1 && op>=0x81 && c->dac_map?c->dac_map[op&127]:op+(c->source.prototype && n->kind==1 && op>=0x81?70:0));
             continue;
         }
         if(op==0xE7){c->bank[out]=0xFE;continue;}
@@ -227,143 +230,233 @@ static int convert_song(Convert *c,uint32_t input,size_t dest,int music)
         }
         size+=25;
     }
-    return (int)size;
+    c->stats.nodes+=(uint32_t)c->count;return (int)size;
 }
-static int prepare_envelopes(const S3SoundSource *source,S2DonorSound *profile)
+static int envelopes(Convert *c,const S3SoundLayout *l)
 {
-    unsigned end=source->music_pointers;
-    if(source->volume_count>S2_DONOR_PSG_ENVELOPES || source->modulation_count>S2_DONOR_MOD_ENVELOPES ||
-       end>sizeof source->z80)return 0;
-    for(unsigned i=0;i<source->volume_count;++i) {
-        const uint8_t *p=source->z80+source->volume_pointers+2*i;
-        unsigned start=p[0]|(unsigned)p[1]<<8;
-        S2SoundEnvelope *env=&profile->envelope[i];
-        if(start>=end)return 0;
-        unsigned bytes=end-start;
-        if(bytes>sizeof env->data)bytes=sizeof env->data;
-        memcpy(env->data,source->z80+start,bytes);
-        env->bytes=(uint16_t)bytes;
+    unsigned first=0x2000;
+    for(unsigned i=0;i<c->source.volume_count;i++){unsigned ptr=zw(c,c->source.volume_pointers+i*2);if(ptr<first)first=ptr;}
+    unsigned end=c->source.music_pointers;
+    if(first>=end || end>0x2000 || end-first>c->capacity-c->cursor)return 0;
+    memcpy(c->bank+c->cursor,c->source.z80+first,end-first);
+    for(unsigned i=0;i<c->source.volume_count;i++){
+        unsigned ptr=zw(c,c->source.volume_pointers+i*2);if(ptr<first || ptr>=end)return 0;
+        wl(c,l->psg_index-BASE+(i+c->psg_base)*4,BASE+(uint32_t)c->cursor+ptr-first);
     }
-    for(unsigned i=0;i<source->modulation_count;++i) {
-        const uint8_t *p=source->z80+source->modulation_pointers+2*i;
-        unsigned start=p[0]|(unsigned)p[1]<<8;
-        S2SoundEnvelope *env=&profile->modulation[i];
-        for(unsigned j=0;j<sizeof env->data && start+j<sizeof source->z80;++j) {
-            unsigned value=source->z80[start+j];
-            env->data[j]=(uint8_t)value;
-            if(value==0x83) {
-                env->bytes=(uint16_t)(j+1);
-                break;
-            }
-            if(value==0x82) {
-                if(++j>=sizeof env->data || start+j>=sizeof source->z80)return 0;
-                unsigned target=source->z80[start+j];
-                /* Preserve the original retail envelope's observed wrap. */
-                if(!source->prototype && i==3 && start==0x1338 && j==13 &&
-                   target==0 && source->z80[13]==9)target=9;
-                if(target>=j)return 0;
-                env->data[j]=(uint8_t)target;
-                env->bytes=(uint16_t)(j+1);
-                break;
+    c->cursor+=end-first;
+    for(unsigned i=0;i<c->source.modulation_count;i++){
+        unsigned src=zw(c,c->source.modulation_pointers+i*2);
+        uint8_t out[128];unsigned n=2;out[0]=0x84;out[1]=1;int complete=0;
+        for(unsigned j=0;j<120;j++){
+            unsigned value=zb(c,src+j);
+            if(value==0x83){out[n++]=0x81;complete=1;break;}
+            out[n++]=(uint8_t)value;
+            if(value==0x82){
+                unsigned target=zb(c,src+(++j));
+                /* The qualified retail/SK/May17 envelope4 loop reads Z80
+                 * code byte $0D, not its nominal zero operand. Preserve
+                 * that audible 9..11 cycle; other definitions stay as-is. */
+                if(!c->source.prototype &&
+                   (c->source.standalone_sonic3 || c->source.rom_size==0x200000u) &&
+                   i==3 && src==0x1338 && j==13 && target==0 && zb(c,13)==9)
+                    target=zb(c,13);
+                if(target>=j)return 0;out[n++]=(uint8_t)(target+2);complete=1;break;
             }
         }
-        if(!env->bytes)return 0;
+        if(!complete || n>c->capacity-c->cursor)return 0;
+        memcpy(c->bank+c->cursor,out,n);wl(c,l->modulation_index-BASE+(i+c->mod_base)*4,BASE+(uint32_t)c->cursor);c->cursor+=n;
     }
-    if(source->prototype) {
-        /* The prototype Game Over cue addresses envelope $FF. The original
-         * driver reads past its pointer table and uses a fixed ROM-backed
-         * curve. Decode that curve into a bounded slot for playback. */
-        unsigned slot=source->modulation_pointers+2u*(0xFFu-1u);
-        if(slot+1u>=sizeof source->z80)return 0;
-        const uint8_t *p=source->z80+slot;
-        unsigned start=p[0]|(unsigned)p[1]<<8;
-        S2SoundEnvelope *env=&profile->modulation[S2_DONOR_MOD_ENVELOPES-1];
-        for(unsigned j=0;j<sizeof env->data && start+j<sizeof source->z80;++j) {
-            unsigned value=source->z80[start+j];
-            env->data[j]=(uint8_t)value;
-            if(value==0x81 || value==0x83) {
-                env->bytes=(uint16_t)(j+1);
-                break;
-            }
-            if(value==0x84) {
-                if(++j>=sizeof env->data)return 0;
-                /* The unfixed driver uses the curve index as the operand
-                 * address for this command. Store the byte it actually reads. */
-                env->data[j]=source->z80[j];
-            }
-        }
-        if(!env->bytes)return 0;
+    return !c->bad;
+}
+int s3_sound_build_sequences(const uint8_t *rom,size_t size,const S3SoundLayout *l,
+                             uint8_t *bank,size_t capacity,S3SoundAssetStats *stats,char *error,size_t error_size)
+{
+    if(!l || !bank || capacity>0x400000 || (capacity&1) || l->program_size>capacity || l->program_size<84){if(error && error_size)snprintf(error,error_size,"Invalid sound output layout");return 0;}
+    uintptr_t a=(uintptr_t)rom,b=(uintptr_t)bank;
+    if((b>=a && b-a<size) || (a>=b && a-b<capacity)){if(error && error_size)snprintf(error,error_size,"Sound output aliases ROM");return 0;}
+    Convert *c=(Convert*)calloc(1,sizeof *c);if(!c)return 0;
+    c->rom=rom;c->bank=bank;c->capacity=capacity;c->cursor=l->program_size;
+    int ok=s3_sound_read_source(rom,size,&c->source,error,error_size);
+    if(ok)ok=table(c,l->music_index,51*4) && table(c,l->sound_index,169*4) && table(c,l->psg_index,51*4) && table(c,l->modulation_index,8*4);
+    c->cursor=(c->cursor+1)&~(size_t)1;
+    unsigned failed_id=0;int music=1;
+    for(unsigned i=1;ok && i<=c->source.music_count;i++){
+        uint32_t source=s3_sound_music_source(&c->source,rom,i);if(!source)continue;
+        failed_id=i;int bytes=convert_song(c,source,c->cursor,1);if(bytes<=0){ok=0;break;}
+        /* Clone's metadata uses tempo 1 for speed shoes, and keeps the
+         * drowning countdown at PAL speed when running on PAL hardware. */
+        wl(c,l->music_index-BASE+(i-1)*4,0x01000000u|(BASE+(uint32_t)c->cursor)|(i==0x31?1u:0u));c->cursor=((c->cursor+(unsigned)bytes)+1)&~(size_t)1;++c->stats.music;
     }
-    return 1;
+    if(ok)music=0;
+    for(unsigned i=0x33;ok && i<=0xDB;i++){
+        uint32_t source=s3_sound_sfx_source(&c->source,rom,i);failed_id=i;
+        int bytes=convert_song(c,source,c->cursor,0);if(bytes<=0){ok=0;break;}
+        wl(c,l->sound_index-BASE+(i-0x33)*4,BASE+(uint32_t)c->cursor);c->cursor=((c->cursor+(unsigned)bytes)+1)&~(size_t)1;++c->stats.sfx;
+    }
+    if(ok)ok=envelopes(c,l);
+    if(c->bad)ok=0;
+    if(ok){c->stats.bytes=(uint32_t)c->cursor;if(stats)*stats=c->stats;if(error && error_size)*error=0;}
+    else if(error && error_size)snprintf(error,error_size,"Unable to convert %s $%02X at $%06X, command $%02X",music?"music":"SFX",failed_id,c->last_pc,c->last_op);
+    free(c);return ok;
+}
+int s3_sound_build_prototype_music(const uint8_t *rom,size_t size,const S3SoundLayout *l,
+                                   uint8_t *bank,size_t capacity,uint32_t *used,int standalone_s3,
+                                   char *error,size_t error_size)
+{
+    if(!l || !bank || !used || capacity>0x400000 || *used>capacity ||
+       *used<l->program_size || l->program_size<84)return 0;
+    uintptr_t a=(uintptr_t)rom,b=(uintptr_t)bank;
+    if((b>=a && b-a<size) || (a>=b && a-b<capacity))return 0;
+    Convert *c=(Convert*)calloc(1,sizeof *c);if(!c)return 0;
+    c->rom=rom;c->bank=bank;c->capacity=capacity;c->cursor=*used;
+    c->psg_base=64;c->mod_base=8;
+    int ok=s3_sound_read_prototype(rom,size,&c->source,error,error_size);
+    if(ok)ok=table(c,l->music_index,51*4) && table(c,l->psg_index,103*4) && table(c,l->modulation_index,18*4);
+    unsigned failed_id=0;
+    for(unsigned i=1;ok && i<=51;i++){
+        /* The prototype's $2E is Super, while retail $2E is a miniboss.
+         * Standalone S3 uses the spare $32 entry for its separate Super
+         * override. S&K uses $32 for Ending and native $DC (entry $33) for
+         * Credits; its Ending has no prototype counterpart. */
+        unsigned donor=i==0x32&&standalone_s3?0x2E:i==0x33?0x26:i==0x2E?0x18:i;
+        if(standalone_s3 && i>0x32)continue;
+        uint32_t source=s3_sound_music_source(&c->source,rom,donor);
+        if(!source)continue;
+        failed_id=i;
+        c->cursor=(c->cursor+1)&~(size_t)1;
+        int bytes=convert_song(c,source,c->cursor,1);
+        if(bytes<=0){ok=0;break;}
+        wl(c,l->music_index-BASE+(i-1)*4,0x01000000u|(BASE+(uint32_t)c->cursor)|(i==0x31?1u:0u));
+        c->cursor+=bytes;
+    }
+    if(ok)ok=envelopes(c,l);
+    if(c->bad)ok=0;
+    if(ok){*used=(uint32_t)((c->cursor+1)&~(size_t)1);if(error && error_size)*error=0;}
+    else if(error && error_size && (!*error || failed_id))
+        snprintf(error,error_size,"Unable to convert prototype music $%02X at $%06X, command $%02X",failed_id,c->last_pc,c->last_op);
+    free(c);return ok;
 }
 
-int s3_sound_prepare_cue(const uint8_t *rom,size_t size,unsigned donor,unsigned song,
-                         S3SoundSource *source,S2DonorSound *profile,S2MusicCue *cue,
+static uint32_t read32(const uint8_t *p)
+{return ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];}
+static void write32(uint8_t *p,uint32_t n)
+{p[0]=(uint8_t)(n>>24);p[1]=(uint8_t)(n>>16);p[2]=(uint8_t)(n>>8);p[3]=(uint8_t)n;}
+static unsigned append_sample(uint8_t *bank,size_t cap,uint32_t *used,
+                              const S3SoundPCMLayout *l,unsigned *next,
+                              const uint8_t *bytes,size_t length,unsigned rate,unsigned flags)
+{
+    if(!length||rate<1||rate>255)return 0;
+    for(unsigned i=0;i<*next;i++){
+        const uint8_t *d=bank+l->sample_table-BASE+i*10;
+        uint32_t start=read32(d+2),end=read32(d+6);
+        if(d[0]!=flags||d[1]!=rate||start<BASE||end<start||end-BASE>*used||end-start!=length)continue;
+        if(!memcmp(bank+start-BASE,bytes,length))return i+0x81;
+    }
+    /* The original logo sample keeps its fixed command ID even when callers
+     * allocate donor notes into the unused slots below it. */
+    if(*next==l->sega_id-0x81u)++*next;
+    if(*next>=l->sample_count||*next>=126||*used>cap||length>cap-*used)return 0;
+    uint8_t *d=bank+l->sample_table-BASE+(*next)*10;memset(d,0,10);d[0]=(uint8_t)flags;d[1]=(uint8_t)rate;
+    write32(d+2,BASE+*used);memcpy(bank+*used,bytes,length);*used+=(uint32_t)length;write32(d+6,BASE+*used);
+    unsigned slot=(*next)++;
+    return slot+0x81;
+}
+typedef struct PreparedMusicDonor {
+    const uint8_t *rom;size_t size;
+    uint8_t *samples,*bank;uint32_t sample_used;
+    S3SoundSource source;
+    uint8_t map[128];int source_valid,envelopes_ready;
+} PreparedMusicDonor;
+void s3_sound_music_cache_free(S3SoundMusicCache *cache)
+{
+    if(!cache)return;
+    for(unsigned d=0;d<S3_ROM_DONOR_COUNT;d++){
+        PreparedMusicDonor *p=cache->donors[d];if(p){free(p->samples);free(p);cache->donors[d]=NULL;}
+    }
+}
+int s3_sound_build_track(const uint8_t *rom,size_t size,unsigned donor,unsigned song,unsigned target,
+                         const S3SoundLayout *l,const S3SoundPCMLayout *pcm,const uint8_t *program,
+                         uint8_t *bank,size_t cap,uint32_t *used,unsigned *next_sample,
+                         S3SoundMusicCache *cache,
                          char *error,size_t error_size)
 {
-    if(!rom || !source || !profile || !cue || donor>=S3_ROM_DONOR_COUNT)return 0;
-    enum { CUE_CAPACITY=0x8000 };
-    uint8_t *data=malloc(CUE_CAPACITY);
-    S3LegacySource *legacy=NULL;
-    Convert *convert=NULL;
-    uint8_t drums[128]={0};
-    int ok=0,bytes=0;
-    unsigned tempo=1,force_pal=0;
-    if(!data)goto done;
-    if(donor<=S3_DONOR_WAI || donor==S3_DONOR_SEP14) {
-        legacy=malloc(sizeof *legacy);
-        if(!legacy || !s3_legacy_music_source(rom,size,donor,song,legacy))goto done;
-        bytes=s3_legacy_song(legacy,data,CUE_CAPACITY,0,NULL,drums,error,error_size);
-        if(bytes<=0 || legacy->env_count>S2_DONOR_PSG_ENVELOPES)goto done;
-        if(!profile->envelope[0].bytes)for(unsigned i=0;i<legacy->env_count;++i) {
-            S2SoundEnvelope *env=&profile->envelope[i];
-            int n=s3_legacy_envelope(legacy,i+1,env->data);
-            if(n<=0)goto done;
-            env->bytes=(uint16_t)n;
+    if(!rom||!l||!pcm||!program||!bank||!used||!next_sample||!cache||donor>=S3_ROM_DONOR_COUNT||
+       !target||target>51||*used<l->program_size||*used>cap||cap>0x400000||
+       l->psg_index<BASE||l->psg_index-BASE+256*4>l->program_size||pcm->sample_count<126)return 0;
+    uint32_t dest=(*used+1)&~1u;if(dest>cap||cap-dest<0x8000)return 0;
+    /* Retail PSG envelope $26 differs between Sonic 3 and S&K. Keep their
+     * tables separate when several events use different cartridges. */
+    /* Slots13..25 are unused by native S2 music/SFX. Imported families keep
+     * independent envelope banks, including the September prototype. */
+    /* May 17's complete PSG/modulation table bytes ($130E..$1619 in its
+     * driver) equal retail S3, so these two donors may share envelope slots. */
+    static const unsigned bases[]={103,112,125,138,64,151,202,13,151};
+    unsigned psg_base=bases[donor];uint8_t drums[128]={0},map[128]={0};int bytes=0,ok=0;
+    Convert *c=NULL;S3LegacySource *legacy=NULL;
+    const char *stage="source";unsigned item=song;
+    PreparedMusicDonor *prepared=cache->donors[donor];
+    if(!prepared){prepared=calloc(1,sizeof *prepared);if(!prepared)return 0;cache->donors[donor]=prepared;prepared->rom=rom;prepared->size=size;prepared->bank=bank;}
+    if(prepared->rom!=rom||prepared->size!=size||prepared->bank!=bank)return 0;
+    if(donor<=S3_DONOR_WAI||donor==S3_DONOR_SEP14){
+        legacy=malloc(sizeof *legacy);if(!legacy)goto done;
+        if(!s3_legacy_music_source(rom,size,donor,song,legacy))goto done;
+        stage="sequence";bytes=s3_legacy_song(legacy,bank+dest,cap-dest,psg_base,NULL,drums,error,error_size);
+    }else{
+        c=calloc(1,sizeof *c);if(!c)goto done;
+        c->rom=rom;c->bank=bank;c->capacity=cap;c->cursor=dest;c->psg_base=psg_base;c->mod_base=donor==S3_DONOR_PROTO?8:18;c->drums=drums;
+        if(!prepared->source_valid){
+            prepared->source_valid=donor==S3_DONOR_PROTO?s3_sound_read_prototype(rom,size,&prepared->source,error,error_size):s3_sound_read_source(rom,size,&prepared->source,error,error_size);
+            if(!prepared->source_valid)goto done;
         }
-        tempo=legacy->fast_tempo;
-        force_pal=legacy->force_pal;
-    } else {
-        if(!source->rom_size) {
-            int decoded=donor==S3_DONOR_PROTO?s3_sound_read_prototype(rom,size,source,error,error_size):
-                         s3_sound_read_source(rom,size,source,error,error_size);
-            if(!decoded || !prepare_envelopes(source,profile))goto done;
-        }
-        unsigned start=s3_sound_music_source(source,rom,song);
-        if(!start)goto done;
-        convert=calloc(1,sizeof *convert);
-        if(!convert)goto done;
-        convert->source=*source;
-        convert->rom=rom;
-        convert->bank=data;
-        convert->capacity=CUE_CAPACITY;
-        convert->drums=drums;
-        bytes=convert_song(convert,start,0,1);
-        if(bytes<=0)goto done;
+        c->source=prepared->source;
+        unsigned src=s3_sound_music_source(&c->source,rom,song);if(!src)goto done;
+        bytes=convert_song(c,src,dest,1);
     }
-
-    for(unsigned i=1;i<128;++i)if(drums[i]) {
-        if(i>S2_DONOR_PCM_SLOTS)goto done;
-        S2SoundWave *wave=&profile->pcm[i-1];
-        if(wave->data)continue;
-        if(!legacy) {
-            if(!s3_sound_decode_drum(rom,source,i|0x80,wave))goto done;
-            continue;
+    if(bytes<=0)goto done;*used=dest+(uint32_t)bytes;
+    for(unsigned i=1;i<128;i++)if(drums[i]){
+        stage="DAC sample";item=i+0x80;
+        if(prepared->map[i]){map[i]=prepared->map[i];continue;}
+        if(!prepared->samples){
+            prepared->samples=calloc(1,0x400000);if(!prepared->samples)goto done;
+            memcpy(prepared->samples,program,l->program_size);prepared->sample_used=l->program_size;
+            if(!legacy&&!(donor==S3_DONOR_PROTO?s3_sound_build_prototype_pcm(rom,size,pcm,prepared->samples,0x400000,&prepared->sample_used,error,error_size):
+                                       s3_sound_build_pcm(rom,size,pcm,prepared->samples,0x400000,&prepared->sample_used,error,error_size)))goto done;
         }
-        uint8_t *samples=malloc(0x10000);
-        unsigned rate=0;
-        int count=samples?s3_legacy_sample(legacy,i|0x80,samples,0x10000,&rate):0;
-        if(count<=0 || !rate) {free(samples);goto done;}
-        *wave=(S2SoundWave){samples,(uint32_t)count,(rate*25100u+128u)/256u};
+        unsigned rate,length,flags=2;const uint8_t *wave;
+        if(legacy){
+            int n=s3_legacy_sample(legacy,i+0x80,prepared->samples,0x400000,&rate);if(n<=0)goto done;length=(unsigned)n;wave=prepared->samples;
+        }else{
+            unsigned slot=i-1+(donor==S3_DONOR_PROTO?70:0);if(slot>=pcm->sample_count)goto done;
+            const uint8_t *d=prepared->samples+pcm->sample_table-BASE+slot*10;uint32_t start=read32(d+2),end=read32(d+6);
+            if((d[0]&15)!=2||start<BASE||end<start||end-BASE>prepared->sample_used)goto done;
+            flags=d[0];rate=d[1];length=end-start;wave=prepared->samples+start-BASE;
+        }
+        unsigned id=append_sample(bank,cap,used,pcm,next_sample,wave,length,rate,flags);if(!id)goto done;map[i]=prepared->map[i]=(uint8_t)id;
     }
-    *cue=(S2MusicCue){data,profile,(uint16_t)bytes,(uint8_t)tempo,(uint8_t)force_pal};
-    data=NULL;
-    ok=1;
+    if(legacy){
+        bytes=s3_legacy_song(legacy,bank+dest,cap-dest,psg_base,map,drums,error,error_size);if(bytes<=0)goto done;
+        if(!prepared->envelopes_ready)for(unsigned env=1;env<=legacy->env_count;env++){
+            stage="PSG envelope";item=env;uint8_t values[256];int n=s3_legacy_envelope(legacy,env,values);if(n<=0||(size_t)n>cap-*used)goto done;
+            memcpy(bank+*used,values,(size_t)n);write32(bank+l->psg_index-BASE+(psg_base+env-1)*4,BASE+*used);*used+=(unsigned)n;
+        }
+    }else{
+        c->dac_map=map;c->drums=NULL;
+        bytes=convert_song(c,s3_sound_music_source(&c->source,rom,song),dest,1);if(bytes<=0)goto done;
+        if(!prepared->envelopes_ready){c->cursor=*used;if(!envelopes(c,l))goto done;*used=(uint32_t)c->cursor;}
+    }
+    prepared->envelopes_ready=1;
+    write32(bank+l->music_index-BASE+(target-1)*4,((legacy?legacy->fast_tempo:1u)<<24)|(BASE+dest)|((target==0x1F)||(legacy&&legacy->force_pal)));*used=(*used+1)&~1u;ok=1;
 done:
-    if(!ok && error && error_size && !*error)
-        snprintf(error,error_size,"Unable to decode music cue %u from donor %u",song,donor);
-    free(data);
-    free(legacy);
-    free(convert);
-    return ok;
+    if(!ok&&error&&error_size&&!*error)snprintf(error,error_size,"Unable to prepare %s $%02X from music source %u",stage,item,donor);
+    free(legacy);free(c);return ok;
+}
+int s3_sound_build_event(const uint8_t *rom,size_t size,unsigned donor,unsigned theme,unsigned target,
+                         const S3SoundLayout *l,const S3SoundPCMLayout *pcm,const uint8_t *program,
+                         uint8_t *bank,size_t cap,uint32_t *used,unsigned *next_sample,char *error,size_t error_size)
+{
+    static const unsigned ids[3][S3_THEME_COUNT]={{7,14,15,13,6},{23,26,27,25,22},{0x2A,0x27,0x28,0x29,0x2C}};
+    if(theme>=S3_THEME_COUNT||donor>=S3_ROM_DONOR_COUNT)return 0;
+    S3SoundMusicCache cache={0};
+    int ok=s3_sound_build_track(rom,size,donor,ids[donor==S3_DONOR_S1?0:(donor<=S3_DONOR_WAI||donor==S3_DONOR_SEP14)?1:2][theme],target,l,pcm,program,bank,cap,used,next_sample,&cache,error,error_size);
+    s3_sound_music_cache_free(&cache);return ok;
 }

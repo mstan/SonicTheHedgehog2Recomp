@@ -16,17 +16,6 @@ typedef struct S3SoundSource {
     uint8_t standalone_sonic3, prototype;
 } S3SoundSource;
 
-struct S2DonorSound;
-struct S2MusicCue;
-struct S2SoundWave;
-/* Prepare one immutable playback cue. A donor profile is reused by all
- * selected songs from that image, including decoded percussion. */
-int s3_sound_prepare_cue(const uint8_t *rom,size_t size,unsigned donor,unsigned song,
-                         S3SoundSource *source,struct S2DonorSound *profile,
-                         struct S2MusicCue *cue,char *error,size_t error_size);
-int s3_sound_decode_drum(const uint8_t *rom,const S3SoundSource *source,unsigned note,
-                         struct S2SoundWave *wave);
-
 int s3_sound_read_source(const uint8_t *rom, size_t rom_size,
                          S3SoundSource *out, char *error, size_t error_size);
 int s3_sound_read_prototype(const uint8_t *rom, size_t rom_size,
@@ -37,4 +26,54 @@ uint32_t s3_sound_music_source(const S3SoundSource *source,
                               const uint8_t *rom, unsigned id);
 uint32_t s3_sound_sfx_source(const S3SoundSource *source,
                             const uint8_t *rom, unsigned id);
+
+typedef struct S3SoundLayout {
+    uint32_t program_size;
+    uint32_t music_index, sound_index, psg_index, modulation_index;
+} S3SoundLayout;
+typedef struct S3SoundAssetStats {
+    uint32_t music, sfx, nodes, bytes;
+} S3SoundAssetStats;
+typedef struct S3SoundPCMLayout {
+    uint32_t sample_table, map_s3, map_sk, sega_id, sample_count;
+} S3SoundPCMLayout;
+/* Preserve the cartridge's DAC IDs. Descriptor rates come from the driver
+ * port; every waveform is decoded from the verified user's cartridge. */
+int s3_sound_build_pcm(const uint8_t *rom,size_t rom_size,
+                       const S3SoundPCMLayout *layout,uint8_t *bank,size_t capacity,
+                       uint32_t *used,char *error,size_t error_size);
+/* The bank already contains the compiled software-only program at $400000.
+ * This fills its empty pointer tables and appends ROM-derived sequences,
+ * instruments and envelopes. PCM sample preparation is a separate step. */
+int s3_sound_build_sequences(const uint8_t *rom,size_t rom_size,
+                             const S3SoundLayout *layout,uint8_t *bank,size_t capacity,
+                             S3SoundAssetStats *stats,char *error,size_t error_size);
+/* Append prototype music without replacing the host cartridge's SFX or
+ * envelopes. The software program reserves PSG slots 65..103 and modulation
+ * slots 9..18 for this donor. Existing PCM remains the retail cartridge's. */
+int s3_sound_build_prototype_music(const uint8_t *rom,size_t rom_size,
+                                   const S3SoundLayout *layout,uint8_t *bank,size_t capacity,
+                                   uint32_t *used,int standalone_s3,
+                                   char *error,size_t error_size);
+int s3_sound_build_prototype_pcm(const uint8_t *rom,size_t rom_size,
+                                 const S3SoundPCMLayout *layout,uint8_t *bank,size_t capacity,
+                                 uint32_t *used,char *error,size_t error_size);
+/* Append one chosen event and its own envelopes/percussion. The compiled
+ * software is read-only; all musical bytes come from the verified donor. */
+int s3_sound_build_event(const uint8_t *rom,size_t rom_size,unsigned donor,
+                         unsigned theme,unsigned target,
+                         const S3SoundLayout *layout,const S3SoundPCMLayout *pcm,
+                         const uint8_t *program,uint8_t *bank,size_t capacity,
+                         uint32_t *used,unsigned *next_sample,
+                         char *error,size_t error_size);
+/* One bank build shares validated donor tables and decoded percussion across
+ * every selected track. Cache lifetime ends before its input ROMs are freed. */
+typedef struct S3SoundMusicCache {void *donors[S3_ROM_DONOR_COUNT];} S3SoundMusicCache;
+void s3_sound_music_cache_free(S3SoundMusicCache *cache);
+int s3_sound_build_track(const uint8_t *rom,size_t rom_size,unsigned donor,
+                         unsigned source_song,unsigned target,
+                         const S3SoundLayout *layout,const S3SoundPCMLayout *pcm,
+                         const uint8_t *program,uint8_t *bank,size_t capacity,
+                         uint32_t *used,unsigned *next_sample,S3SoundMusicCache *cache,
+                         char *error,size_t error_size);
 #endif

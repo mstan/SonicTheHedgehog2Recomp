@@ -1,6 +1,7 @@
 #include "sonic2_music.h"
 #include "sonic2_custom_music.h"
 #include "sonic2_cd_themes.h"
+#include "sonic2_sound_driver.h"
 #include "host_atomic_file.h"
 #include "sha256.h"
 #include <SDL2/SDL.h>
@@ -126,7 +127,7 @@ unsigned s2_music_group(unsigned t){return t<S2_MUSIC_COUNT?rows[t].group:S2_MUS
 const char *s2_music_section(unsigned t){return t<S2_MUSIC_COUNT?rows[t].section:"";}
 unsigned s2_music_target(unsigned t){return t<S2_MUSIC_COUNT?rows[t].native-0x80:0;}
 int s2_music_available(unsigned t)
-{return t<S2_MUSIC_COUNT&&(counts[t]||s2_themes[t].enabled);}
+{return t<S2_MUSIC_COUNT&&s2_sound_available()&&(counts[t]||s2_themes[t].enabled);}
 unsigned s2_music_title_frames(void)
 {
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(rows[t].native==0x99&&s2_music_active(t)){
@@ -191,6 +192,7 @@ int s2_music_group_enable(unsigned g,int on)
   if(!s2_theme_ready(t)){group_on[g]=0;snprintf(error,sizeof error,"Provide %s for %s.",d==S2_DONOR_CUSTOM?"custom music":s2_donor_names[d],s2_theme_names[t]);return 0;}
  }
  if(!selected){snprintf(error,sizeof error,"Choose a replacement track first.");return 0;}
+ if(!s2_sound_select(1)){group_on[g]=0;snprintf(error,sizeof error,"%s",s2_sound_error());return 0;}
  group_on[g]=1;return 1;
 }
 int s2_music_pick(unsigned t,const char *id)
@@ -256,6 +258,7 @@ void s2_music_load(const char *settings)
   fclose(f);
  }
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_themes[t].enabled&&!s2_theme_ready(t))group_on[rows[t].group]=0;
+ if(s2_themes_enabled()&&!s2_sound_select(1))for(unsigned g=0;g<S2_MUSIC_GROUPS;g++)group_on[g]=0;
 }
 int s2_themes_save(void)
 {
@@ -268,14 +271,7 @@ int s2_themes_validate(void)
 {
  *error=0;
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)if(s2_music_active(t)&&!s2_theme_ready(t)){snprintf(error,sizeof error,"Provide the matching ROM for %s.",s2_theme_names[t]);return 0;}
- return 1;
-}
-int s2_themes_validate_netplay(void)
-{
- *error=0;
- if(!s2_themes_enabled())return 1;
- snprintf(error,sizeof error,"Disable Music Customization sections and restart before netplay.");
- return 0;
+ return !s2_themes_enabled()||s2_sound_select(1);
 }
 int s2_theme_import(unsigned t,const char *path,void (*progress)(void *,float,const char *),void *user)
 {
