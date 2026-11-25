@@ -219,7 +219,8 @@ static S2Motion motion(unsigned o)
 static void store_motion(unsigned o, const S2Motion *m)
 {
     putfixed(o+8,m->x); putfixed(o+12,m->y); putword(o+0x10,m->vx); putword(o+0x12,m->vy); putword(o+0x14,m->inertia);
-    g_ram[o+0x22]=m->status; g_ram[o+0x26]=m->angle; g_ram[o+0x16]=m->radius_y; g_ram[o+0x17]=m->radius_x;
+    g_ram[o+0x22]=m->status; g_ram[o+0x26]=m->angle; g_ram[o+0x27]=m->flip_angle;
+    g_ram[o+0x16]=m->radius_y; g_ram[o+0x17]=m->radius_x;
     g_ram[o+0x1C]=m->animation; g_ram[o+0x1A]=m->frame; g_ram[o+0x3C]=m->jumping;
     putword(o+0x2E,m->move_lock);
 }

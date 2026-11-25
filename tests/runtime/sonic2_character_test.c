@@ -85,9 +85,10 @@ int main(void)
     s2_character_before(&s,&m,0x20,0x20,&c);
     m.status=6; m.jumping=1; m.vy=-0x680;
     s2_character_after(&s,&m,&c); assert(m.vy==-0x600);
-    m.vy=-0x380;
+    m.vy=-0x380; m.flip_angle=41; m.angle=16;
     s2_character_before(&s,&m,0x20,0x20,&c);
     assert(s.special==S2_SK_GLIDE && s.move==S2_MOVE_AIR && m.radius_y==10 && !(m.status&4));
+    assert(!m.angle && !m.flip_angle); /* a new glide retires a prior fan tumble */
     assert(s2_character_attacking(&s,&m));
     /* A native tube spring selects Spring while the imported controller
      * still remembers its prior action. Preserve the actual launch motion. */

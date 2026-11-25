@@ -155,7 +155,8 @@ static void knuckles_before(S2CharacterState *s, S2Motion *m, const S2Contacts *
         s->special=S2_SK_GLIDE; s->turn=(m->status&FACE)?0x80:0;
         m->radius_x=m->radius_y=10; m->status&=~(ROLL|ROLLJUMP);
         m->inertia=0x400; m->vx=(int16_t)(direction(m)*0x400);
-        m->vy+=0x200; if (m->vy<0) m->vy=0; m->angle=0;
+        /* KiS2 clears both angle and native tumble on a new glide. */
+        m->vy+=0x200; if (m->vy<0) m->vy=0; m->angle=m->flip_angle=0;
     }
     switch (s->special) {
     case S2_SK_GLIDE: {
