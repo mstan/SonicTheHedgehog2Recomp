@@ -1,6 +1,7 @@
-# v1.2.3
+# v1.2.4
 
-- Build the optional music sequencer from the shared Genesis Clone Driver source. Preserve existing music customization and supported soundtrack formats.
+- Reset the native tumble when Knuckles starts a new glide.
+- Correct the side-wall collision on the upper Oil Ocean Act 1 platform.
 
 Fresh settings start with Fit to screen. Updating preserves saved aspect and mod choices.
 
