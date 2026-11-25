@@ -1,5 +1,8 @@
 # SonicTheHedgehog2Recomp
 
+An experimental Nintendo Switch homebrew build is available on the Switch
+preview branch. See [installation, controls and build instructions](docs/SWITCH.md).
+
 ## Optional sound driver
 
 **Mods -> Audio -> Clone Driver + Mega PCM** enables an experimental alternate

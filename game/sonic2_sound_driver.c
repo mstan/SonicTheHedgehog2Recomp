@@ -179,9 +179,6 @@ void s2_sound_load_settings(const char *settings)
         SDL_RWclose(f);
     }
     verified=s2_sound_available();
-#ifdef SONIC2_MUSIC_DRIVER
-    s2_music_load(settings);
-#endif
     fprintf(stderr,"[sound-driver] Selected %s from %s\n",selected?"Clone Driver":"original",settings_file);
 }
 int s2_sound_commit(void)
