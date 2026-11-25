@@ -24,6 +24,14 @@ int main(void)
             assert(extend==air[i].extend);
         }
     }
+    {
+        uint8_t extend=0;
+        assert(s2_uncapped_air_speed(0x900,0x18,8,&extend)==0x918);
+        assert(s2_uncapped_air_speed(-0x900,0x18,4,&extend)==-0x918);
+        assert(s2_uncapped_air_speed(0x900,0x18,12,&extend)==0x900);
+        assert(s2_uncapped_air_speed(32760,0x18,8,&extend)==32767);
+        assert(s2_uncapped_air_speed(-32760,0x18,4,&extend)==-32768);
+    }
     S2Contacts c={64,64,64,sine}; S2CharacterState s; S2Motion m=standing();
     s2_character_reset(&s,S2_CHAR_AMY);
     s2_character_before(&s,&m,0x42,0x40,&c);

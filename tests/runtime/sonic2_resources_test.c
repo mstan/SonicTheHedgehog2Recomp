@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     assert(s2_party.amy_enabled && !s2_party.s3k_enabled && !s2_party.save_menu_enabled);
     RecompLauncherCModProvider base = {0}; base.ctx=&delegated; base.package_count=count; base.feature_count=count; base.feature_enable=enable;
     const RecompLauncherCModProvider *p=s2_mods(&base);
-    assert(p->package_count(p->ctx)==7 && p->feature_count(p->ctx)==12);
+    assert(p->package_count(p->ctx)==8 && p->feature_count(p->ctx)==14);
     RecompLauncherCModFeature split;
     assert(p->feature_get(p->ctx,10,&split) && !split.enabled && !strcmp(split.id,"split-screen"));
     assert(p->set_enabled(p->ctx,"sonic2.local-coop",1) && s2_party.local_split_screen);
@@ -131,6 +131,15 @@ int main(int argc, char **argv)
     assert(!s2_party.presentation_enabled&&s2_party.save_entry_warp);
     assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles-flow",1)&&s2_party.knuckles_flow);
     assert(p->feature_enable(p->ctx,"sonic2.s3k","knuckles-flow",0)&&!s2_party.knuckles_flow);
+    RecompLauncherCModFeature flow;
+    assert(p->feature_get(p->ctx,9,&flow)&&!strcmp(flow.package_id,"sonic2.control-flow"));
+    assert(!flow.enabled && !s2_party.uncapped_air && !s2_party.roll_jump_steering);
+    assert(p->feature_enable(p->ctx,"sonic2.control-flow","uncapped-air",1));
+    assert(s2_party.uncapped_air && !s2_party.knuckles_flow && !s2_party.roll_jump_steering);
+    assert(p->feature_enable(p->ctx,"sonic2.control-flow","roll-jump-steering",1));
+    assert(s2_party.uncapped_air && s2_party.roll_jump_steering && !s2_party.knuckles_flow);
+    assert(p->set_enabled(p->ctx,"sonic2.control-flow",0));
+    assert(!s2_party.uncapped_air && !s2_party.roll_jump_steering && !s2_party.knuckles_flow);
     assert(!s2_party.infinite_lives && !s2_party.infinite_time && !s2_party.easy_debug);
     assert(p->feature_get(p->ctx,7,&(RecompLauncherCModFeature){0}));
     assert(p->feature_enable(p->ctx,"sonic2.practice","easy-debug",1) && s2_party.easy_debug);

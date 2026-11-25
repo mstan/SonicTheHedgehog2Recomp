@@ -19,16 +19,23 @@
 #include <string.h>
 static const RecompLauncherCModProvider *base;
 static char error[256];
-static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation", "sonic2.local-coop" };
-static const char *names[] = { "Amy Rose (Experimental)", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences", "Local Co-op" };
-static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow", "split-screen" };
-enum { LOCAL_COOP_PACKAGE=5, SPLIT_SCREEN=10, PARTY_PACKAGES=6, PARTY_FEATURES=11 };
+static const char *ids[] = { "sonic2.amy", "sonic2.s3k", "sonic2.megamix", "sonic2.practice", "sonic2.presentation", "sonic2.local-coop", "sonic2.control-flow" };
+static const char *names[] = { "Amy Rose (Experimental)", "S3&K", "Megamix Characters (Experimental)", "Practice", "Presentation Preferences", "Local Co-op", "Improved Control Flow (Experimental)" };
+static const char *features[] = { "amy", "knuckles", "save-menu", "mighty", "shadow", "infinite-lives", "infinite-time", "easy-debug", "presentation", "knuckles-flow", "split-screen", "uncapped-air", "roll-jump-steering" };
+enum { LOCAL_COOP_PACKAGE=5, CONTROL_FLOW_PACKAGE=6, SPLIT_SCREEN=10,
+       UNCAPPED_AIR=11, ROLL_JUMP_STEERING=12, PARTY_PACKAGES=7, PARTY_FEATURES=13 };
 static const char split_description[] = "Give each local player their own camera in the shared campaign, with up to six views. Assign devices in Controls, choose the party in the title OPTIONS menu, then start 1 PLAYER.";
 #define COPY(dst, value) snprintf(dst, sizeof(dst), "%s", value)
 static int owner(const char *p, const char *f)
 {
     if (p) for (int i = 0; i < PARTY_PACKAGES; ++i)
         if (!strcmp(p, ids[i])) {
+            if(i==CONTROL_FLOW_PACKAGE) {
+                if(!f || !strcmp(f,features[9]))return 9;
+                if(!strcmp(f,features[UNCAPPED_AIR]))return UNCAPPED_AIR;
+                if(!strcmp(f,features[ROLL_JUMP_STEERING]))return ROLL_JUMP_STEERING;
+                return -1;
+            }
             int feature=i==LOCAL_COOP_PACKAGE?SPLIT_SCREEN:i==4?8:i==3?5:i==2?3:i;
             if (!f || !strcmp(f, features[feature])) return feature;
             if (i==1 && !strcmp(f,features[2])) return 2;
@@ -39,7 +46,10 @@ static int owner(const char *p, const char *f)
         }
     return -1;
 }
-static int *flag(int i) { return i==SPLIT_SCREEN?&s2_party.local_split_screen:i==9?&s2_party.knuckles_flow:i==8?&s2_party.presentation_enabled:i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
+static int *flag(int i) {
+    if(i==UNCAPPED_AIR)return &s2_party.uncapped_air;
+    if(i==ROLL_JUMP_STEERING)return &s2_party.roll_jump_steering;
+    return i==SPLIT_SCREEN?&s2_party.local_split_screen:i==9?&s2_party.knuckles_flow:i==8?&s2_party.presentation_enabled:i==7?&s2_party.easy_debug:i==6?&s2_party.infinite_time:i==5?&s2_party.infinite_lives:i==4?&s2_party.shadow_enabled:i==3?&s2_party.mighty_enabled:i==2?&s2_party.save_menu_enabled:i?&s2_party.s3k_enabled:&s2_party.amy_enabled; }
 static unsigned resource_id(int i) { return i>=3?S2_RESOURCE_MEGAMIX:i?S2_RESOURCE_SK:S2_RESOURCE_AMY; }
 static char *path(int i) { return i>=3?s2_party.mighty_path:i?s2_party.s3k_path:s2_party.amy_path; }
 static int ready(int i) { return i>=5?1:i==4?s2_resource_shadow_bank()!=NULL:i==2?s2_resource_save_assets()!=NULL:s2_resource_verified(resource_id(i)); }
@@ -57,6 +67,12 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out)
 {
     (void)ctx;
     if (i >= PARTY_PACKAGES) return base && base->package_get && base->package_get(base->ctx, i - PARTY_PACKAGES, out);
+    if(i==CONTROL_FLOW_PACKAGE && out) {
+        memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"0.1.0");
+        COPY(out->description,"Independently selectable control experiments. All options default off.");
+        out->enabled=s2_party.knuckles_flow || s2_party.uncapped_air || s2_party.roll_jump_steering;
+        COPY(out->status,out->enabled?"Enabled":"Disabled");return 1;
+    }
     if (i==LOCAL_COOP_PACKAGE && out) {
         memset(out,0,sizeof *out);COPY(out->id,ids[i]);COPY(out->name,names[i]);COPY(out->version,"1.0.0");
         COPY(out->description,split_description);
@@ -93,9 +109,16 @@ static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out)
         COPY(out->name,"Local Split-Screen");COPY(out->group,"Campaign");COPY(out->description,split_description);
         out->enabled=s2_party.local_split_screen;COPY(out->status,status(i));return 1;
     }
+    if((i==UNCAPPED_AIR || i==ROLL_JUMP_STEERING) && out) {
+        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[CONTROL_FLOW_PACKAGE]);
+        COPY(out->package_name,names[CONTROL_FLOW_PACKAGE]);COPY(out->package_version,"0.1.0");
+        COPY(out->name,i==UNCAPPED_AIR?"Remove Air Speed Cap":"Rolling Jump Steering");
+        COPY(out->description,i==UNCAPPED_AIR?"Continue accelerating in the air above the usual character speed limit.":"Allow steering after jumping from a roll, while preserving the rolling jump pose.");
+        COPY(out->group,"Gameplay");out->enabled=*flag(i);COPY(out->status,status(i));return 1;
+    }
     if((i==8 || i==9) && out) {
-        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[i==8?4:1]);
-        COPY(out->package_name,names[i==8?4:1]);COPY(out->package_version,"1.0.0");
+        memset(out,0,sizeof *out);COPY(out->id,features[i]);COPY(out->package_id,ids[i==8?4:CONTROL_FLOW_PACKAGE]);
+        COPY(out->package_name,names[i==8?4:CONTROL_FLOW_PACKAGE]);COPY(out->package_version,i==8?"1.0.0":"0.1.0");
         COPY(out->name,i==8?"Menu and Title-card Presentation":"Knuckles Landing Flow");
         COPY(out->group,i==8?"Presentation":"Gameplay");COPY(out->author,"Host adapter contributors");
         COPY(out->description,i==8?"Choose optional presentation changes independently. Original choices preserve the existing design. Disable this section to use the original presentation while remembering your selections.":"Allow Down + Jump to start a spindash during Knuckles' standing landing recovery. Glide, climbing, airborne movement and original physics stay unchanged. Off by default; all online players use the agreed choice.");
@@ -122,7 +145,7 @@ static int enable(void *ctx, const char *p, const char *f, int on)
     (void)ctx; int i = owner(p, f); error[0] = 0;
     if (i < 0) return owner(p,NULL)<0 && base && base->feature_enable && base->feature_enable(base->ctx, p, f, on);
 #if GENESIS_HAS_RECOMP_NET
-    if ((i==5 || i==6 || i==7 || i==9) && genesis_netplay_active() && *flag(i)!=(on!=0)) {
+    if ((i==5 || i==6 || i==7 || i==9 || i==UNCAPPED_AIR || i==ROLL_JUMP_STEERING) && genesis_netplay_active() && *flag(i)!=(on!=0)) {
         COPY(error,"Practice options are fixed for the current online session");return 0;
     }
 #endif
@@ -139,6 +162,9 @@ static int enable(void *ctx, const char *p, const char *f, int on)
 static int set_enabled(void *ctx, const char *p, int on)
 {
     int i = owner(p, NULL);
+    if(p && !strcmp(p,ids[CONTROL_FLOW_PACKAGE]))
+        return enable(ctx,p,features[9],on) && enable(ctx,p,features[UNCAPPED_AIR],on) &&
+            enable(ctx,p,features[ROLL_JUMP_STEERING],on);
     if (i==5) return enable(ctx,p,features[5],on) && enable(ctx,p,features[6],on) && enable(ctx,p,features[7],on);
     if (i==1) {
         if (on && (!ready(1) || !ready(2))) { COPY(error,"Select and verify your Sonic 3 & Knuckles ROM first"); return 0; }

@@ -268,7 +268,8 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x1F384: /* scoped Knuckles Special Stage checkpoint ring return */
     case 0x1FCEA: /* native per-character path/priority triggers for extras */
     case 0x771C: /* original Knuckles solo Special Stage goals */
-    case 0x1A92E: /* original Knuckles airborne overspeed steering */
+    case 0x1A8F8: case 0x1C4DE: case 0x1C514: /* optional control flow */
+    case 0x1A92E: /* original Knuckles and optional airborne steering */
     case 0x1E9B6: case 0x1EA5E: /* OOZ1 upper platform side solidity */
     case 0x2A9E6: /* KiS2 vertical fan cancels special movement */
     case 0x189CA: case 0x18AEE: case 0x18CC6: case 0x18DB4: case 0x18EE6:

@@ -619,7 +619,7 @@ static void runtime_state(S2StateIO *io)
 #ifdef SONIC2_MUSIC_DRIVER
     s2_cd_theme_state(io);
 #endif
-    unsigned header[3+S2_MAX_PLAYERS+11]={8,g_ram[0xF600],s2_party.roster.slots};
+    unsigned header[3+S2_MAX_PLAYERS+13]={9,g_ram[0xF600],s2_party.roster.slots};
     header[3+S2_MAX_PLAYERS]=(unsigned)s2_party.amy_enabled;
     header[4+S2_MAX_PLAYERS]=(unsigned)s2_party.s3k_enabled;
     header[5+S2_MAX_PLAYERS]=(unsigned)s2_party.save_menu_enabled;
@@ -630,11 +630,13 @@ static void runtime_state(S2StateIO *io)
     header[10+S2_MAX_PLAYERS]=(unsigned)s2_party.knuckles_campaign_enabled;
     header[11+S2_MAX_PLAYERS]=(unsigned)s2_party.easy_debug;
     header[13+S2_MAX_PLAYERS]=(unsigned)s2_party.knuckles_flow;
+    header[14+S2_MAX_PLAYERS]=(unsigned)s2_party.uncapped_air;
+    header[15+S2_MAX_PLAYERS]=(unsigned)s2_party.roll_jump_steering;
     header[12+S2_MAX_PLAYERS]=(g_ram[0xF600]==12 || g_ram[0xF600]==16) &&
         !word(0xFFD8) && kind(0)==S2_CHAR_KNUCKLES;
     for (unsigned p=0;p<S2_MAX_PLAYERS;++p) header[3+p]=!strcmp(s2_party.roster.character[p],"none")?S2_CHAR_NONE:kind(p);
     if (io->mode) {
-        unsigned saved[3+S2_MAX_PLAYERS+11];
+        unsigned saved[3+S2_MAX_PLAYERS+13];
         if (!io->data || io->pos>io->size || sizeof saved>io->size-io->pos) { io->ok=0; return; }
         memcpy(saved,io->data+io->pos,sizeof saved);
         if (saved[1]!=12 && saved[1]!=16) io->ok=0;
@@ -1171,6 +1173,27 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if ((pc==0x1A8F8 || pc==0x1C4DE || pc==0x1A92E || pc==0x1C514) &&
+        g_ram[0xF600]==12 && !word(0xFE08)) {
+        unsigned o=g_cpu.A[0]&65535u;
+        if ((o==0xB000 || o==0xB040 || (active && player_object(o))) &&
+            (g_ram[o]==1 || g_ram[o]==2) && g_ram[o+0x24]==2) {
+            if ((pc==0x1A8F8 || pc==0x1C4DE) && s2_party.roll_jump_steering) {
+                /* Preserve the rolling-jump status for the other native
+                 * observers. Only bypass its air steering branch. */
+                g_cpu.SR|=SR_Z;
+                return 0;
+            }
+            if ((pc==0x1A92E || pc==0x1C514) && s2_party.uncapped_air) {
+                uint8_t extend=!!(g_cpu.SR&0x10u);
+                int16_t speed=s2_uncapped_air_speed((int16_t)word(o+0x10),
+                    (uint16_t)g_cpu.D[5],g_ram[pc==0x1A92E?0xF602:0xF66A],&extend);
+                g_cpu.D[0]=(g_cpu.D[0]&0xFFFF0000u)|(uint16_t)speed;
+                g_cpu.SR=(g_cpu.SR&~0x10u)|(extend?0x10u:0);
+                return 0;
+            }
+        }
+    }
     if (pc==0x1E9B6 || pc==0x1EA5E) {
         /* OOZ1: the upper platform has a decorative side-solid row above
          * its real floor. Walking there probes into the decoration and

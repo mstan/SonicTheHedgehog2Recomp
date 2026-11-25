@@ -151,13 +151,14 @@ void s2_netplay_config_image(char *out, size_t cap)
     /* The EFFECTIVE owner features: enabled AND backed by verified assets
      * (an enabled feature without its donor ROM changes nothing). */
     if (n < cap)
-        snprintf(out + n, cap - n, " m=%d%d%d%d k=%d d=%d f=%d c=%d%d",
+        snprintf(out + n, cap - n, " m=%d%d%d%d k=%d d=%d f=%d%d%d c=%d%d",
                  s2_party.amy_enabled && s2_resource_verified(S2_RESOURCE_AMY) ? 1 : 0,
                  s2_party.s3k_enabled && s2_resource_verified(S2_RESOURCE_SK) ? 1 : 0,
                  s2_party.mighty_enabled && s2_resource_verified(S2_RESOURCE_MEGAMIX) ? 1 : 0,
                  s2_party.shadow_enabled && s2_resource_shadow_bank() ? 1 : 0,
                  s2_party.s3k_enabled && s2_party.knuckles_campaign_enabled && s2_resource_knuckles_stages() ? 1 : 0,
                  s2_party.easy_debug?1:0,s2_party.knuckles_flow?1:0,
+                 s2_party.uncapped_air?1:0,s2_party.roll_jump_steering?1:0,
                  s2_party.infinite_lives!=0,s2_party.infinite_time!=0);
 }
 
@@ -165,10 +166,13 @@ int s2_netplay_config_adopt(const char *line)
 {
     if(!s2_sound_netplay_allowed()) return -1;
     const char *flow=line?strstr(line," f="):NULL;
-    int knuckles_flow=0;
+    int knuckles_flow=0,uncapped_air=0,roll_jump_steering=0;
     if(flow) {
-        if((flow[3]!='0'&&flow[3]!='1') || (flow[4]&&flow[4]!=' '))return -1;
+        size_t count=strcspn(flow+3," ");
+        if(count!=1 && count!=3)return -1;
+        for(size_t i=0;i<count;++i)if(flow[3+i]!='0' && flow[3+i]!='1')return -1;
         knuckles_flow=flow[3]=='1';
+        if(count==3) {uncapped_air=flow[4]=='1';roll_jump_steering=flow[5]=='1';}
     }
     const char *debug=line?strstr(line," d="):NULL;
     int easy_debug=0;
@@ -233,6 +237,8 @@ int s2_netplay_config_adopt(const char *line)
     s2_party.infinite_lives=lives;s2_party.infinite_time=time;
     s2_party.easy_debug=easy_debug;
     s2_party.knuckles_flow=knuckles_flow;
+    s2_party.uncapped_air=uncapped_air;
+    s2_party.roll_jump_steering=roll_jump_steering;
     s2_party.save_menu_enabled = 0;
     return 0;
 }

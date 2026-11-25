@@ -45,6 +45,8 @@ void s2_character_reset(S2CharacterState *s, unsigned kind);
 /* KiS2 air steering, including the 68000 extend bit after its arithmetic. */
 int16_t s2_knuckles_air_speed(int16_t speed, uint16_t acceleration,
     uint16_t top, uint8_t held, uint8_t *extend);
+int16_t s2_uncapped_air_speed(int16_t speed, uint16_t acceleration,
+    uint8_t held, uint8_t *extend);
 int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m);
 void s2_character_before(S2CharacterState *s, S2Motion *m, uint8_t held, uint8_t pressed, const S2Contacts *c);
 void s2_character_after(S2CharacterState *s, S2Motion *m, const S2Contacts *c);

@@ -38,6 +38,24 @@ int16_t s2_knuckles_air_speed(int16_t speed, uint16_t acceleration,
     }
     return speed;
 }
+int16_t s2_uncapped_air_speed(int16_t speed, uint16_t acceleration,
+    uint8_t held, uint8_t *extend)
+{
+    /* Keep native left-before-right acceleration and the signed velocity
+     * representation, without the character-specific top-speed clamp. */
+    int32_t next=speed;
+    if(held&LEFT) {
+        *extend=acceleration>(uint16_t)next;
+        next-=acceleration;
+        if(next<INT16_MIN)next=INT16_MIN;
+    }
+    if(held&RIGHT) {
+        *extend=(uint32_t)(uint16_t)next+acceleration>UINT16_MAX;
+        next+=acceleration;
+        if(next>INT16_MAX)next=INT16_MAX;
+    }
+    return (int16_t)next;
+}
 int s2_character_moves_before(const S2CharacterState *s, const S2Motion *m)
 {
     if(s->kind!=S2_CHAR_KNUCKLES || m->hurt || m->control_locked || m->animation==0x10)return 0;

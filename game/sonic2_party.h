@@ -27,6 +27,8 @@ typedef struct S2PartyConfig {
     int shadow_enabled; /* requires the same verified Megamix donor */
     int knuckles_campaign_enabled; /* verified local capability; session-scoped online */
     int knuckles_flow; /* optional landing-to-spindash input, original behavior by default */
+    int uncapped_air;
+    int roll_jump_steering;
     int presentation_enabled;
     int save_entry_warp,save_card_act,title_card_colors,options_panel_fade,options_slow_backdrop;
     char amy_path[1024];
