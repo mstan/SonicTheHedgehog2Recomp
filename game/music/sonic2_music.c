@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 S2MusicSelection s2_themes[S2_MUSIC_COUNT];
 #define TRACK(id,...) id,
@@ -265,7 +266,11 @@ int s2_themes_save(void)
  char text[S2_MUSIC_COUNT*100+128];size_t used=0;
  for(unsigned g=0;g<S2_MUSIC_GROUPS;g++)used+=(size_t)snprintf(text+used,sizeof text-used,"group.%u.enabled=%d\n",g,group_on[g]);
  for(unsigned t=0;t<S2_MUSIC_COUNT;t++)used+=(size_t)snprintf(text+used,sizeof text-used,"%s=%s\n",s2_theme_ids[t],s2_themes[t].enabled?s2_theme_choice(t,(unsigned)s2_themes[t].choice)->id:"base");
- if(!genesis_atomic_file_store(file,text,used)){snprintf(error,sizeof error,"Unable to save music choices.");return 0;}return 1;
+ if(!genesis_atomic_file_store(file,text,used)){
+  int failure=errno;
+  fprintf(stderr,"[music] cannot save choices to '%s': %s\n",file,strerror(failure));
+  snprintf(error,sizeof error,"Unable to save music choices.");return 0;
+ }return 1;
 }
 int s2_themes_validate(void)
 {

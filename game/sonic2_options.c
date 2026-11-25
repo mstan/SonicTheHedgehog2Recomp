@@ -5,8 +5,8 @@
 #include "sonic2_runtime.h"
 #include "sonic2_save_menu.h"
 #include "sonic2_state_io.h"
+#include "music/sonic2_music.h"
 #ifdef SONIC2_MUSIC_DRIVER
-#include "sonic2_music.h"
 #include "sonic2_cd_themes.h"
 #include "audio/ym2612.h"
 #include "audio/sn76489.h"
@@ -108,6 +108,10 @@ static int online(void)
 void s2_options_load(const char *settings_path)
 {
     s2_sound_load_settings(settings_path);
+    /* The launcher persists music preferences with the original sound driver
+     * too. Initialize their catalog and path independently of alternate-driver
+     * code generation, before any Mods commit can save them. */
+    s2_music_load(settings_path);
     s2_party_load(settings_path);
     s2_resources_load(settings_path);
     if (!s2_resource_verified(S2_RESOURCE_SK)) s2_party.s3k_enabled = 0;

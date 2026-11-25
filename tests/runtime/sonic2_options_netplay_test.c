@@ -7,6 +7,8 @@
 uint8_t g_ram[65536];
 M68KState g_cpu;
 void s2_sound_load_settings(const char *path) { (void)path; }
+static const char *music_settings_path;
+void s2_music_load(const char *path) { music_settings_path=path; }
 static int sound_netplay_allowed=1;
 int s2_sound_netplay_allowed(void) { return sound_netplay_allowed; }
 static int net_active = 1, saves, save_ok = 1, save_overlay_calls;
@@ -56,6 +58,11 @@ static void restore(uint8_t *data, size_t size)
 }
 int main(void)
 {
+    /* This target has no SONIC2_MUSIC_DRIVER: launcher music preferences must
+     * still receive their writable path through the normal game load entry. */
+    const char *settings="sonic2-options-test-absent/settings.ini";
+    s2_options_load(settings);
+    assert(music_settings_path==settings);
     uint8_t before[256], first[256], replay[256];
     s2_party_defaults();
     assert(s2_character_register(&knuckles) && s2_character_register(&amy));
