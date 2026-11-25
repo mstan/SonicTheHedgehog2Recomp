@@ -269,6 +269,7 @@ static int s2_instruction_hook(uint32_t pc)
     case 0x1FCEA: /* native per-character path/priority triggers for extras */
     case 0x771C: /* original Knuckles solo Special Stage goals */
     case 0x1A92E: /* original Knuckles airborne overspeed steering */
+    case 0x1E9B6: case 0x1EA5E: /* OOZ1 upper platform side solidity */
     case 0x2A9E6: /* KiS2 vertical fan cancels special movement */
     case 0x189CA: case 0x18AEE: case 0x18CC6: case 0x18DB4: case 0x18EE6:
     case 0x4450: case 0x446E: case 0x19F50: case 0x1B8A4:

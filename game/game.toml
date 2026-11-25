@@ -160,6 +160,12 @@ kind = "game_hook"
 addr = 0x5300 # Special-stage results: retire pending level tile redraws
 kind = "game_hook"
 [[widescreen_site]]
+addr = 0x1E9B6 # FindWall: correct the OOZ1 upper platform side-solidity lookup
+kind = "game_hook"
+[[widescreen_site]]
+addr = 0x1EA5E # FindWall2: apply the same correction to adjacent-block probes
+kind = "game_hook"
+[[widescreen_site]]
 addr = 0x2A9E6 # Obj3F vertical fan: relinquish Knuckles special movement after contact
 kind = "game_hook"
 [[widescreen_site]]

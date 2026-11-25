@@ -1171,6 +1171,18 @@ static int update_player(unsigned p, uint32_t entry)
 }
 int s2_runtime_hook(uint32_t pc)
 {
+    if (pc==0x1E9B6 || pc==0x1EA5E) {
+        /* OOZ1: the upper platform has a decorative side-solid row above
+         * its real floor. Walking there probes into the decoration and
+         * produces a large reverse velocity. Correct just that instance
+         * of chunk $47, preserving floor probes and all other placements. */
+        unsigned x=(uint16_t)g_cpu.D[3], y=(uint16_t)g_cpu.D[2];
+        if ((g_ram[0xF600]&127)==12 && word(0xFE10)==0x0A00 &&
+            x>=0x2780 && x<0x2A00 && y<16 &&
+            g_ram[0x8000+(x>>7)]==0x47 && (g_cpu.D[0]&0x3000u)==0x2000u)
+            g_cpu.D[0]&=~0x2000u;
+        return 0;
+    }
     if(pc==0x437A || pc==0x4380) {
         /* Pause can select Title before Level_MainLoop's last RunObjects.
          * Keep the custom controller and companion context for this exact
