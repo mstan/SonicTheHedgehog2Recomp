@@ -352,12 +352,9 @@ int s2_options_hook(uint32_t pc)
         } else {
             s_departing=1;
             s_notice = NOTICE_NONE;
-            /* CheckCheats enables both Level Select and its native pause
-             * controls in the same word. Match it when entering here. */
-            if(s_cursor==LEVEL_ROW) {
-                g_ram[0xFFD0]=1;
-                g_ram[0xFFD1]=1;
-            }
+            /* The menu enables Level Select. Only the native Sound Test
+             * cheat enables the separate pause shortcuts. */
+            if(s_cursor==LEVEL_ROW) g_ram[0xFFD0]=1;
             g_ram[0xF600] = s_cursor==LEVEL_ROW?0x28:4;
         }
         return 1;

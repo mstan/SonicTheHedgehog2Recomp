@@ -1,7 +1,7 @@
-# v1.2.4
+# v1.2.5
 
-- Reset the native tumble when Knuckles starts a new glide.
-- Correct the side-wall collision on the upper Oil Ocean Act 1 platform.
+- Keep the normal pause controls when entering a stage from the Options menu.
+- Preserve the native pause shortcuts when activated through the Sound Test cheat.
 
 Fresh settings start with Fit to screen. Updating preserves saved aspect and mod choices.
 

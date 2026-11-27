@@ -1,4 +1,4 @@
-SonicTheHedgehog2Recomp v1.2.4
+SonicTheHedgehog2Recomp v1.2.5
 ===========================================================
 
 A native Windows port produced by statically recompiling the Sega Genesis
@@ -22,6 +22,7 @@ selection and cheat-code handling: Left/Right changes the sound number, A adds
 0x10, and B/C plays it. Start saves the roster and returns to the title.
 Choose Level Select and press A, C or Start to open the native stage selector.
 The original sound-test cheat sequence and title A+Start entry also work.
+The original sound-test cheat also enables the native pause shortcuts.
 These controls work with the original driver and the optional Clone Driver.
 
 LOCAL SPLIT-SCREEN CO-OP
