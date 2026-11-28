@@ -148,7 +148,7 @@ APPDIR="$WORK/AppDir"; mkdir -p "$APPDIR"
 # reproducible regardless of what happens to live in ~/recomp-tools.
 source "$ENGINE/tools/release/appimage.sh"
 genesis_appimage_tools "$BUILD"
-LINUXDEPLOY="$LINUXDEPLOY_BIN --appimage-extract-and-run"
+LINUXDEPLOY=( "$LINUXDEPLOY_BIN" --appimage-extract-and-run )
 
 # Icon: boxart padded to a square 256x256 when ImageMagick is available, flat
 # placeholder otherwise (linuxdeploy only accepts standard square sizes).
@@ -186,7 +186,7 @@ Categories=Game;
 Terminal=false
 EOF
 
-$LINUXDEPLOY --appdir "$APPDIR" --executable "$BIN" \
+"${LINUXDEPLOY[@]}" --appdir "$APPDIR" --executable "$BIN" \
     --desktop-file "$WORK/$SLUG.desktop" --icon-file "$ICON"
 mkdir -p "$APPDIR/usr/bin/docs" "$APPDIR/usr/bin/tools"
 cp "$(dirname "$BIN")/docs/PLAYER_FEEDBACK.md" "$APPDIR/usr/bin/docs/"
