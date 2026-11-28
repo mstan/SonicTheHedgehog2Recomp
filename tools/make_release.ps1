@@ -120,63 +120,15 @@ foreach ($want in @('SONIC_REVERSE_DEBUG:BOOL=OFF', 'GEN_ENABLE_TRACE:BOOL=OFF',
 
 # --- 3. runtime closure -----------------------------------------------------
 Write-Host '[3/4] resolve runtime DLL closure'
-function Get-PeImports([string]$Path) {
-  $b = [IO.File]::ReadAllBytes($Path)
-  if ($b.Length -lt 0x40 -or $b[0] -ne 0x4D -or $b[1] -ne 0x5A) { throw "$Path is not a PE image" }
-  $pe = [BitConverter]::ToInt32($b, 0x3C)
-  $machine = [BitConverter]::ToUInt16($b, $pe + 4)
-  if ($machine -ne 0x8664) { throw ('{0} is not x64 (machine 0x{1:X4})' -f $Path, $machine) }
-  $nsec = [BitConverter]::ToUInt16($b, $pe + 6)
-  $optSize = [BitConverter]::ToUInt16($b, $pe + 20)
-  $opt = $pe + 24
-  $dir = $opt + $(if ([BitConverter]::ToUInt16($b, $opt) -eq 0x20B) { 112 } else { 96 })
-  $irva = [BitConverter]::ToUInt32($b, $dir + 8)
-  if ($irva -eq 0) { return @() }
-  $secs = for ($i = 0; $i -lt $nsec; $i++) {
-    $s = $opt + $optSize + 40 * $i
-    [pscustomobject]@{ VA = [BitConverter]::ToUInt32($b, $s + 12)
-      Span = [Math]::Max([BitConverter]::ToUInt32($b, $s + 8), [BitConverter]::ToUInt32($b, $s + 16))
-      Raw = [BitConverter]::ToUInt32($b, $s + 20) }
-  }
-  $toOff = { param($rva) foreach ($s in $secs) { if ($rva -ge $s.VA -and $rva -lt $s.VA + $s.Span) { return [int]($s.Raw + $rva - $s.VA) } }; -1 }
-  $d = & $toOff $irva
-  $names = @()
-  for ($i = 0; $i -lt 4096; $i++) {
-    $nrva = [BitConverter]::ToUInt32($b, $d + 20 * $i + 12)
-    if ($nrva -eq 0) { break }
-    $o = & $toOff $nrva; $e = $o
-    while ($b[$e] -ne 0) { $e++ }
-    $names += [Text.Encoding]::ASCII.GetString($b, $o, $e - $o)
-  }
-  return $names
-}
-# The MSVC runtime lives in System32 only when the VC++ redistributable is
-# installed, so it is NOT an OS DLL: deploy it app-locally from the toolset.
-$crtDir = Get-ChildItem -Path (Join-Path $vs 'VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT') -Directory |
-  Sort-Object FullName | Select-Object -Last 1
-if (-not $crtDir) { throw "no VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT under $vs" }
-$isCrt = { param($n) $n -match '^(msvcp140.*|vcruntime140.*|concrt140|vccorlib140)\.dll$' }
-$isOs = { param($n)
-  $n -match '^(api-ms-win-|ext-ms-)' -or
-  (-not (& $isCrt $n) -and (Test-Path -LiteralPath (Join-Path $env:SystemRoot "System32\$n") -PathType Leaf)) }
-
-$staged = [ordered]@{}   # dll name -> source path
-$queue = New-Object Collections.Generic.Queue[string]
-$queue.Enqueue($exe)
-$seen = New-Object Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
-while ($queue.Count -gt 0) {
-  $pe = $queue.Dequeue()
-  foreach ($dep in Get-PeImports $pe) {
-    if (-not $seen.Add($dep) -or (& $isOs $dep)) { continue }
-    $src = @((Join-Path $outDir $dep), (Join-Path $crtDir.FullName $dep)) |
-      Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-    if (-not $src) {
-      throw "unresolved runtime dependency '$dep' (imported by $([IO.Path]::GetFileName($pe))); searched $outDir and $($crtDir.FullName)"
-    }
-    $staged[$dep] = $src
-    $queue.Enqueue($src)
-  }
-}
+. "$engine/tools/release/GenesisRelease.ps1"
+$closureStage = Join-Path $build ("runtime-closure-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $closureStage | Out-Null
+Copy-Item -LiteralPath $exe -Destination $closureStage
+$runtimeDirs = @(Get-GenesisRuntimeSearchDirs -SearchDirs @($outDir))
+Copy-RuntimeDllClosure -StageDir $closureStage -SearchDirs $runtimeDirs | Out-Null
+Assert-RuntimeDllClosure -StageDir $closureStage | Out-Null
+$staged = [ordered]@{}
+Get-ChildItem -LiteralPath $closureStage -File -Filter '*.dll' | ForEach-Object { $staged[$_.Name] = $_.FullName }
 Write-Host "      staged: $($staged.Keys -join ', ')"
 
 # --- 4. package ---------------------------------------------------------------
@@ -217,3 +169,7 @@ $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant
 "$hash  $([IO.Path]::GetFileName($zip))" | Out-File -LiteralPath "$zip.sha256" -Encoding ascii
 Write-Host "BUILT: $zip"
 Write-Host "$hash  $([IO.Path]::GetFileName($zip))"
+
+# This owned scratch stage contains only the executable and resolved DLL files.
+Get-ChildItem -LiteralPath $closureStage -File | ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+Remove-Item -LiteralPath $closureStage
