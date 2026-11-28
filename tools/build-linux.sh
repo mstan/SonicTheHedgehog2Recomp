@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# build-linux.sh — Linux build + AppImage packaging for Sonic the Hedgehog 2.
+# build-linux.sh â€” Linux build + AppImage packaging for Sonic the Hedgehog 2.
 #
 # Linux counterpart to tools/make_release.ps1 (Windows). Same prod-vs-debug
 # discipline:
 #
-#   prod  (default) — strips ALL developer tooling: no TCP cmd server, no
+#   prod  (default) â€” strips ALL developer tooling: no TCP cmd server, no
 #                     frame_snapshots ring, no chip_trace, no reverse debugger.
-#   debug           — compiles the TCP cmd server + observability rings back in.
+#   debug           â€” compiles the TCP cmd server + observability rings back in.
 #
 # Configures + builds with cmake, then wraps the ELF into a self-contained
 # x86_64 AppImage. State policy (identical to the Windows zip, where everything
 # lives next to the exe): settings.ini, rom-Sonic2.cfg, campaign SRAM and
 # quickstates all live NEXT TO the .AppImage file. The runner anchors there
-# itself — main.c init_exe_dir() prefers $APPIMAGE over /proc/self/exe so state
+# itself â€” main.c init_exe_dir() prefers $APPIMAGE over /proc/self/exe so state
 # never resolves into the read-only squashfs mount. The AppRun:
 #   * seeds rom-Sonic2.cfg from a Sonic 2 ROM sitting beside the .AppImage
-#     (never passes it as argv[1] — a positional ROM skips the launcher),
+#     (never passes it as argv[1] â€” a positional ROM skips the launcher),
 #   * saves the host LD_LIBRARY_PATH for recomp-ui's host file pickers,
 #   * exports the SDL hints that make a Steam Deck pad read as a real gamepad.
 #
@@ -35,7 +35,7 @@
 #
 # The version is automatic: CMakeLists.txt derives it from git (tag v0.8.2 ->
 # 0.8.2; off a tag 0.8.2-3-g<sha>; "-dirty" with uncommitted edits). It is the
-# netplay lobby key and names the AppImage — tag the commit to cut a release.
+# netplay lobby key and names the AppImage â€” tag the commit to cut a release.
 #
 # The generated C is produced at build time from game/sonic2.bin (the ROM is a
 # build dependency), so the owner ROM must be present. It is NEVER packaged.
@@ -58,13 +58,6 @@ BOXART="boxart.png"
 PROD_CMAKE_FLAGS=( -DGEN_ENABLE_TRACE=OFF -DGEN_DEV_TRACE=OFF -DSONIC_REVERSE_DEBUG=OFF )
 DEBUG_CMAKE_FLAGS=( -DGEN_ENABLE_TRACE=ON -DGEN_DEV_TRACE=ON -DSONIC_REVERSE_DEBUG=ON )
 # ============================================================================
-
-# Versioned assets and digests from the upstream GitHub release metadata.
-# Floating continuous URLs can replace their payload and invalidate a pin.
-LINUXDEPLOY_URL=https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
-LINUXDEPLOY_SHA=c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
-APPIMAGETOOL_URL=https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
-APPIMAGETOOL_SHA=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 
 CONFIG="prod"
 DO_RUN=0
@@ -153,24 +146,9 @@ APPDIR="$WORK/AppDir"; mkdir -p "$APPDIR"
 
 # Pinned tooling, fetched into the build tree and SHA-verified so packaging is
 # reproducible regardless of what happens to live in ~/recomp-tools.
-TOOLS_DIR="$BUILD/appimage-tools"
-mkdir -p "$TOOLS_DIR"
-fetch_tool() { # url sha dest
-  local url="$1" sha="$2" dest="$3"
-  if [ ! -f "$dest" ] || [ "$(sha256sum "$dest" | awk '{print $1}')" != "$sha" ]; then
-    echo "      fetching $(basename "$dest")"
-    curl -fL --retry 3 "$url" -o "$dest.tmp"
-    printf '%s  %s\n' "$sha" "$dest.tmp" | sha256sum -c - >/dev/null
-    mv "$dest.tmp" "$dest"
-  fi
-  chmod 0755 "$dest"
-}
-LINUXDEPLOY_BIN="$TOOLS_DIR/linuxdeploy-x86_64.AppImage"
-APPIMAGETOOL_BIN="$TOOLS_DIR/appimagetool-x86_64.AppImage"
-fetch_tool "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA" "$LINUXDEPLOY_BIN"
-fetch_tool "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA" "$APPIMAGETOOL_BIN"
+source "$ENGINE/tools/release/appimage.sh"
+genesis_appimage_tools "$BUILD"
 LINUXDEPLOY="$LINUXDEPLOY_BIN --appimage-extract-and-run"
-APPIMAGETOOL="$APPIMAGETOOL_BIN --appimage-extract-and-run"
 
 # Icon: boxart padded to a square 256x256 when ImageMagick is available, flat
 # placeholder otherwise (linuxdeploy only accepts standard square sizes).
@@ -288,7 +266,7 @@ case "$EXE" in *_cosim*|GenesisRecomp) echo "ERROR: refusing to package dev-only
 
 APP="$OUT/$RELEASE_SLUG-linux-$VERSION-x86_64.AppImage"
 rm -f "$APP"
-ARCH=x86_64 $APPIMAGETOOL "$APPDIR" "$APP"
+genesis_package_appimage "$APPDIR" "$APP"
 chmod +x "$APP"
 echo "      BUILT: $APP ($(du -h "$APP" | cut -f1))"
 

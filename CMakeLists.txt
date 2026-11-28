@@ -137,13 +137,6 @@ endforeach()
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
 include("${CMAKE_SOURCE_DIR}/cmake/Sonic2CustomMusic.cmake")
-set(FM_SOURCES
-    "${RUNNER_ROOT}/audio/ym2612_ymfm.cpp"
-    "${RUNNER_ROOT}/external/ymfm/src/ymfm_opn.cpp"
-    "${RUNNER_ROOT}/external/ymfm/src/ymfm_ssg.cpp"
-    "${RUNNER_ROOT}/external/ymfm/src/ymfm_adpcm.cpp"
-    "${RUNNER_ROOT}/external/ymfm/src/ymfm_pcm.cpp"
-)
 
 # ---------------------------------------------------------------------------
 # Source set for the native target (the only target besides the dev-only
@@ -165,37 +158,13 @@ string(SHA256 _state_id "${_state_fingerprint};${CMAKE_CXX_COMPILER_ID};${CMAKE_
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/sonic2_state_build.h"
     CONTENT "#define SONIC2_STATE_BUILD_ID \"${_state_id}\"\n")
 if(GEN_ENABLE_TRACE)
-    set(GEN_TRACE_SOURCES
-        "${RUNNER_ROOT}/cmd_server.c"
-        "${RUNNER_ROOT}/frame_snapshots.c")
     add_compile_definitions(GEN_ENABLE_TRACE=1)
-else()
-    set(GEN_TRACE_SOURCES "${RUNNER_ROOT}/cmd_server_stub.c")
 endif()
 
+genesisrecomp_runner_sources(RUNNER_SOURCES
+    TRACE "${GEN_ENABLE_TRACE}" REVERSE_DEBUG "${SONIC_REVERSE_DEBUG}")
 set(SONIC2_SHARED_SOURCES
-    "${RUNNER_ROOT}/main.c"
-    "${RUNNER_ROOT}/audio.c"
-    ${GEN_TRACE_SOURCES}
-    "${RUNNER_ROOT}/glue.c"
-    "${RUNNER_ROOT}/fiber_compat.c"   # cross-platform fiber shim (Win32 Fibers / POSIX ucontext) â€” glue.c depends on it
-    "${RUNNER_ROOT}/crash_report.c"
-    "${RUNNER_ROOT}/input_script.c"
-    "${RUNNER_ROOT}/gamepad.c"
-    "${RUNNER_ROOT}/input_map.c"      # per-player Genesis button bindings (kbd+pad, 3/6-btn)
-    "${RUNNER_ROOT}/app_config.c"     # settings.ini + rom.cfg load/save
-    "${RUNNER_ROOT}/chip_trace.c"
-    "${RUNNER_ROOT}/audio/event_queue.c"
-    ${FM_SOURCES}
-    "${RUNNER_ROOT}/audio/sn76489.c"
-    "${RUNNER_ROOT}/audio/mixer.c"
-    "${RUNNER_ROOT}/audio/observability.c"
-    "${RUNNER_ROOT}/cosim_state.c"  # pointer-free end-state hash for benchmarks + co-sim
-    # Verified-enhancement shadow layer (opt-in via env, default OFF; links no
-    # clownmdemu, safe to ship). See segagenesisrecomp/docs/SHADOW_ENHANCEMENTS.md.
-    "${RUNNER_ROOT}/audio/audio_shadow.c"   # envelope-correlation verifier
-    "${RUNNER_ROOT}/audio/fm_shadow.cpp"    # parallel ymfm chip (cleaner highs / ym3438 ladder-off)
-    "${RUNNER_ROOT}/video/color_lut.c"      # present-time 9-bit CRT/composite LUT
+    ${RUNNER_SOURCES}
     ${SONIC2_GENERATED_SOURCES}
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_spec.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/game/sonic2_video.c"
@@ -238,7 +207,6 @@ set(SONIC2_SHARED_SOURCES
 )
 
 if(SONIC_REVERSE_DEBUG)
-    list(APPEND SONIC2_SHARED_SOURCES "${RUNNER_ROOT}/reverse_debug.c")
     message(STATUS "SONIC_REVERSE_DEBUG=ON â€” Tier-1 reverse-debug instrumentation compiled in")
 else()
     message(STATUS "SONIC_REVERSE_DEBUG=OFF â€” stripped native build (no rdb ring)")
@@ -265,21 +233,7 @@ set(SONIC2_INCLUDES_NATIVE
 # Clean-room own backend (VDP+bus+Z80 scheduler, superzazu Z80 core embedded
 # directly) â€” native target only; this is the AGPL-free Sonic 2 runtime.
 # Oracle keeps clownmdemu (incl. its own clownz80) as ground truth.
-set(OWN_BACKEND_SOURCES
-    "${RUNNER_ROOT}/video/genesis_vdp.c"
-    "${RUNNER_ROOT}/video/genesis_bus.c"
-    "${RUNNER_ROOT}/video/genesis_machine.c"
-    "${RUNNER_ROOT}/external/superzazu/z80.c")
 
-# Clean-room 68000 interpreter + decoder + rom_parser. The _wt-cosim engine's
-# shared glue.c references m68k_interp_run_framed (the Tier-3 native floor)
-# unconditionally, so EVERY target built against this engine must link these
-# (AGPL-free â€” own interpreter + recompiler decoder). Sonic 2's original list
-# omitted them because it targeted an older engine.
-set(SONIC2_FLOOR_SOURCES
-    "${RUNNER_ROOT}/m68k_interp.c"
-    "${RECOMP_ROOT}/recompiler/src/m68k_decoder.c"
-    "${RECOMP_ROOT}/recompiler/src/rom_parser.c")
 list(APPEND SONIC2_INCLUDES_NATIVE "${RECOMP_ROOT}/recompiler/src")   # m68k_decoder.h
 
 set(SONIC2_LIBS SDL2::SDL2main SDL2::SDL2)
@@ -294,6 +248,7 @@ endif()
 # Helper: copy SDL2.dll, ROM, and annotations CSV next to a target's exe.
 # `includes` selects the per-target include list (native = no clown paths).
 function(_sonic2_finalize_target tgt includes)
+    genesisrecomp_runner_target(${tgt})
     target_include_directories(${tgt} PRIVATE ${${includes}})
     target_link_libraries(${tgt} PRIVATE ${SONIC2_LIBS})
     if(MSVC)
@@ -328,8 +283,6 @@ endfunction()
 
 add_executable(SonicTheHedgehog2Recomp
     ${SONIC2_SHARED_SOURCES}
-    ${OWN_BACKEND_SOURCES}          # clean-room own backend (native = own, AGPL-free)
-    ${SONIC2_FLOOR_SOURCES}         # m68k_interp + decoder (this engine's glue.c needs it)
 )
 add_dependencies(SonicTheHedgehog2Recomp ${SONIC2_GENERATED_SOURCES_TARGET})
 target_compile_definitions(SonicTheHedgehog2Recomp PRIVATE
@@ -406,16 +359,10 @@ endif()
 # ---------------------------------------------------------------------------
 option(GENESIS_BUILD_COSIM "Build the differential co-simulation target (dev-only)." OFF)
 if(GENESIS_BUILD_COSIM)
-    set(SONIC2_COSIM_FLOOR_SOURCES
-        "${RUNNER_ROOT}/m68k_interp.c"
-        "${RECOMP_ROOT}/recompiler/src/m68k_decoder.c"
-        "${RECOMP_ROOT}/recompiler/src/rom_parser.c")
 
     add_executable(SonicTheHedgehog2Recomp_cosim
         "${CMAKE_SOURCE_DIR}/recomp-ui/src/common/sha256.c"
         ${SONIC2_SHARED_SOURCES}
-        ${OWN_BACKEND_SOURCES}
-        ${SONIC2_COSIM_FLOOR_SOURCES}
         "${RUNNER_ROOT}/cosim.c"
         "${RUNNER_ROOT}/cosim_visible.c"
         "${RUNNER_ROOT}/cosim_cycles.c"                             # cross-backend work-cycle ruler
